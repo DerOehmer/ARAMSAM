@@ -70,6 +70,92 @@ class SamInference:
         order = cord_df.index.to_list()
         masks = np.array(masks, dtype=np.uint8)[order]
         return masks, annotated_image
+    
+    def custom_amg(self, roi_pts=False, n_points=100, msize_thresh=10000):
+        pts = None
+        pt_labels = None
+        if roi_pts:
+            pts, pt_labels = self.get_roi_points(n_points)
+        else:
+            pts, pt_labels = self.get_pt_grid(n_points)
+        transformed_pts = self.predictor.transform.apply_coords_torch(pts,self.img.shape[:2])
+        masks = self.predict_batch(transformed_pts, pt_labels)
+
+        xmins = []
+        ymins = []
+        mask_lst = []
+
+        annotated_image = self.imgbgr.copy()
+    
+        for mask in masks:
+            mask = mask.cpu().numpy()
+            if np.count_nonzero(mask) < msize_thresh:
+                b, g, r = (
+                    np.random.randint(0, 255),
+                    np.random.randint(0, 255),
+                    np.random.randint(0, 255),
+                )
+                kernelmask = np.array(mask, dtype=np.uint8) * 255
+                kernelmask = np.squeeze(kernelmask, axis=0)
+                mask_lst.append(kernelmask)
+                ycords, xcords = np.where(kernelmask == 255)
+                annotated_image[ycords, xcords] = b, g, r
+                ymin, xmin = np.amin(ycords), np.amin(xcords)
+
+                ymins.append(ymin)
+                xmins.append(xmin)
+
+        cord_dict = {"ymins": ymins, "xmins": xmins}
+
+        cord_df = pd.DataFrame(cord_dict)
+        cord_df = cord_df.sort_values(by=["ymins", "xmins"])
+        order = cord_df.index.to_list()
+        masks_np = np.array(mask_lst, dtype=np.uint8)[order]
+        return masks_np, annotated_image
+
+    def get_roi_points(self, n=100, lower_hsv=[28, 0, 0], higher_hsv=[179,255, 255]):
+        lower_hsv = np.array(lower_hsv, dtype=np.uint8)
+        higher_hsv = np.array(higher_hsv, dtype=np.uint8)
+        imgBLUR = cv2.GaussianBlur(self.imgbgr, (3,3), 0)
+        imgHSV = cv2.cvtColor(imgBLUR, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(imgHSV, lower_hsv, higher_hsv)
+        cv2.imshow("mask", mask)
+        cv2.waitKey(0)
+        indcs = np.column_stack(np.where(mask == 255))
+        if len(indcs) < n:
+            n = len(indcs)
+        rand_indcs= indcs[np.random.choice(indcs.shape[0], n, replace=False)]
+        roi_points = rand_indcs[:,[1,0]]
+        pt_tensor = torch.tensor(roi_points.reshape(-1,1,2), dtype=torch.int32, device=self.device)
+        label_tensor = torch.ones((n,1), dtype=torch.int32, device=self.device)
+   
+        return pt_tensor, label_tensor
+    
+    def get_pt_grid(self, n):
+        height, width,_ = self.img.shape
+        # Total number of points
+
+        # Calculate the number of rows and columns for the grid
+        grid_size = int(np.sqrt(n))
+        rows, cols = grid_size, grid_size
+
+        pt_distx = width / cols
+        pad_x = int(pt_distx / 2)
+        pt_disty = height / rows
+        pad_y = int(pt_disty / 2)
+        # Generate coordinates for grid points
+        row_indices = np.linspace(pad_y, height-1-pad_y, rows, dtype=int)
+        col_indices = np.linspace(pad_x, width-1-pad_x, cols, dtype=int)
+     
+        # Create a meshgrid of row and column indices
+        grid_y, grid_x = np.meshgrid(row_indices, col_indices)
+    
+        # Flatten the meshgrid to get a list of coordinates
+        grid_points = np.vstack([grid_y.ravel(), grid_x.ravel()]).T
+
+        pt_tensor = torch.tensor(grid_points.reshape(-1,1,2), dtype=torch.int32, device=self.device)
+        label_tensor = torch.ones((rows*cols,1), dtype=torch.int32, device=self.device)
+        return pt_tensor, label_tensor
 
     def image_embedding(self, img):
         img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
