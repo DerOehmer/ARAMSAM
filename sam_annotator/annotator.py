@@ -33,6 +33,8 @@ class Annotator:
         self.annotation = AnnotationObject(filepath=filepath)
 
     def predict_with_sam(self, annotation_object: AnnotationObject) -> AnnotationObject:
-        masks, annotated_image = self.sam.amg(annotation_object.img)
+        print(annotation_object.img.shape)
+        self.sam.image_embedding(annotation_object.img)
+        masks, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
         annotation_object.masked_img = annotated_image
         return annotation_object
