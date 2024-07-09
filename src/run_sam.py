@@ -168,10 +168,22 @@ class SamInference:
             )
             self.img_embed_thread.start()
 
-    def predict_batch(
-        self, img, pts=None, pts_labels=None, bboxes=None, mask_input=None
-    ):
-        pass
+    def predict_batch(self, pts=None, pts_labels=None, bboxes=None, mask_input=None):
+
+        if not self.is_img_embedded:
+             raise ValueError("Image embedding has not been initialized yet")
+        with self.lock:
+            if self.img_embed_thread.is_alive():
+                print("Waiting for image embedding to finish...")
+            self.img_embed_thread.join()
+            masks, scores, logits = self.predictor.predict_torch(
+                point_coords=pts,
+                point_labels=pts_labels,
+                boxes=bboxes,
+                mask_input=mask_input,
+                multimask_output=False,
+            )
+        return masks
 
     def predict(self, pts=None, pts_labels=None, bboxes=None, mask_input=None):
         if not self.is_img_embedded:
