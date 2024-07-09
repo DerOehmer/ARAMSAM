@@ -12,16 +12,12 @@ class SamInference:
     ):
         self.sam_checkpoint = sam_checkpoint
         self.model_type = model_type
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         self.device = device
         self.lock = threading.Lock()
         self.img_embed_thread = None
         self.is_img_embedded = False
 
-        """if torch.cuda.is_available():
-            checkpoint = torch.load(sam_checkpoint)
-        else:
-            checkpoint = torch.load(sam_checkpoint, map_location=torch.device('cpu'))"""
         checkpoint = torch.load(sam_checkpoint, map_location=torch.device(device))
 
         # Initialize the model from the registry without loading the checkpoint
