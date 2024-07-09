@@ -158,9 +158,9 @@ class SamInference:
         return pt_tensor, label_tensor
 
     def image_embedding(self, img):
-        img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-        self.imgbgr = img
-        self.img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        #img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        self.imgbgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        self.img = img
         with self.lock:
             self.is_img_embedded = True
             self.img_embed_thread = threading.Thread(
