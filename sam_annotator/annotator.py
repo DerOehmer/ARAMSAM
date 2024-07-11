@@ -1,21 +1,34 @@
 import numpy as np
 import torch
+import cv2
 from PIL import Image
 from pathlib import Path
 
 from src.run_sam import SamInference
+from dataclasses import dataclass
 
+from src.sam_mask_inspection import SelectMask, ImgCheckup
+from src.sam_mask_creation import ImageData
+
+@dataclass
+class MaskData:
+    mask: np.ndarray
+    origin: str
 
 class AnnotationObject:
     def __init__(self, filepath: Path) -> None:
-        self.filepath = filepath
-        self.pil_image = Image.open(filepath)
-        self.img = np.array(self.pil_image)
+        self.filepath: str = filepath
+        self.pil_image: Image = Image.open(filepath)
+        self.img: np.array = np.array(self.pil_image, dtype=np.uint8)
+
         if self.img.shape[2] == 4:
-            print("Loaded image with 4 channels - ignoring lase")
+            print("Loaded image with 4 channels - ignoring last")
             self.img = self.img[:, :, :3]
-        self.mask = np.zeros(self.img.shape, dtype="uint8")
+        self.masks: MaskData = []
+        self.good_masks = []
+        self.mask_decisions = []	
         self.masked_img = np.array(self.pil_image).copy()
+        self.mask_collection = np.zeros_like(self.img)
 
     def check_img(self):
         pass
@@ -27,7 +40,7 @@ class Annotator:
         self.sam = SamInference(
             sam_checkpoint="sam_vit_b_01ec64.pth", model_type="vit_b", device=device
         )
-        self.annotation = None
+        self.annotation : AnnotationObject = None
 
     def create_new_annotation(self, filepath: Path):
         self.annotation = AnnotationObject(filepath=filepath)
@@ -37,4 +50,108 @@ class Annotator:
         self.sam.image_embedding(annotation_object.img)
         masks, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
         annotation_object.masked_img = annotated_image
+        annotation_object.masks = [MaskData(mask=mask, origin="sam_proposed") for mask in masks]
+        annotation_object = self.label_proposed_masks(annotation_object)
         return annotation_object
+    
+    def label_proposed_masks(self, annot: AnnotationObject, max_overlap_ratio: float = 0.4):
+        repeat = True
+        step_back = False
+        
+        while repeat:
+            maskidx = 0
+            annot.good_masks = []
+            annot.mask_decisions = []
+            mask_collection = np.zeros_like(annot.img)
+            cnt_collection = annot.img.copy()
+            print("Press (n) for keeping mask.")
+            print("Press (m) for discarding mask.")
+            print("Press (b) to go back to previous mask.")
+            print("Press (f) if all relevant masks have been selected already.")
+            print("Press (x) to cancel script.")
+            
+            while maskidx < len(annot.masks):
+                mask_obj: MaskData = annot.masks[maskidx]
+                mask = mask_obj.mask
+                maskorigin = mask_obj.origin
+
+                imgresult = cv2.bitwise_and(annot.img, annot.img ,mask=mask)
+            
+                show_lst = [self.annotation.masked_img, imgresult]
+
+                mask_coll_bin = np.any(mask_collection != [0, 0, 0], axis=-1).astype(np.uint8) * 255
+                mask_overlap = cv2.bitwise_and(mask_coll_bin,mask)
+                mask_size = np.count_nonzero(mask)
+                mask_overlap_size = np.count_nonzero(mask_overlap)
+                overlap_ratio = mask_overlap_size  / mask_size
+
+                if overlap_ratio > max_overlap_ratio and not step_back:
+                    maskidx += 1
+                    annot.mask_decisions.append(False)
+                    continue
+
+                if maskorigin == "sam_tracking" and not step_back and len(annot.mask_decisions) == len(annot.good_masks):
+                    skip_tracked = True
+                else:
+                    skip_tracked = False
+
+                collections = mask_collection, cnt_collection
+                mask_lsts = annot.good_masks, annot.mask_decisions
+                step_back = False
+                ### To be replaced with GUI
+                (annot.mask_collection, annot.masked_img), (annot.good_masks, annot.mask_decisions), early_finish, step_back  = SelectMask(
+                                                                                        show_lst, 
+                                                                                        annot.img, 
+                                                                                        collections, 
+                                                                                        mask_obj, 
+                                                                                        mask_lsts,
+                                                                                        skip_tracked
+                                                                                        ).show()
+                ###
+                if step_back:
+                    if maskidx > 0:
+                        maskidx -= 1
+                        if annot.mask_decisions[-1]:
+                            annot.good_masks.pop()
+                            self.update_collections(annot)
+                        annot.mask_decisions.pop()   
+                else:
+                    maskidx += 1
+
+                if early_finish:
+                    break
+
+            ### To be replaced with GUI
+            cv2.destroyAllWindows()
+
+            imgobj_new = ImageData(annot.img, 
+                            annot.masked_img,
+                            annot.mask_collection,
+                            annot.good_masks,
+                            None)
+            
+            repeat, imgobj_new = ImgCheckup(imgobj_new).show()
+            ###
+            return annot
+
+    def update_collections(self, annot: AnnotationObject):
+        y, x, _ = annot.img.shape
+        mask_coll = np.zeros((y,x,3), dtype=np.uint8)
+        mask_coll_bin = np.zeros((y,x), dtype=np.uint8)
+        cnt_coll = annot.img.copy()
+    
+        thickness = -1
+
+        for m in annot.good_masks: 
+            m=m.mask
+            overlap = cv2.bitwise_and(m, mask_coll_bin)
+            mask_coll_bin = np.where(m==255, 255, mask_coll_bin)
+            mask_coll[np.where(m==255)] = [255,255,255]
+            mask_coll[np.where(overlap==255)] = [0,0,255]
+
+            cnts, _ = cv2.findContours(m, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            b, g, r = np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255)
+            cnt_coll = cv2.drawContours(cnt_coll, cnts, -1, (b,g,r), thickness, lineType=cv2.LINE_8)
+
+        self.annotation.mask_collection = mask_coll
+        self.annotation.masked_img = cnt_coll
