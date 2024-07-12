@@ -18,6 +18,7 @@ class App:
 
         self.ui.menu.addAction("Load Image", self.load_img)
         self.ui.test_button.clicked.connect(self.segment_anything)
+        self.ui.good_mask_button.clicked.connect(self.add_good_mask)
 
     def run(self) -> None:
         self.ui.run()
@@ -34,3 +35,8 @@ class App:
             self.annotator.annotation
         )
         self.ui.update_masked_img(masked_img=self.annotator.annotation.masked_img)
+
+    def add_good_mask(self):
+        # self.annotator.good_mask()
+        self.ui.update_masked_img(masked_img=self.annotator.annotation.masked_img)
+        self.ui.update_mask(mask=self.annotator.annotation.mask_collection)
