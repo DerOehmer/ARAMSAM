@@ -1,7 +1,15 @@
 import numpy as np
+import PyQt6 as Qt
 
-from PyQt6.QtGui import QPixmap, QImage
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QLabel, QPushButton
+from PyQt6.QtGui import QPixmap, QImage, QKeyEvent
+from PyQt6.QtWidgets import (
+    QWidget,
+    QMainWindow,
+    QFileDialog,
+    QLabel,
+    QPushButton,
+    QTabWidget,
+)
 
 
 class UserInterface(QMainWindow):
@@ -21,6 +29,9 @@ class UserInterface(QMainWindow):
         # img, mask and masked img display labels
         img = np.zeros((img_shape[0], img_shape[1], 3), dtype="uint8")
         self.img = QImage(img, img_shape[0], img_shape[1], QImage.Format.Format_RGB888)
+
+        # self.tabs = QTabWidget(parent=self)
+        # self.sequence_tab = QWidget()
 
         self.img_label = QLabel(self)
         self.img_label.move(offset, offset)
@@ -42,6 +53,24 @@ class UserInterface(QMainWindow):
 
         self.test_button = QPushButton(text="segment anything!", parent=self)
         self.test_button.move(20, 20)
+
+        self.good_mask_button = QPushButton(text="good mask", parent=self)
+        self.good_mask_button.move(20, 40)
+
+        self.bad_mask_button = QPushButton(text="bad mask", parent=self)
+        self.bad_mask_button.move(20, 60)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if isinstance(event, QKeyEvent):
+            key_text = event.text()
+            print(f"Last Key Pressed: {key_text}")
+        if event.key() == "n":
+            self.good_mask_button.click()
+            pass
+
+        elif event.key() == "m":
+            self.good_mask_button.click()
+            pass
 
     def open_img_load_file_dialog(self):
         filepath = QFileDialog.getOpenFileName(
