@@ -31,6 +31,7 @@ class AnnotationObject:
         self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
         self.masked_img = np.array(self.pil_image).copy()
         self.mask_collection = np.zeros_like(self.img)
+        self.idx_mask = None
 
     def check_img(self):
         pass
@@ -49,112 +50,24 @@ class Annotator:
         self.annotation: AnnotationObject = None
         self.mask_idx = 0
 
+    def update_mask_idx(self, new_idx: int = 0):
+        self.mask_idx = new_idx
+        self.annotation.idx_mask = None
+
     def create_new_annotation(self, filepath: Path):
         self.annotation = AnnotationObject(filepath=filepath)
 
-    def predict_with_sam(self, annotation_object: AnnotationObject) -> AnnotationObject:
+    def predict_with_sam(self):
         if self.annotation is None:
             raise ValueError("No annotation object found.")
 
-        print(annotation_object.img.shape)
-        self.sam.image_embedding(annotation_object.img)
+        print(self.annotation.img.shape)
+        self.sam.image_embedding(self.annotation.img)
         masks, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
-        annotation_object.masked_img = annotated_image
-        annotation_object.set_masks(
+        self.annotation.masked_img = annotated_image
+        self.annotation.set_masks(
             [MaskData(mask=mask, origin="sam_proposed") for mask in masks]
         )
-        self.annotation = annotation_object
-        return annotation_object
-
-    # def label_proposed_masks(
-    #     self, annot: AnnotationObject, max_overlap_ratio: float = 0.4
-    # ):
-    #     repeat = True
-    #     step_back = False
-
-    #     while repeat:
-    #         maskidx = 0
-    #         annot.good_masks = []
-    #         annot.mask_decisions = []
-    #         mask_collection = np.zeros_like(annot.img)
-    #         cnt_collection = annot.img.copy()
-    #         print("Press (n) for keeping mask.")
-    #         print("Press (m) for discarding mask.")
-    #         print("Press (b) to go back to previous mask.")
-    #         print("Press (f) if all relevant masks have been selected already.")
-    #         print("Press (x) to cancel script.")
-
-    #         while maskidx < len(annot.masks):
-    #             mask_obj: MaskData = annot.masks[maskidx]
-    #             mask = mask_obj.mask
-    #             maskorigin = mask_obj.origin
-
-    #             imgresult = cv2.bitwise_and(annot.img, annot.img, mask=mask)
-
-    #             show_lst = [self.annotation.masked_img, imgresult]
-
-    #             mask_coll_bin = (
-    #                 np.any(mask_collection != [0, 0, 0], axis=-1).astype(np.uint8) * 255
-    #             )
-    #             mask_overlap = cv2.bitwise_and(mask_coll_bin, mask)
-    #             mask_size = np.count_nonzero(mask)
-    #             mask_overlap_size = np.count_nonzero(mask_overlap)
-    #             overlap_ratio = mask_overlap_size / mask_size
-
-    #             if overlap_ratio > max_overlap_ratio and not step_back:
-    #                 maskidx += 1
-    #                 annot.mask_decisions.append(False)
-    #                 continue
-
-    #             if (
-    #                 maskorigin == "sam_tracking"
-    #                 and not step_back
-    #                 and len(annot.mask_decisions) == len(annot.good_masks)
-    #             ):
-    #                 skip_tracked = True
-    #             else:
-    #                 skip_tracked = False
-
-    #             collections = mask_collection, cnt_collection
-    #             mask_lsts = annot.good_masks, annot.mask_decisions
-    #             step_back = False
-    #             ### To be replaced with GUI
-    #             (
-    #                 (annot.mask_collection, annot.masked_img),
-    #                 (annot.good_masks, annot.mask_decisions),
-    #                 early_finish,
-    #                 step_back,
-    #             ) = SelectMask(
-    #                 show_lst, annot.img, collections, mask_obj, mask_lsts, skip_tracked
-    #             ).show()
-    #             ###
-    #             if step_back:
-    #                 if maskidx > 0:
-    #                     maskidx -= 1
-    #                     if annot.mask_decisions[-1]:
-    #                         annot.good_masks.pop()
-    #                         self.update_collections(annot)
-    #                     annot.mask_decisions.pop()
-    #             else:
-    #                 maskidx += 1
-
-    #             if early_finish:
-    #                 break
-
-    #         ### To be replaced with GUI
-    #         cv2.destroyAllWindows()
-
-    #         imgobj_new = ImageData(
-    #             annot.img,
-    #             annot.masked_img,
-    #             annot.mask_collection,
-    #             annot.good_masks,
-    #             None,
-    #         )
-
-    #         repeat, imgobj_new = ImgCheckup(imgobj_new).show()
-    #         ###
-    #         return annot
 
     def good_mask(self):
         annot = self.annotation

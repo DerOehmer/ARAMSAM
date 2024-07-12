@@ -32,10 +32,8 @@ class App:
         self.update_ui_imgs(img=True)
 
     def segment_anything(self):
-        self.annotator.annotation = self.annotator.predict_with_sam(
-            self.annotator.annotation
-        )
-        self.update_ui_imgs(masked_img=True)
+        self.annotator.predict_with_sam()
+        self.update_ui_imgs(masked_img=True, mask=True)
 
     def update_ui_imgs(
         self, img: bool = False, mask: bool = False, masked_img: bool = False
