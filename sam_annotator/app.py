@@ -39,11 +39,13 @@ class App:
         self, img: bool = False, mask: bool = False, masked_img: bool = False
     ):
         if masked_img:
-            self.ui.update_masked_img(masked_img=self.annotator.annotation.masked_img)
+            self.ui.update_main_pix_map(idx=2, img=self.annotator.annotation.masked_img)
         if mask:
-            self.ui.update_mask(mask=self.annotator.annotation.mask_collection)
+            self.ui.update_main_pix_map(
+                idx=1, img=self.annotator.annotation.current_mask
+            )
         if img:
-            self.ui.update_img(img=self.annotator.annotation.img)
+            self.ui.update_main_pix_map(idx=0, img=self.annotator.annotation.img)
 
     def add_good_mask(self):
         done = self.annotator.good_mask()

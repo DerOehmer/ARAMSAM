@@ -30,27 +30,28 @@ class UserInterface(QMainWindow):
         # img, mask and masked img display labels
         img = np.zeros((img_shape[0], img_shape[1], 3), dtype="uint8")
         self.img = QImage(img, img_shape[0], img_shape[1], QImage.Format.Format_RGB888)
+        self.viz_labels: list[QLabel] = []
+        self.create_pixmaps(img_shape=img_shape, offset=offset)
 
         # self.tabs = QTabWidget(parent=self)
         # self.sequence_tab = QWidget()
+        # self.img_label = QLabel(self)
+        # self.img_label.move(offset, offset)
+        # self.img_label.resize(img_shape[0], img_shape[1])
+        # self.img_label.setPixmap(QPixmap.fromImage(self.img))
+        # self.img_label.show()
 
-        self.img_label = QLabel(self)
-        self.img_label.move(offset, offset)
-        self.img_label.resize(img_shape[0], img_shape[1])
-        self.img_label.setPixmap(QPixmap.fromImage(self.img))
-        self.img_label.show()
+        # self.mask_label = QLabel(self)
+        # self.mask_label.move(offset + img_shape[0], offset)
+        # self.mask_label.resize(img_shape[0], img_shape[1])
+        # self.mask_label.setPixmap(QPixmap.fromImage(self.img))
+        # self.mask_label.show()
 
-        self.mask_label = QLabel(self)
-        self.mask_label.move(offset + img_shape[0], offset)
-        self.mask_label.resize(img_shape[0], img_shape[1])
-        self.mask_label.setPixmap(QPixmap.fromImage(self.img))
-        self.mask_label.show()
-
-        self.masked_img_label = QLabel(self)
-        self.masked_img_label.move(offset + 2 * img_shape[0], offset)
-        self.masked_img_label.resize(img_shape[0], img_shape[1])
-        self.masked_img_label.setPixmap(QPixmap.fromImage(self.img))
-        self.masked_img_label.show()
+        # self.masked_img_label = QLabel(self)
+        # self.masked_img_label.move(offset + 2 * img_shape[0], offset)
+        # self.masked_img_label.resize(img_shape[0], img_shape[1])
+        # self.masked_img_label.setPixmap(QPixmap.fromImage(self.img))
+        # self.masked_img_label.show()
 
         self.test_button = QPushButton(text="segment anything!", parent=self)
         self.test_button.move(20, 20)
@@ -60,6 +61,15 @@ class UserInterface(QMainWindow):
 
         self.bad_mask_button = QPushButton(text="bad mask", parent=self)
         self.bad_mask_button.move(220, 20)
+
+    def create_pixmaps(self, img_shape: tuple[int], offset: int):
+        for i in range(3):
+            label = QLabel(self)
+            label.move(offset + i * img_shape[0], offset)
+            label.resize(img_shape[0], img_shape[1])
+            label.setPixmap(QPixmap.fromImage(self.img))
+            label.show()
+            self.viz_labels.append(label)
 
     def keyPressEvent(self, event: QKeyEvent):
         if isinstance(event, QKeyEvent):
@@ -100,14 +110,6 @@ class UserInterface(QMainWindow):
             QImage.Format.Format_RGB888,
         )
 
-    def update_img(self, img: np.ndarray):
+    def update_main_pix_map(self, idx: int, img: np.ndarray):
         q_img = self.convert_ndarray_to_qimage(img=img)
-        self.img_label.setPixmap(QPixmap.fromImage(q_img))
-
-    def update_mask(self, mask: np.ndarray):
-        q_mask = self.convert_ndarray_to_qimage(img=mask)
-        self.mask_label.setPixmap(QPixmap.fromImage(q_mask))
-
-    def update_masked_img(self, masked_img: np.ndarray):
-        q_masked_img = self.convert_ndarray_to_qimage(img=masked_img)
-        self.masked_img_label.setPixmap(QPixmap.fromImage(q_masked_img))
+        self.viz_labels[idx].setPixmap(QPixmap.fromImage(q_img))
