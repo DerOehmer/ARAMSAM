@@ -65,13 +65,10 @@ class UserInterface(QMainWindow):
         if isinstance(event, QKeyEvent):
             key_text = event.text()
             print(f"Last Key Pressed: {key_text}")
-        if event.key() == "n":
+        if event.text() == "n":
             self.good_mask_button.click()
-            pass
-
-        elif event.key() == "m":
+        elif event.text() == "m":
             self.bad_mask_button.click()
-            pass
 
     def create_message_box(self, crticial: bool = False, text: str = ""):
         self.msg_box = QMessageBox(self)
