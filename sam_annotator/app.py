@@ -46,9 +46,13 @@ class App:
             self.ui.update_img(img=self.annotator.annotation.img)
 
     def add_good_mask(self):
-        self.annotator.good_mask()
+        done = self.annotator.good_mask()
+        if done:
+            self.ui.create_message_box(False, "All masks are done")
         self.update_ui_imgs(masked_img=True, mask=True)
 
     def add_bad_mask(self):
-        self.annotator.bad_mask()
+        done = self.annotator.bad_mask()
+        if done:
+            self.ui.create_message_box(False, "All masks are done")
         self.update_ui_imgs(masked_img=True, mask=True)

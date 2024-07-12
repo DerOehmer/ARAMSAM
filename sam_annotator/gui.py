@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QTabWidget,
+    QMessageBox,
 )
 
 
@@ -71,6 +72,13 @@ class UserInterface(QMainWindow):
         elif event.key() == "m":
             self.bad_mask_button.click()
             pass
+
+    def create_message_box(self, crticial: bool = False, text: str = ""):
+        self.msg_box = QMessageBox(self)
+        icon = QMessageBox.Icon.Critical if crticial else QMessageBox.Icon.Information
+        self.msg_box.setIcon(icon)
+        self.msg_box.setText(text)
+        self.msg_box.show()
 
     def open_img_load_file_dialog(self):
         filepath = QFileDialog.getOpenFileName(
