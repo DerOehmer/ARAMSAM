@@ -31,7 +31,7 @@ class AnnotationObject:
         self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
         self.masked_img = np.array(self.pil_image).copy()
         self.mask_collection = np.zeros_like(self.img)
-        self.idx_mask = None
+        self.current_mask = None
 
     def check_img(self):
         pass
@@ -52,7 +52,7 @@ class Annotator:
 
     def update_mask_idx(self, new_idx: int = 0):
         self.mask_idx = new_idx
-        self.annotation.idx_mask = None
+        self.annotation.current_mask = None
 
     def create_new_annotation(self, filepath: Path):
         self.annotation = AnnotationObject(filepath=filepath)
@@ -68,6 +68,9 @@ class Annotator:
         self.annotation.set_masks(
             [MaskData(mask=mask, origin="sam_proposed") for mask in masks]
         )
+        self.update_mask_idx()
+        self.annotation.current_mask = self.annotation.masks[self.mask_idx]
+        self.preselect_mask()
 
     def good_mask(self):
         done = False
@@ -77,22 +80,28 @@ class Annotator:
         # add track if not last idx
         self.update_collections(annot)
         self.mask_idx += 1
+        annot.current_mask = annot.masks[self.mask_idx]
         if self.mask_idx == len(annot.masks):
-            done = True # all masks have been labeled
+            done = True  # all masks have been labeled
+        else:
+            self.preselect_mask()
         return done
 
     def bad_mask(self):
-        done =  False
+        done = False
         annot = self.annotation
         annot.mask_decisions[self.mask_idx] = False
         self.mask_idx += 1
+        annot.current_mask = annot.masks[self.mask_idx]
         if self.mask_idx == len(annot.masks):
-            done = True # all masks have been labeled
+            done = True  # all masks have been labeled
+        else:
+            self.preselect_mask()
         return done
 
-    def label_mask(self, maskidx, max_overlap_ratio: float = 0.4):
+    def preselect_mask(self, max_overlap_ratio: float = 0.4):
         annot = self.annotation
-        mask_obj: MaskData = annot.masks[maskidx]
+        mask_obj: MaskData = annot.masks[self.mask_idx]
         mask = mask_obj.mask
         maskorigin = mask_obj.origin
 
@@ -109,14 +118,12 @@ class Annotator:
         overlap_ratio = mask_overlap_size / mask_size
 
         if overlap_ratio > max_overlap_ratio:
-            maskidx += 1
-            annot.mask_decisions[maskidx] = False
-            return
+            self.bad_mask()
 
         if maskorigin == "sam_tracking" and len(annot.mask_decisions) == len(
             annot.good_masks
         ):
-            annot.mask_decisions[maskidx] = True
+            self.good_mask()
 
     def step_back(self):
         annot = self.annotation
