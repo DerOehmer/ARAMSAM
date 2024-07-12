@@ -21,17 +21,17 @@ class AnnotationObject:
     def __init__(self, filepath: Path) -> None:
         self.filepath: str = filepath
         self.pil_image: Image = Image.open(filepath)
-        self.img: np.array = np.array(self.pil_image, dtype=np.uint8)
+        self.img: np.ndarray = np.array(self.pil_image, dtype=np.uint8)
 
         if self.img.shape[2] == 4:
             print("Loaded image with 4 channels - ignoring last")
             self.img = self.img[:, :, :3]
-        self.masks: MaskData = []
+        self.masks: list[MaskData] = []
         self.good_masks = []
         self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
         self.masked_img = np.array(self.pil_image).copy()
         self.mask_collection = np.zeros_like(self.img)
-        self.current_mask = None
+        self.current_mask = np.zeros_like(self.img)
 
     def check_img(self):
         pass
@@ -39,6 +39,9 @@ class AnnotationObject:
     def set_masks(self, maskobject: MaskData):
         self.masks = maskobject
         self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
+
+    def set_current_mask(self, mask_idx: int):
+        self.current_mask = cv2.cvtColor(self.masks[mask_idx].mask, cv2.COLOR_GRAY2RGB)
 
 
 class Annotator:
@@ -52,7 +55,7 @@ class Annotator:
 
     def update_mask_idx(self, new_idx: int = 0):
         self.mask_idx = new_idx
-        self.annotation.current_mask = None
+        self.annotation.set_current_mask(self.mask_idx)
 
     def create_new_annotation(self, filepath: Path):
         self.annotation = AnnotationObject(filepath=filepath)
@@ -69,7 +72,7 @@ class Annotator:
             [MaskData(mask=mask, origin="sam_proposed") for mask in masks]
         )
         self.update_mask_idx()
-        self.annotation.current_mask = self.annotation.masks[self.mask_idx]
+
         self.preselect_mask()
 
     def good_mask(self):
@@ -80,7 +83,8 @@ class Annotator:
         # add track if not last idx
         self.update_collections(annot)
         self.mask_idx += 1
-        annot.current_mask = annot.masks[self.mask_idx]
+        # annot.current_mask = annot.masks[]
+        self.annotation.set_current_mask(self.mask_idx)
         if self.mask_idx == len(annot.masks):
             done = True  # all masks have been labeled
         else:
@@ -92,7 +96,8 @@ class Annotator:
         annot = self.annotation
         annot.mask_decisions[self.mask_idx] = False
         self.mask_idx += 1
-        annot.current_mask = annot.masks[self.mask_idx]
+        # annot.current_mask = annot.masks[self.mask_idx]
+        self.annotation.set_current_mask(self.mask_idx)
         if self.mask_idx == len(annot.masks):
             done = True  # all masks have been labeled
         else:
