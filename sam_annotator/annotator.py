@@ -70,17 +70,25 @@ class Annotator:
         )
 
     def good_mask(self):
+        done = False
         annot = self.annotation
         annot.good_masks.append(annot.masks[self.mask_idx])
         annot.mask_decisions[self.mask_idx] = True
         # add track if not last idx
         self.update_collections(annot)
         self.mask_idx += 1
+        if self.mask_idx == len(annot.masks):
+            done = True # all masks have been labeled
+        return done
 
     def bad_mask(self):
+        done =  False
         annot = self.annotation
         annot.mask_decisions[self.mask_idx] = False
         self.mask_idx += 1
+        if self.mask_idx == len(annot.masks):
+            done = True # all masks have been labeled
+        return done
 
     def label_mask(self, maskidx, max_overlap_ratio: float = 0.4):
         annot = self.annotation
