@@ -55,10 +55,10 @@ class UserInterface(QMainWindow):
         self.test_button.move(20, 20)
 
         self.good_mask_button = QPushButton(text="good mask", parent=self)
-        self.good_mask_button.move(20, 40)
+        self.good_mask_button.move(120, 20)
 
         self.bad_mask_button = QPushButton(text="bad mask", parent=self)
-        self.bad_mask_button.move(20, 60)
+        self.bad_mask_button.move(220, 20)
 
     def keyPressEvent(self, event: QKeyEvent):
         if isinstance(event, QKeyEvent):
@@ -69,7 +69,7 @@ class UserInterface(QMainWindow):
             pass
 
         elif event.key() == "m":
-            self.good_mask_button.click()
+            self.bad_mask_button.click()
             pass
 
     def open_img_load_file_dialog(self):
