@@ -7,8 +7,8 @@ from pathlib import Path
 from src.run_sam import SamInference
 from dataclasses import dataclass
 
-from src.sam_mask_inspection import SelectMask, ImgCheckup
-from src.sam_mask_creation import ImageData
+#from src.sam_mask_inspection import SelectMask, ImgCheckup
+#from src.sam_mask_creation import ImageData
 
 @dataclass
 class MaskData:
@@ -26,7 +26,7 @@ class AnnotationObject:
             self.img = self.img[:, :, :3]
         self.masks: MaskData = []
         self.good_masks = []
-        self.mask_decisions = []	
+        self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
         self.masked_img = np.array(self.pil_image).copy()
         self.mask_collection = np.zeros_like(self.img)
 
@@ -41,17 +41,21 @@ class Annotator:
             sam_checkpoint="sam_vit_b_01ec64.pth", model_type="vit_b", device=device
         )
         self.annotation : AnnotationObject = None
+        self.mask_idx = 0
 
     def create_new_annotation(self, filepath: Path):
         self.annotation = AnnotationObject(filepath=filepath)
 
     def predict_with_sam(self, annotation_object: AnnotationObject) -> AnnotationObject:
+        if self.annotation is None:
+            raise ValueError("No annotation object found.")
+        
         print(annotation_object.img.shape)
         self.sam.image_embedding(annotation_object.img)
         masks, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
         annotation_object.masked_img = annotated_image
         annotation_object.masks = [MaskData(mask=mask, origin="sam_proposed") for mask in masks]
-        annotation_object = self.label_proposed_masks(annotation_object)
+        self.annotation = annotation_object
         return annotation_object
     
     def label_proposed_masks(self, annot: AnnotationObject, max_overlap_ratio: float = 0.4):
@@ -134,7 +138,55 @@ class Annotator:
             ###
             return annot
 
+    def good_mask(self, maskidx):
+        annot = self.annotation
+        annot.good_masks.append(annot.masks[maskidx])
+        annot.mask_decisions[maskidx](True)
+        self.update_collections(annot)
+
+    def bad_mask(self, maskidx):
+        annot = self.annotation
+        annot.mask_decisions[maskidx](False)
+
+
+    def label_mask(self, maskidx, max_overlap_ratio: float = 0.4):
+        annot = self.annotation
+        mask_obj: MaskData = annot.masks[maskidx]
+        mask = mask_obj.mask
+        maskorigin = mask_obj.origin
+
+        #imgresult = cv2.bitwise_and(annot.img, annot.img ,mask=mask)
+    
+        #show_lst = [self.annotation.masked_img, imgresult]
+
+        mask_coll_bin = np.any(annot.mask_collection != [0, 0, 0], axis=-1).astype(np.uint8) * 255
+        mask_overlap = cv2.bitwise_and(mask_coll_bin,mask)
+        mask_size = np.count_nonzero(mask)
+        mask_overlap_size = np.count_nonzero(mask_overlap)
+        overlap_ratio = mask_overlap_size  / mask_size
+
+        if overlap_ratio > max_overlap_ratio:
+            maskidx += 1
+            annot.mask_decisions[maskidx] = False
+            return
+
+        if maskorigin == "sam_tracking" and len(annot.mask_decisions) == len(annot.good_masks):
+            annot.mask_decisions[maskidx] = True
+        
+
+    def step_back(self, maskidx):
+        annot = self.annotation
+         
+        if maskidx > 0:
+            maskidx -= 1
+            if annot.mask_decisions[-1]:
+                annot.good_masks.pop()
+                self.update_collections(annot)
+            annot.mask_decisions.pop()                           
+
     def update_collections(self, annot: AnnotationObject):
+
+
         y, x, _ = annot.img.shape
         mask_coll = np.zeros((y,x,3), dtype=np.uint8)
         mask_coll_bin = np.zeros((y,x), dtype=np.uint8)
