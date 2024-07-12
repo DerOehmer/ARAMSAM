@@ -19,6 +19,7 @@ class App:
         self.ui.menu.addAction("Load Image", self.load_img)
         self.ui.test_button.clicked.connect(self.segment_anything)
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
+        self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
 
     def run(self) -> None:
         self.ui.run()
@@ -28,15 +29,28 @@ class App:
         print("loading new image")
         img_fpath = self.ui.open_img_load_file_dialog()
         self.annotator.create_new_annotation(Path(img_fpath))
-        self.ui.update_img(img=self.annotator.annotation.img)
+        self.update_ui_imgs(img=True)
 
     def segment_anything(self):
         self.annotator.annotation = self.annotator.predict_with_sam(
             self.annotator.annotation
         )
-        self.ui.update_masked_img(masked_img=self.annotator.annotation.masked_img)
+        self.update_ui_imgs(masked_img=True)
+
+    def update_ui_imgs(
+        self, img: bool = False, mask: bool = False, masked_img: bool = False
+    ):
+        if masked_img:
+            self.ui.update_masked_img(masked_img=self.annotator.annotation.masked_img)
+        if mask:
+            self.ui.update_mask(mask=self.annotator.annotation.mask_collection)
+        if img:
+            self.ui.update_img(img=self.annotator.annotation.img)
 
     def add_good_mask(self):
-        # self.annotator.good_mask()
-        self.ui.update_masked_img(masked_img=self.annotator.annotation.masked_img)
-        self.ui.update_mask(mask=self.annotator.annotation.mask_collection)
+        self.annotator.good_mask()
+        self.update_ui_imgs(masked_img=True, mask=True)
+
+    def add_bad_mask(self):
+        self.annotator.bad_mask()
+        self.update_ui_imgs(masked_img=True, mask=True)
