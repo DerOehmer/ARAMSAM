@@ -35,6 +35,10 @@ class AnnotationObject:
     def check_img(self):
         pass
 
+    def set_masks(self, maskobject: MaskData):
+        self.masks = maskobject
+        self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
+
 
 class Annotator:
     def __init__(self) -> None:
@@ -56,9 +60,9 @@ class Annotator:
         self.sam.image_embedding(annotation_object.img)
         masks, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
         annotation_object.masked_img = annotated_image
-        annotation_object.masks = [
-            MaskData(mask=mask, origin="sam_proposed") for mask in masks
-        ]
+        annotation_object.set_masks(
+            [MaskData(mask=mask, origin="sam_proposed") for mask in masks]
+        )
         self.annotation = annotation_object
         return annotation_object
 
@@ -155,14 +159,15 @@ class Annotator:
     def good_mask(self):
         annot = self.annotation
         annot.good_masks.append(annot.masks[self.mask_idx])
-        annot.mask_decisions[self.mask_idx](True)
+        annot.mask_decisions[self.mask_idx] = True
         # add track if not last idx
         self.update_collections(annot)
         self.mask_idx += 1
 
-    def bad_mask(self, maskidx):
+    def bad_mask(self):
         annot = self.annotation
-        annot.mask_decisions[maskidx](False)
+        annot.mask_decisions[self.mask_idx] = False
+        self.mask_idx += 1
 
     def label_mask(self, maskidx, max_overlap_ratio: float = 0.4):
         annot = self.annotation
@@ -192,15 +197,16 @@ class Annotator:
         ):
             annot.mask_decisions[maskidx] = True
 
-    def step_back(self, maskidx):
+    def step_back(self):
         annot = self.annotation
 
-        if maskidx > 0:
-            maskidx -= 1
+        if self.mask_idx > 0:
+
             if annot.mask_decisions[-1]:
                 annot.good_masks.pop()
                 self.update_collections(annot)
-            annot.mask_decisions.pop()
+            annot.mask_decisions[self.mask_idx] = False
+            self.mask_idx -= 1
 
     def update_collections(self, annot: AnnotationObject):
 
