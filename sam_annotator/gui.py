@@ -33,28 +33,26 @@ class UserInterface(QMainWindow):
         self.left = 10
         self.top = 10
         img_shape = (512, 512)
-        offset = 50
-        # self.resize(img_shape[0] * 2 + offset, img_shape[1] * 2 + offset)
+        self.offset = 50
         self.resize(1920, 1080)
         self.menu = self.menuBar().addMenu("&Menu")
         self.menu.addAction("&Exit", self.close)
         self.zoom_level = 0
         self.zoom_factor = 1.25
 
-        self.construct_ui(img_shape=img_shape, offset=offset)
+        self.construct_ui(img_shape=img_shape)
 
-    def construct_ui(self, img_shape: tuple[int], offset: int):
-        # img, mask and masked img display labels
+    def construct_ui(self, img_shape: tuple[int]):
         img = np.zeros((img_shape[0], img_shape[1], 3), dtype="uint8")
         self.img = QImage(img, img_shape[0], img_shape[1], QImage.Format.Format_RGB888)
         self.viz_labels: list[QLabel] = []
 
-        self.labelCoords = QLabel(self, text="adasdasd")
+        self.labelCoords = QLabel(self, text="Pixel Pos.")
         self.labelCoords.move(400, 20)
         self.labelCoords.show()
 
-        vis_width = int((1920 - (offset * 16 / 9)) / 2)
-        vis_height = int((1080 - offset) / 2)
+        vis_width = int(self.width() / 2)
+        vis_height = int(self.height() / 2)
 
         self.annotation_visualizers: list[InteractiveGraphicsView] = []
         for i in range(2):
@@ -66,8 +64,8 @@ class UserInterface(QMainWindow):
                     int(i * vis_width / 2), int(j * vis_height / 2)
                 )
                 annotation_visualizer.setGeometry(
-                    offset + i * vis_width,
-                    offset + j * vis_height,
+                    self.offset + i * vis_width,
+                    self.offset + j * vis_height,
                     vis_width,
                     vis_height,
                 )
@@ -76,14 +74,6 @@ class UserInterface(QMainWindow):
                 annotation_visualizer.mouseWheelScroll.connect(self.wheelEvent)
                 annotation_visualizer.mouseMove.connect(self.childMoveEvent)
                 self.annotation_visualizers.append(annotation_visualizer)
-
-        # for idx, ann_vis in enumerate(self.annotation_visualizers):
-        #     for i in range(4):
-        #         if idx == i:
-        #             continue
-        #         ann_vis.scaled.connect(self.annotation_visualizers[idx].set_transform)
-
-        # self.create_pixmaps(img_shape=img_shape, offset=offset)
 
         self.test_button = QPushButton(text="segment anything!", parent=self)
         self.test_button.move(20, 20)
@@ -222,6 +212,25 @@ class UserInterface(QMainWindow):
         # self.viz_labels[idx].setPixmap(QPixmap.fromImage(q_img))
         self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
+    def resizeEvent(self, event):
+        vis_width = int(self.width() / 2)
+        vis_height = int(self.height() / 2)
+
+        idx = 0
+        for i in range(2):
+            for j in range(2):
+                self.annotation_visualizers[idx].move(
+                    int(i * vis_width / 2), int(j * vis_height / 2)
+                )
+                self.annotation_visualizers[idx].setGeometry(
+                    self.offset + i * vis_width,
+                    self.offset + j * vis_height,
+                    vis_width,
+                    vis_height,
+                )
+                self.annotation_visualizers[idx].fitInView()
+                idx += 1
+
 
 class InteractiveGraphicsView(QGraphicsView):
     coordinatesChanged: pyqtSignal = pyqtSignal(QPoint)
@@ -290,11 +299,10 @@ class InteractiveGraphicsView(QGraphicsView):
             point = QPoint()
         self.coordinatesChanged.emit(point)
 
-    def fitInView(self):  # , scale=True):
+    def fitInView(self):
         rect = QRectF(self.pixmap_item.pixmap().rect())
         if not rect.isNull():
             self.setSceneRect(rect)
-            # if self.hasPhoto():
             unity = self.transform().mapRect(QRectF(0, 0, 1, 1))
             self.scale(1 / unity.width(), 1 / unity.height())
             viewrect = self.viewport().rect()
