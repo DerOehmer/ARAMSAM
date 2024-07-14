@@ -10,15 +10,12 @@ from PyQt6.QtGui import (
     QBrush,
     QColor,
     QCursor,
-    QTransform,
 )
 from PyQt6.QtWidgets import (
-    QWidget,
     QMainWindow,
     QFileDialog,
     QLabel,
     QPushButton,
-    QTabWidget,
     QMessageBox,
     QGraphicsView,
     QGraphicsScene,
@@ -30,9 +27,7 @@ from PyQt6.QtWidgets import (
 class UserInterface(QMainWindow):
     def __init__(self) -> None:
         super().__init__(parent=None)
-        self.left = 10
-        self.top = 10
-        img_shape = (512, 512)
+
         self.offset = 50
         self.resize(1920, 1080)
         self.menu = self.menuBar().addMenu("&Menu")
@@ -40,13 +35,9 @@ class UserInterface(QMainWindow):
         self.zoom_level = 0
         self.zoom_factor = 1.25
 
-        self.construct_ui(img_shape=img_shape)
+        self.construct_ui()
 
-    def construct_ui(self, img_shape: tuple[int]):
-        img = np.zeros((img_shape[0], img_shape[1], 3), dtype="uint8")
-        self.img = QImage(img, img_shape[0], img_shape[1], QImage.Format.Format_RGB888)
-        self.viz_labels: list[QLabel] = []
-
+    def construct_ui(self):
         self.labelCoords = QLabel(self, text="Pixel Pos.")
         self.labelCoords.move(400, 20)
         self.labelCoords.show()
@@ -89,15 +80,6 @@ class UserInterface(QMainWindow):
             self.labelCoords.setText(f"{point.x()}, {point.y()}")
         else:
             self.labelCoords.clear()
-
-    def create_pixmaps(self, img_shape: tuple[int], offset: int):
-        for i in range(3):
-            label = QLabel(self)
-            label.move(offset + i * img_shape[0], offset)
-            label.resize(img_shape[0], img_shape[1])
-            label.setPixmap(QPixmap.fromImage(self.img))
-            label.show()
-            self.viz_labels.append(label)
 
     def keyPressEvent(self, event: QKeyEvent):
         if isinstance(event, QKeyEvent):
@@ -209,7 +191,6 @@ class UserInterface(QMainWindow):
     def update_main_pix_map(self, idx: int, img: np.ndarray):
         q_img = self.convert_ndarray_to_qimage(img=img)
         pixmap = QPixmap.fromImage(q_img)
-        # self.viz_labels[idx].setPixmap(QPixmap.fromImage(q_img))
         self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
