@@ -1,4 +1,8 @@
 import numpy as np
+import cv2
+
+from PyQt6 import QtWidgets
+from PyQt6 import QtGui
 
 from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal
 from PyQt6.QtGui import (
@@ -10,6 +14,7 @@ from PyQt6.QtGui import (
     QBrush,
     QColor,
     QCursor,
+    QWindow,
 )
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -21,6 +26,7 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
     QFrame,
+    QGridLayout,
 )
 
 
@@ -32,9 +38,12 @@ class UserInterface(QMainWindow):
 
         self.offset = 50
         self.resize(1920, 1080)
-        self.menu = self.menuBar().addMenu("&Menu")
-        self.menu.addAction("&Exit", self.close)
-        self.menu.addAction("Load Image", self.load_img)
+        self.menu = self.menuBar().addMenu("Menu")
+        self.menu_open = self.menuBar().addMenu("Open")
+        self.menu_settings = self.menuBar().addMenu("Settings")
+        self.menu.addAction("Exit", self.close)
+        self.menu_open.addAction("Load Image", self.load_img)
+        self.menu_settings.addAction("Change Layout", self.open_layout_settings_box)
         self.zoom_level = 0
         self.zoom_factor = 1.25
 
@@ -80,6 +89,11 @@ class UserInterface(QMainWindow):
 
     def load_img(self):
         self.load_img_signal.emit(1)
+
+    def open_layout_settings_box(self):
+        options = ["image", "mask", "other mask"]
+        self.options_window = OptionsWindow(options=options)
+        self.options_window.show()
 
     def handleCoords(self, point: QPoint):
         if not point.isNull():
@@ -184,6 +198,7 @@ class UserInterface(QMainWindow):
         self.show()
 
     def convert_ndarray_to_qimage(self, img: np.ndarray) -> QImage:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         h, w, ch = img.shape
         bytes_per_line = ch * w
         return QImage(
@@ -300,3 +315,32 @@ class InteractiveGraphicsView(QGraphicsView):
             )
             self.scale(factor, factor)
             self.zoom_val = 0
+
+
+class OptionsWindow(QMainWindow):
+    def __init__(self, options: list[str]) -> None:
+        super().__init__(parent=None)
+        box_height = 50
+        box_width = 100
+
+        self.setWindowTitle("Options")
+        self.resize(2 * box_width, 3 * box_height + 10)
+
+        self.comboboxes = []
+
+        for i in range(2):
+            for j in range(2):
+                combobox = QtWidgets.QComboBox(self)
+                combobox.setGeometry(
+                    i * box_width, j * box_height, box_width, box_height
+                )
+                [combobox.addItem(option) for option in options]
+                self.comboboxes.append(combobox)
+        self.ok_button = QPushButton(parent=self, text="OK")
+        self.ok_button.setGeometry(0, box_height * 2 + 10, box_width, box_height)
+
+        self.ok_button.setIcon(QtGui.QIcon.fromTheme("edit-undo"))
+        self.abort_button = QPushButton(parent=self, text="Abort")
+        self.abort_button.setGeometry(
+            box_width, box_height * 2 + 10, box_width, box_height
+        )
