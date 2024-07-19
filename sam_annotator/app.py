@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QApplication
 
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
+from sam_annotator.mask_visualizations import MaskVisualizationData
 
 
 class App:
@@ -29,32 +30,36 @@ class App:
         print("loading new image")
         img_fpath = self.ui.open_img_load_file_dialog()
         self.annotator.create_new_annotation(Path(img_fpath))
-        self.update_ui_imgs(img=True)
+        self.update_ui_imgs()
 
     def segment_anything(self):
         self.annotator.predict_with_sam()
-        self.update_ui_imgs(masked_img=True, mask=True)
+        self.update_ui_imgs()
 
-    def update_ui_imgs(
-        self, img: bool = False, mask: bool = False, masked_img: bool = False
-    ):
-        if masked_img:
-            self.ui.update_main_pix_map(idx=2, img=self.annotator.annotation.masked_img)
-        if mask:
-            self.ui.update_main_pix_map(
-                idx=1, img=self.annotator.annotation.current_mask
-            )
-        if img:
-            self.ui.update_main_pix_map(idx=0, img=self.annotator.annotation.img)
+    def update_ui_imgs(self):
+        if self.annotator.annotation.mask_visulizations is None:
+            for i in range(4):
+                self.ui.update_main_pix_map(idx=i, img=self.annotator.annotation.img)
+            return
+        self.ui.update_main_pix_map(
+            idx=1, img=self.annotator.annotation.mask_visulizations.maskinrgb
+        )
+        self.ui.update_main_pix_map(idx=2, img=self.annotator.annotation.img)
+        self.ui.update_main_pix_map(
+            idx=3, img=self.annotator.annotation.mask_visulizations.masked_img_cnt
+        )
+        self.ui.update_main_pix_map(
+            idx=0, img=self.annotator.annotation.mask_visulizations.mask_collection_cnt
+        )
 
     def add_good_mask(self):
         done = self.annotator.good_mask()
         if done:
             self.ui.create_message_box(False, "All masks are done")
-        self.update_ui_imgs(masked_img=True, mask=True)
+        self.update_ui_imgs()
 
     def add_bad_mask(self):
         done = self.annotator.bad_mask()
         if done:
             self.ui.create_message_box(False, "All masks are done")
-        self.update_ui_imgs(masked_img=True, mask=True)
+        self.update_ui_imgs()
