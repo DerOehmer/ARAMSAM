@@ -28,7 +28,7 @@ class AnnotationObject:
         self.masked_img = np.array(self.pil_image).copy()
         self.mask_collection = np.zeros_like(self.img)
         self.current_mask: np.ndarray = None
-        self.mask_visulizations: MaskVisualizationData = None
+        self.mask_visualizations: MaskVisualizationData = None
 
     def check_img(self):
         pass
@@ -38,10 +38,7 @@ class AnnotationObject:
         self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
 
     def set_current_mask(self, mask_idx: int):
-        self.current_mask = cv2.cvtColor(self.masks[mask_idx].mask, cv2.COLOR_GRAY2RGB)
-
-    def set_mask_visulizations(self, maskidx: int):
-        pass
+        self.current_mask = cv2.cvtColor(self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR)
 
 
 class Annotator:
@@ -159,6 +156,6 @@ class Annotator:
 
         self.annotation.mask_collection = mask_vis.get_mask_collection()
         self.annotation.masked_img = mask_vis.get_masked_img()
-        self.annotation.mask_visulizations = mvis_data
+        self.annotation.mask_visualizations = mvis_data
 
         self.annotation.good_masks = mask_vis.mask_objs
