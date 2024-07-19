@@ -16,16 +16,16 @@ class App:
         self.ui = UserInterface()
         self.annotator = Annotator()
 
-        self.ui.menu.addAction("Load Image", self.load_img)
         self.ui.test_button.clicked.connect(self.segment_anything)
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
+        self.ui.load_img_signal.connect(self.load_img)
 
     def run(self) -> None:
         self.ui.run()
         sys.exit(self.application.exec())
 
-    def load_img(self) -> None:
+    def load_img(self, _) -> None:
         print("loading new image")
         img_fpath = self.ui.open_img_load_file_dialog()
         self.annotator.create_new_annotation(Path(img_fpath))
