@@ -15,8 +15,7 @@ from sam_annotator.mask_visualizations import (
 class AnnotationObject:
     def __init__(self, filepath: Path) -> None:
         self.filepath: str = filepath
-        self.pil_image: Image = Image.open(filepath)
-        self.img: np.ndarray = np.array(self.pil_image, dtype=np.uint8)
+        self.img: np.ndarray = cv2.imread(filepath)
 
         if self.img.shape[2] == 4:
             print("Loaded image with 4 channels - ignoring last")
@@ -25,20 +24,18 @@ class AnnotationObject:
         self.good_masks: list[MaskData] = []
         self.mask_decisions: np.ndarray = None
 
-        self.masked_img = np.array(self.pil_image).copy()
-        self.mask_collection = np.zeros_like(self.img)
-        self.current_mask: np.ndarray = None
-        self.mask_visualizations: MaskVisualizationData = None
-
-    def check_img(self):
-        pass
+        self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
+            img=self.img
+        )
 
     def set_masks(self, maskobject: list[MaskData]):
         self.masks = maskobject
         self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
 
     def set_current_mask(self, mask_idx: int):
-        self.current_mask = cv2.cvtColor(self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR)
+        self.mask_visualizations.mask = cv2.cvtColor(
+            self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
+        )
 
 
 class Annotator:
@@ -64,13 +61,12 @@ class Annotator:
         print(self.annotation.img.shape)
         self.sam.image_embedding(self.annotation.img)
         mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
-        print(len(mask_objs))
-        self.annotation.masked_img = annotated_image
+        self.annotation.mask_visualizations.masked_img = annotated_image
         self.annotation.set_masks(mask_objs)
 
         self.update_mask_idx()
-        self.preselect_mask()
         self.update_collections(self.annotation)
+        self.preselect_mask()
 
     def good_mask(self):
         done = False
@@ -108,7 +104,10 @@ class Annotator:
         maskorigin = mask_obj.origin
 
         mask_coll_bin = (
-            np.any(annot.mask_collection != [0, 0, 0], axis=-1).astype(np.uint8) * 255
+            np.any(
+                annot.mask_visualizations.mask_collection != [0, 0, 0], axis=-1
+            ).astype(np.uint8)
+            * 255
         )
         mask_overlap = cv2.bitwise_and(mask_coll_bin, mask)
         mask_size = np.count_nonzero(mask)
@@ -150,12 +149,12 @@ class Annotator:
             maskinrgb = np.zeros_like(masked_img)
             masked_img_cnt = np.zeros_like(masked_img)
             mask_collection_cnt = np.zeros_like(masked_img)
-        mvis_data = MaskVisualizationData(
-            maskinrgb, masked_img, mask_collection, masked_img_cnt, mask_collection_cnt
-        )
 
-        self.annotation.mask_collection = mask_vis.get_mask_collection()
-        self.annotation.masked_img = mask_vis.get_masked_img()
-        self.annotation.mask_visualizations = mvis_data
+        mvis_data: MaskVisualizationData = self.annotation.mask_visualizations
+        mvis_data.maskinrgb = maskinrgb
+        mvis_data.masked_img = masked_img
+        mvis_data.mask_collection = mask_collection
+        mvis_data.masked_img_cnt = masked_img_cnt
+        mvis_data.mask_collection_cnt = mask_collection_cnt
 
         self.annotation.good_masks = mask_vis.mask_objs
