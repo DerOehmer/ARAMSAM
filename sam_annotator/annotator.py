@@ -5,16 +5,11 @@ from PIL import Image
 from pathlib import Path
 
 from src.run_sam import SamInference
-from dataclasses import dataclass
-
-# from src.sam_mask_inspection import SelectMask, ImgCheckup
-# from src.sam_mask_creation import ImageData
-
-
-@dataclass
-class MaskData:
-    mask: np.ndarray
-    origin: str
+from sam_annotator.mask_visualizations import (
+    MaskData,
+    MaskVisualization,
+    MaskVisualizationData,
+)
 
 
 class AnnotationObject:
@@ -27,21 +22,26 @@ class AnnotationObject:
             print("Loaded image with 4 channels - ignoring last")
             self.img = self.img[:, :, :3]
         self.masks: list[MaskData] = []
-        self.good_masks = []
-        self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
+        self.good_masks: list[MaskData] = []
+        self.mask_decisions: np.ndarray = None
+
         self.masked_img = np.array(self.pil_image).copy()
         self.mask_collection = np.zeros_like(self.img)
-        self.current_mask = np.zeros_like(self.img)
+        self.current_mask: np.ndarray = None
+        self.mask_visulizations: MaskVisualizationData = None
 
     def check_img(self):
         pass
 
-    def set_masks(self, maskobject: MaskData):
+    def set_masks(self, maskobject: list[MaskData]):
         self.masks = maskobject
         self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
 
     def set_current_mask(self, mask_idx: int):
         self.current_mask = cv2.cvtColor(self.masks[mask_idx].mask, cv2.COLOR_GRAY2RGB)
+
+    def set_mask_visulizations(self, maskidx: int):
+        pass
 
 
 class Annotator:
@@ -66,28 +66,27 @@ class Annotator:
 
         print(self.annotation.img.shape)
         self.sam.image_embedding(self.annotation.img)
-        masks, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
+        mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
+        print(len(mask_objs))
         self.annotation.masked_img = annotated_image
-        self.annotation.set_masks(
-            [MaskData(mask=mask, origin="sam_proposed") for mask in masks]
-        )
-        self.update_mask_idx()
+        self.annotation.set_masks(mask_objs)
 
+        self.update_mask_idx()
         self.preselect_mask()
+        self.update_collections(self.annotation)
 
     def good_mask(self):
         done = False
         annot = self.annotation
         annot.good_masks.append(annot.masks[self.mask_idx])
         annot.mask_decisions[self.mask_idx] = True
-        # add track if not last idx
-        self.update_collections(annot)
         self.mask_idx += 1
-        # annot.current_mask = annot.masks[]
-        self.annotation.set_current_mask(self.mask_idx)
-        if self.mask_idx == len(annot.masks):
+
+        self.update_collections(annot)
+        if self.mask_idx >= len(annot.masks) - 1:
             done = True  # all masks have been labeled
         else:
+            self.annotation.set_current_mask(self.mask_idx)
             self.preselect_mask()
         return done
 
@@ -96,11 +95,12 @@ class Annotator:
         annot = self.annotation
         annot.mask_decisions[self.mask_idx] = False
         self.mask_idx += 1
-        # annot.current_mask = annot.masks[self.mask_idx]
-        self.annotation.set_current_mask(self.mask_idx)
-        if self.mask_idx == len(annot.masks):
+
+        self.update_collections(annot)
+        if self.mask_idx >= len(annot.masks) - 1:
             done = True  # all masks have been labeled
         else:
+            self.annotation.set_current_mask(self.mask_idx)
             self.preselect_mask()
         return done
 
@@ -109,10 +109,6 @@ class Annotator:
         mask_obj: MaskData = annot.masks[self.mask_idx]
         mask = mask_obj.mask
         maskorigin = mask_obj.origin
-
-        # imgresult = cv2.bitwise_and(annot.img, annot.img ,mask=mask)
-
-        # show_lst = [self.annotation.masked_img, imgresult]
 
         mask_coll_bin = (
             np.any(annot.mask_collection != [0, 0, 0], axis=-1).astype(np.uint8) * 255
@@ -137,35 +133,32 @@ class Annotator:
 
             if annot.mask_decisions[-1]:
                 annot.good_masks.pop()
-                self.update_collections(annot)
+
             annot.mask_decisions[self.mask_idx] = False
             self.mask_idx -= 1
+            self.update_collections(annot)
 
     def update_collections(self, annot: AnnotationObject):
 
-        y, x, _ = annot.img.shape
-        mask_coll = np.zeros((y, x, 3), dtype=np.uint8)
-        mask_coll_bin = np.zeros((y, x), dtype=np.uint8)
-        cnt_coll = annot.img.copy()
+        mask_vis = MaskVisualization(annot.img, annot.good_masks)
+        masked_img = mask_vis.get_masked_img()
+        mask_collection = mask_vis.get_mask_collection()
+        if len(annot.masks) > self.mask_idx:
+            mask_obj = annot.masks[self.mask_idx]
+            cnt = mask_obj.contour
+            maskinrgb = mask_vis.get_maskinrgb(mask_obj)
+            masked_img_cnt = mask_vis.get_masked_img_cnt(cnt)
+            mask_collection_cnt = mask_vis.get_mask_collection_cnt(cnt)
+        else:
+            maskinrgb = np.zeros_like(masked_img)
+            masked_img_cnt = np.zeros_like(masked_img)
+            mask_collection_cnt = np.zeros_like(masked_img)
+        mvis_data = MaskVisualizationData(
+            maskinrgb, masked_img, mask_collection, masked_img_cnt, mask_collection_cnt
+        )
 
-        thickness = -1
+        self.annotation.mask_collection = mask_vis.get_mask_collection()
+        self.annotation.masked_img = mask_vis.get_masked_img()
+        self.annotation.mask_visulizations = mvis_data
 
-        for m in annot.good_masks:
-            m = m.mask
-            overlap = cv2.bitwise_and(m, mask_coll_bin)
-            mask_coll_bin = np.where(m == 255, 255, mask_coll_bin)
-            mask_coll[np.where(m == 255)] = [255, 255, 255]
-            mask_coll[np.where(overlap == 255)] = [0, 0, 255]
-
-            cnts, _ = cv2.findContours(m, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-            b, g, r = (
-                np.random.randint(0, 255),
-                np.random.randint(0, 255),
-                np.random.randint(0, 255),
-            )
-            cnt_coll = cv2.drawContours(
-                cnt_coll, cnts, -1, (b, g, r), thickness, lineType=cv2.LINE_8
-            )
-
-        self.annotation.mask_collection = mask_coll
-        self.annotation.masked_img = cnt_coll
+        self.annotation.good_masks = mask_vis.mask_objs
