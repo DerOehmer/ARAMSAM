@@ -25,6 +25,8 @@ from PyQt6.QtWidgets import (
 
 
 class UserInterface(QMainWindow):
+    load_img_signal: pyqtSignal = pyqtSignal(int)
+
     def __init__(self) -> None:
         super().__init__(parent=None)
 
@@ -32,6 +34,7 @@ class UserInterface(QMainWindow):
         self.resize(1920, 1080)
         self.menu = self.menuBar().addMenu("&Menu")
         self.menu.addAction("&Exit", self.close)
+        self.menu.addAction("Load Image", self.load_img)
         self.zoom_level = 0
         self.zoom_factor = 1.25
 
@@ -74,6 +77,9 @@ class UserInterface(QMainWindow):
 
         self.bad_mask_button = QPushButton(text="bad mask", parent=self)
         self.bad_mask_button.move(220, 20)
+
+    def load_img(self):
+        self.load_img_signal.emit(1)
 
     def handleCoords(self, point: QPoint):
         if not point.isNull():
