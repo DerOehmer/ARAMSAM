@@ -37,20 +37,11 @@ class App:
         self.update_ui_imgs()
 
     def update_ui_imgs(self):
-        if self.annotator.annotation.mask_visualizations is None:
-            for i in range(4):
-                self.ui.update_main_pix_map(idx=i, img=self.annotator.annotation.img)
-            return
-        self.ui.update_main_pix_map(
-            idx=1, img=self.annotator.annotation.mask_visualizations.maskinrgb
-        )
-        self.ui.update_main_pix_map(idx=2, img=self.annotator.annotation.img)
-        self.ui.update_main_pix_map(
-            idx=3, img=self.annotator.annotation.mask_visualizations.masked_img_cnt
-        )
-        self.ui.update_main_pix_map(
-            idx=0, img=self.annotator.annotation.mask_visualizations.mask_collection_cnt
-        )
+        mviss = self.annotator.annotation.mask_visualizations
+        fields = ["img", "mask", "masked_img_cnt", "mask_collection_cnt"]
+        for i in range(4):
+            if getattr(mviss, fields[i]) is not None:
+                self.ui.update_main_pix_map(idx=i, img=getattr(mviss, fields[i]))
 
     def add_good_mask(self):
         done = self.annotator.good_mask()
