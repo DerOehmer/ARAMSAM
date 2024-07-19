@@ -14,7 +14,9 @@ class MaskData:
 
 
 @dataclass
-class MaskVisualizationData:
+class MaskVisualizationData:  # TODO add img and mask, mask collection white machen, an namen kommen
+    img: np.ndarray = None
+    mask: np.ndarray = None
     maskinrgb: np.ndarray = None
     masked_img: np.ndarray = None
     mask_collection: np.ndarray = None
@@ -27,7 +29,7 @@ class MaskVisualization:
         self,
         img: np.ndarray,
         mask_objs: list[MaskData],
-        cnt_color: tuple[int] = (0, 0, 255),
+        cnt_color: tuple[int] = (0, 255, 0),
     ):
         self.img = img
         self.mask_objs = mask_objs
@@ -100,8 +102,8 @@ class MaskVisualization:
 
         for m in self.mask_objs:
             m = m.mask
-            mask_coll_bin = np.where(m == 255, 255, mask_coll_bin)
             overlap = cv2.bitwise_and(m, mask_coll_bin)
+            mask_coll_bin = np.where(m == 255, 255, mask_coll_bin)
             self.mask_collection[np.where(m == 255)] = [255, 255, 255]
             self.mask_collection[np.where(overlap == 255)] = [0, 0, 255]
 
@@ -123,8 +125,9 @@ class MaskVisualization:
         return self.mask_collection_cnt
 
     def get_maskinrgb(self, mask_obj: MaskData) -> np.ndarray:
+        img = self.img.copy()
         mask = mask_obj.mask
-        self.maskinrgb = cv2.bitwise_and(self.img, self.img, mask=mask)
+        self.maskinrgb = cv2.bitwise_and(img, img, mask=mask)
 
         return self.maskinrgb
 
