@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import threading
+from sam_annotator.mask_visualizations import MaskVisualization, MaskData
 
 
 class SamInference:
@@ -12,7 +13,7 @@ class SamInference:
     ):
         self.sam_checkpoint = sam_checkpoint
         self.model_type = model_type
-        
+
         self.device = device
         self.lock = threading.Lock()
         self.img_embed_thread = None
@@ -70,7 +71,7 @@ class SamInference:
         order = cord_df.index.to_list()
         masks = np.array(masks, dtype=np.uint8)[order]
         return masks, annotated_image
-    
+
     def custom_amg(self, roi_pts=False, n_points=100, msize_thresh=10000):
         pts = None
         pt_labels = None
@@ -78,45 +79,51 @@ class SamInference:
             pts, pt_labels = self.get_roi_points(n_points)
         else:
             pts, pt_labels = self.get_pt_grid(n_points)
-        transformed_pts = self.predictor.transform.apply_coords_torch(pts,self.img.shape[:2])
+        transformed_pts = self.predictor.transform.apply_coords_torch(
+            pts, self.img.shape[:2]
+        )
         masks = self.predict_batch(transformed_pts, pt_labels)
 
         xmins = []
         ymins = []
         mask_lst = []
+        mask_objs = []
 
         annotated_image = self.imgbgr.copy()
-    
+
         for mask in masks:
             mask = mask.cpu().numpy()
             if np.count_nonzero(mask) < msize_thresh:
-                b, g, r = (
-                    np.random.randint(0, 255),
-                    np.random.randint(0, 255),
-                    np.random.randint(0, 255),
-                )
                 kernelmask = np.array(mask, dtype=np.uint8) * 255
                 kernelmask = np.squeeze(kernelmask, axis=0)
+                if np.amax(kernelmask) != 255:
+                    continue
                 mask_lst.append(kernelmask)
+                mask_objs.append(MaskData(kernelmask, "sam_proposed"))
+
                 ycords, xcords = np.where(kernelmask == 255)
-                annotated_image[ycords, xcords] = b, g, r
+                # annotated_image[ycords, xcords] = b, g, r
                 ymin, xmin = np.amin(ycords), np.amin(xcords)
 
                 ymins.append(ymin)
                 xmins.append(xmin)
 
-        cord_dict = {"ymins": ymins, "xmins": xmins}
+        mvis = MaskVisualization(annotated_image, mask_objs)
+        annotated_image = mvis.get_masked_img()
+        mvis_mask_objs = mvis.mask_objs
 
+        cord_dict = {"ymins": ymins, "xmins": xmins}
         cord_df = pd.DataFrame(cord_dict)
         cord_df = cord_df.sort_values(by=["ymins", "xmins"])
         order = cord_df.index.to_list()
-        masks_np = np.array(mask_lst, dtype=np.uint8)[order]
-        return masks_np, annotated_image
+        # masks_np = np.array(mask_lst, dtype=np.uint8)[order]
+        ordered_mask_objs = [mvis_mask_objs[i] for i in order]
+        return ordered_mask_objs, annotated_image
 
-    def get_roi_points(self, n=100, lower_hsv=[28, 0, 0], higher_hsv=[179,255, 255]):
+    def get_roi_points(self, n=100, lower_hsv=[28, 0, 0], higher_hsv=[179, 255, 255]):
         lower_hsv = np.array(lower_hsv, dtype=np.uint8)
         higher_hsv = np.array(higher_hsv, dtype=np.uint8)
-        imgBLUR = cv2.GaussianBlur(self.imgbgr, (3,3), 0)
+        imgBLUR = cv2.GaussianBlur(self.imgbgr, (3, 3), 0)
         imgHSV = cv2.cvtColor(imgBLUR, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(imgHSV, lower_hsv, higher_hsv)
         cv2.imshow("mask", mask)
@@ -124,15 +131,17 @@ class SamInference:
         indcs = np.column_stack(np.where(mask == 255))
         if len(indcs) < n:
             n = len(indcs)
-        rand_indcs= indcs[np.random.choice(indcs.shape[0], n, replace=False)]
-        roi_points = rand_indcs[:,[1,0]]
-        pt_tensor = torch.tensor(roi_points.reshape(-1,1,2), dtype=torch.int32, device=self.device)
-        label_tensor = torch.ones((n,1), dtype=torch.int32, device=self.device)
-   
+        rand_indcs = indcs[np.random.choice(indcs.shape[0], n, replace=False)]
+        roi_points = rand_indcs[:, [1, 0]]
+        pt_tensor = torch.tensor(
+            roi_points.reshape(-1, 1, 2), dtype=torch.int32, device=self.device
+        )
+        label_tensor = torch.ones((n, 1), dtype=torch.int32, device=self.device)
+
         return pt_tensor, label_tensor
-    
+
     def get_pt_grid(self, n):
-        height, width,_ = self.img.shape
+        height, width, _ = self.img.shape
         # Total number of points
 
         # Calculate the number of rows and columns for the grid
@@ -144,21 +153,25 @@ class SamInference:
         pt_disty = height / rows
         pad_y = int(pt_disty / 2)
         # Generate coordinates for grid points
-        row_indices = np.linspace(pad_y, height-1-pad_y, rows, dtype=int)
-        col_indices = np.linspace(pad_x, width-1-pad_x, cols, dtype=int)
-     
+        row_indices = np.linspace(pad_y, height - 1 - pad_y, rows, dtype=int)
+        col_indices = np.linspace(pad_x, width - 1 - pad_x, cols, dtype=int)
+
         # Create a meshgrid of row and column indices
         grid_y, grid_x = np.meshgrid(row_indices, col_indices)
-    
+
         # Flatten the meshgrid to get a list of coordinates
         grid_points = np.vstack([grid_y.ravel(), grid_x.ravel()]).T
 
-        pt_tensor = torch.tensor(grid_points.reshape(-1,1,2), dtype=torch.int32, device=self.device)
-        label_tensor = torch.ones((rows*cols,1), dtype=torch.int32, device=self.device)
+        pt_tensor = torch.tensor(
+            grid_points.reshape(-1, 1, 2), dtype=torch.int32, device=self.device
+        )
+        label_tensor = torch.ones(
+            (rows * cols, 1), dtype=torch.int32, device=self.device
+        )
         return pt_tensor, label_tensor
 
     def image_embedding(self, img):
-        #img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        # img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         self.imgbgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         self.img = img
         with self.lock:
@@ -168,10 +181,16 @@ class SamInference:
             )
             self.img_embed_thread.start()
 
-    def predict_batch(self, pts=None, pts_labels=None, bboxes=None, mask_input=None):
+    def predict_batch(
+        self,
+        pts: torch.Tensor = None,
+        pts_labels: torch.Tensor = None,
+        bboxes: torch.Tensor = None,
+        mask_input: torch.Tensor = None,
+    ):
 
         if not self.is_img_embedded:
-             raise ValueError("Image embedding has not been initialized yet")
+            raise ValueError("Image embedding has not been initialized yet")
         with self.lock:
             if self.img_embed_thread.is_alive():
                 print("Waiting for image embedding to finish...")
@@ -185,7 +204,13 @@ class SamInference:
             )
         return masks
 
-    def predict(self, pts=None, pts_labels=None, bboxes=None, mask_input=None):
+    def predict(
+        self,
+        pts: np.ndarray = None,
+        pts_labels: np.ndarray = None,
+        bboxes: np.ndarray = None,
+        mask_input: np.ndarray = None,
+    ):
         if not self.is_img_embedded:
             raise ValueError("Image embedding has not been initialized yet")
         with self.lock:
