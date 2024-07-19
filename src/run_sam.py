@@ -195,6 +195,7 @@ class SamInference:
             if self.img_embed_thread.is_alive():
                 print("Waiting for image embedding to finish...")
             self.img_embed_thread.join()
+            print("Image embedding done!")
             masks, scores, logits = self.predictor.predict_torch(
                 point_coords=pts,
                 point_labels=pts_labels,
@@ -217,14 +218,15 @@ class SamInference:
             if self.img_embed_thread.is_alive():
                 print("Waiting for image embedding to finish...")
             self.img_embed_thread.join()
+            print("Image embedding done!")
             masks, scores, logits = self.predictor.predict(
                 point_coords=pts,
                 point_labels=pts_labels,
                 box=bboxes,
                 mask_input=mask_input,
-                multimask_output=True,
+                multimask_output=False,
             )
-        return self.select_masks(masks)
+        return masks[0].astype(np.uint8)
 
     def select_masks(self, masks, alpha=0.1):
         while True:
