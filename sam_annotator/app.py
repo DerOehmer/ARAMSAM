@@ -1,7 +1,11 @@
 import sys
 import time
+
+from os import listdir
+from os.path import isfile, join
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
+from natsort import natsorted
 
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
@@ -16,6 +20,7 @@ class App:
         self.application = QApplication([])
         self.ui = UserInterface()
         self.annotator = Annotator()
+        self.img_fnames = []
 
         self.ui.test_button.clicked.connect(self.segment_anything)
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
@@ -25,6 +30,7 @@ class App:
 
         self.ui.mouse_position.connect(self.mouse_move_on_img)
         self.ui.load_img_signal.connect(self.load_img)
+        self.ui.load_img_folder_signal.connect(self.load_img_folder)
         self.ui.preview_annotation_point_signal.connect(
             self.add_sam_preview_annotation_point
         )
@@ -39,7 +45,21 @@ class App:
     def load_img(self, _) -> None:
         print("loading new image")
         img_fpath = self.ui.open_img_load_file_dialog()
-        self.annotator.create_new_annotation(Path(img_fpath))
+        self.img_fnames.append(img_fpath)
+        self.select_next_img()
+
+    def load_img_folder(self, _) -> None:
+        print("loading folder")
+        img_dir = self.ui.open_load_folder_dialog()
+        img_fnames = [
+            join(img_dir, f) for f in listdir(img_dir) if isfile(join(img_dir, f))
+        ]
+        self.img_fnames.extend(img_fnames)
+        self.img_fnames = natsorted(self.img_fnames)
+        self.select_next_img()
+
+    def select_next_img(self):
+        self.annotator.create_new_annotation(Path(self.img_fnames.pop()))
         self.update_ui_imgs()
 
     def segment_anything(self):

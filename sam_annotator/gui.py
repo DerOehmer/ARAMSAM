@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
 
 class UserInterface(QMainWindow):
     load_img_signal: pyqtSignal = pyqtSignal(int)
+    load_img_folder_signal: pyqtSignal = pyqtSignal(int)
     mouse_position: pyqtSignal = pyqtSignal(tuple)
     preview_annotation_point_signal: pyqtSignal = pyqtSignal(int)
 
@@ -55,6 +56,7 @@ class UserInterface(QMainWindow):
         self.menu_settings = self.menuBar().addMenu("Settings")
         self.menu.addAction("Exit", self.close)
         self.menu_open.addAction("Load Image", self.load_img)
+        self.menu_open.addAction("Load Folder", self.load_img_folder)
         self.menu_settings.addAction("Change Layout", self.open_layout_settings_box)
         self.zoom_level = 0
         self.zoom_factor = 1.25
@@ -113,6 +115,9 @@ class UserInterface(QMainWindow):
 
     def load_img(self):
         self.load_img_signal.emit(1)
+
+    def load_img_folder(self):
+        self.load_img_folder_signal.emit(1)
 
     def open_layout_settings_box(self):
         options = ["image", "mask", "other mask"]
@@ -237,6 +242,14 @@ class UserInterface(QMainWindow):
             filter="All Files (*);; PNG Files (*.png)",
         )
         return filepath[0]
+
+    def open_load_folder_dialog(self):
+        filepath = QFileDialog.getExistingDirectory(
+            parent=self,
+            caption="Open Folder",
+            directory="${HOME}/data",
+        )
+        return filepath
 
     def run(self):
         self.show()
