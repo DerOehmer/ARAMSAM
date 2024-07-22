@@ -264,7 +264,6 @@ class InteractiveGraphicsView(QGraphicsView):
     def set_pixmap(self, pixmap: QPixmap):
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.pixmap_item.setPixmap(pixmap)
-        self.fitInView()
 
     def wheelEvent(self, event: QWheelEvent):
         # and overwrite superclass method to avoid scrolling on mouse wheel
