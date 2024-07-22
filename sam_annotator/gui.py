@@ -113,6 +113,9 @@ class UserInterface(QMainWindow):
         )
         self.manual_annotation_button.move(420, 20)
 
+        self.next_img_button = QPushButton(text="next image", parent=self)
+        self.next_img_button.move(520, 20)
+
     def load_img(self):
         self.load_img_signal.emit(1)
 

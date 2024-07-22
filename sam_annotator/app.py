@@ -27,6 +27,7 @@ class App:
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
         self.ui.back_button.clicked.connect(self.last_mask)
         self.ui.manual_annotation_button.clicked.connect(self.manual_annotation)
+        self.ui.next_img_button.clicked.connect(self.select_next_img)
 
         self.ui.mouse_position.connect(self.mouse_move_on_img)
         self.ui.load_img_signal.connect(self.load_img)
@@ -59,8 +60,11 @@ class App:
         self.select_next_img()
 
     def select_next_img(self):
-        self.annotator.create_new_annotation(Path(self.img_fnames.pop()))
-        self.update_ui_imgs()
+        if self.img_fnames:
+            self.annotator.create_new_annotation(Path(self.img_fnames.pop()))
+            self.update_ui_imgs()
+        else:
+            print("No image left in the queue")
 
     def segment_anything(self):
         self.annotator.predict_with_sam()
