@@ -50,10 +50,14 @@ class App:
         done = self.annotator.good_mask()
         if done:
             self.ui.create_message_box(False, "All masks are done")
+        # TODO: instead of done receive coordinates of center of next mask
+        # TODO: use coordinates to center the view on mask
         self.update_ui_imgs()
 
     def add_bad_mask(self):
         done = self.annotator.bad_mask()
         if done:
             self.ui.create_message_box(False, "All masks are done")
+        # TODO: instead of done receive coordinates of center of next mask
+        # TODO: use coordinates to center the view on mask
         self.update_ui_imgs()

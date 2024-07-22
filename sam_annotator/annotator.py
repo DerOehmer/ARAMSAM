@@ -81,6 +81,7 @@ class Annotator:
         else:
             self.annotation.set_current_mask(self.mask_idx)
             self.preselect_mask()
+        # TODO: instead of done return coordinates of center of next mask
         return done
 
     def bad_mask(self):
@@ -95,6 +96,7 @@ class Annotator:
         else:
             self.annotation.set_current_mask(self.mask_idx)
             self.preselect_mask()
+        # TODO: instead of done return coordinates of center of next mask
         return done
 
     def preselect_mask(self, max_overlap_ratio: float = 0.4):
