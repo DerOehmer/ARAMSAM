@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import QApplication
 
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
-from sam_annotator.mask_visualizations import MaskVisualizationData
 
 
 class App:
@@ -39,9 +38,13 @@ class App:
     def update_ui_imgs(self):
         mviss = self.annotator.annotation.mask_visualizations
         fields = ["img", "mask", "masked_img_cnt", "mask_collection_cnt"]
-        for i in range(4):
-            if getattr(mviss, fields[i]) is not None:
-                self.ui.update_main_pix_map(idx=i, img=getattr(mviss, fields[i]))
+        if len(fields) > 4:
+            print(
+                f"Too many fields selected for visualization ({len(fields)}) expected 4"
+            )
+        for idx, field in enumerate(fields):
+            if getattr(mviss, field) is not None:
+                self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
 
     def add_good_mask(self):
         done = self.annotator.good_mask()
