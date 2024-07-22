@@ -48,6 +48,8 @@ class Annotator:
         self.mask_idx = 0
 
     def update_mask_idx(self, new_idx: int = 0):
+        # TODO: error handling if new_idx is out of bounds
+        # currently its going to n-last mask when negative
         self.mask_idx = new_idx
         self.annotation.set_current_mask(self.mask_idx)
 

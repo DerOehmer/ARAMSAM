@@ -98,6 +98,9 @@ class UserInterface(QMainWindow):
         self.bad_mask_button = QPushButton(text="bad mask", parent=self)
         self.bad_mask_button.move(220, 20)
 
+        self.back_button = QPushButton(text="undo OR back", parent=self)
+        self.back_button.move(320, 20)
+
     def load_img(self):
         self.load_img_signal.emit(1)
 

@@ -19,6 +19,8 @@ class App:
         self.ui.test_button.clicked.connect(self.segment_anything)
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
+        self.ui.back_button.clicked.connect(self.last_mask)
+
         self.ui.load_img_signal.connect(self.load_img)
 
     def run(self) -> None:
@@ -60,4 +62,9 @@ class App:
             self.ui.create_message_box(False, "All masks are done")
         # TODO: instead of done receive coordinates of center of next mask
         # TODO: use coordinates to center the view on mask
+        self.update_ui_imgs()
+
+    def last_mask(self):
+        done = self.annotator.update_mask_idx(self.annotator.mask_idx - 1)
+        # TODO: error handling if mask idx is out of bounds
         self.update_ui_imgs()
