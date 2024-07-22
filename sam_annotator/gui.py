@@ -3,6 +3,7 @@ import cv2
 
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
+from screeninfo import get_monitors
 
 from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal
 from PyQt6.QtGui import (
@@ -36,8 +37,17 @@ class UserInterface(QMainWindow):
     def __init__(self) -> None:
         super().__init__(parent=None)
 
+        monitors = get_monitors()
+        width = 1920
+        height = 1080
+        for m in monitors:
+            if m.width < width:
+                width = m.width
+            if m.height < height:
+                height = m.height
+
         self.offset = 50
-        self.resize(1920, 1080)
+        self.resize(width, height)
         self.menu = self.menuBar().addMenu("Menu")
         self.menu_open = self.menuBar().addMenu("Open")
         self.menu_settings = self.menuBar().addMenu("Settings")
@@ -48,6 +58,7 @@ class UserInterface(QMainWindow):
         self.zoom_factor = 1.25
 
         self.construct_ui()
+        self.showMaximized()
 
     def construct_ui(self):
         self.labelCoords = QLabel(self, text="Pixel Pos.")
