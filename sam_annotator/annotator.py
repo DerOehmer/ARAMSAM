@@ -14,8 +14,8 @@ from sam_annotator.mask_visualizations import (
 
 class AnnotationObject:
     def __init__(self, filepath: Path) -> None:
-        self.filepath: str = filepath
-        self.img: np.ndarray = cv2.imread(filepath)
+        self.filepath: str = str(filepath)
+        self.img: np.ndarray = cv2.imread(self.filepath)
 
         if self.img.shape[2] == 4:
             print("Loaded image with 4 channels - ignoring last")
