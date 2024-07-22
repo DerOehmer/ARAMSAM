@@ -22,20 +22,27 @@ class AnnotationObject:
             self.img = self.img[:, :, :3]
         self.masks: list[MaskData] = []
         self.good_masks: list[MaskData] = []
-        self.mask_decisions: np.ndarray = None
+        # changed mask_decisions from ndarray to list --> okay? JB
+        self.mask_decisions: list[bool] = []
 
         self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
             img=self.img
         )
+        self.preview_mask = None
 
     def set_masks(self, maskobject: list[MaskData]):
         self.masks = maskobject
-        self.mask_decisions = np.zeros((len(self.masks)), dtype=bool)
+        # changed mask_decisions from ndarray to list --> okay? JB
+        self.mask_decisions = [False for _ in range(len(self.masks))]
 
     def set_current_mask(self, mask_idx: int):
         self.mask_visualizations.mask = cv2.cvtColor(
             self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
         )
+
+    def add_masks(self, masks):
+        self.masks.extend(masks)
+        self.mask_decisions.extend([False for _ in range(len(masks))])
 
 
 class Annotator:
@@ -46,6 +53,30 @@ class Annotator:
         )
         self.annotation: AnnotationObject = None
         self.mask_idx = 0
+
+        self.manual_annotation_enabled = False
+        self.manual_mask_points = []
+        self.manual_mask_point_labels = []
+
+    def toggle_manual_annotation(self):
+        self.annotation.preview_mask = None
+        self.manual_mask_points = []
+        self.manual_mask_point_labels = []
+        if not self.manual_annotation_enabled and not self.sam.is_img_embedded:
+            print("Embed image before manually annotation")
+            return
+        self.manual_annotation_enabled = not self.manual_annotation_enabled
+
+    def mouse_move_callback(self, position: tuple[int]):
+        if self.manual_annotation_enabled:
+            # create live mask preview
+            self.annotation.preview_mask = self.sam.predict(
+                pts=np.array([[position[0], position[1]], *self.manual_mask_points]),
+                pts_labels=np.array([1, *self.manual_mask_point_labels]),
+            )
+            self.update_collections(self.annotation)
+            # self.annotation.add_masks(masks)
+            # print(masks)
 
     def update_mask_idx(self, new_idx: int = 0):
         # TODO: error handling if new_idx is out of bounds
@@ -160,5 +191,23 @@ class Annotator:
         mvis_data.mask_collection = mask_collection
         mvis_data.masked_img_cnt = masked_img_cnt
         mvis_data.mask_collection_cnt = mask_collection_cnt
+
+        # TODO: pack this where you want
+        if self.manual_annotation_enabled:
+            red_img = np.zeros(self.annotation.img.shape, dtype="uint8")
+            red_img[:, :] = (0, 255, 0)
+            red_mask = cv2.bitwise_and(
+                red_img, red_img, mask=self.annotation.preview_mask
+            )
+            img_sam_preview = cv2.addWeighted(red_mask, 1, self.annotation.img, 1, 0)
+            for p, l in zip(self.manual_mask_points, self.manual_mask_point_labels):
+                img_sam_preview = cv2.circle(
+                    img_sam_preview,
+                    center=p,
+                    radius=2,
+                    color=(255 * l, 0, 255 * l),
+                    thickness=-1,
+                )
+            mvis_data.img_sam_preview = img_sam_preview
 
         self.annotation.good_masks = mask_vis.mask_objs

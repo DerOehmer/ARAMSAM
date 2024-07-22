@@ -33,6 +33,8 @@ from PyQt6.QtWidgets import (
 
 class UserInterface(QMainWindow):
     load_img_signal: pyqtSignal = pyqtSignal(int)
+    mouse_position: pyqtSignal = pyqtSignal(tuple)
+    preview_annotation_point_signal: pyqtSignal = pyqtSignal(int)
 
     def __init__(self) -> None:
         super().__init__(parent=None)
@@ -86,7 +88,10 @@ class UserInterface(QMainWindow):
                 annotation_visualizer.show()
                 annotation_visualizer.coordinatesChanged.connect(self.handleCoords)
                 annotation_visualizer.mouseWheelScroll.connect(self.wheelEvent)
-                annotation_visualizer.mouseMove.connect(self.childMoveEvent)
+                annotation_visualizer.mouseMove.connect(self.childMouseMoveEvent)
+                annotation_visualizer.mousePressSignal.connect(
+                    self.childMousePressEvent
+                )
                 self.annotation_visualizers.append(annotation_visualizer)
 
         self.test_button = QPushButton(text="segment anything!", parent=self)
@@ -101,6 +106,11 @@ class UserInterface(QMainWindow):
         self.back_button = QPushButton(text="undo OR back", parent=self)
         self.back_button.move(320, 20)
 
+        self.manual_annotation_button = QPushButton(
+            text="add mask manually", parent=self
+        )
+        self.manual_annotation_button.move(420, 20)
+
     def load_img(self):
         self.load_img_signal.emit(1)
 
@@ -112,6 +122,7 @@ class UserInterface(QMainWindow):
     def handleCoords(self, point: QPoint):
         if not point.isNull():
             self.labelCoords.setText(f"{point.x()}, {point.y()}")
+            self.mouse_position.emit((point.x(), point.y()))
         else:
             self.labelCoords.clear()
 
@@ -124,7 +135,16 @@ class UserInterface(QMainWindow):
         elif event.text() == "m":
             self.bad_mask_button.click()
 
-    def childMoveEvent(self, event: QMouseEvent):
+    def childMousePressEvent(self, event: QMouseEvent):
+        if event.button().name == "RightButton":
+            if event.modifiers().name == "NoModifier":
+                # add foreground
+                self.preview_annotation_point_signal.emit(1)
+            if event.modifiers().name == "ControlModifier":
+                # add background
+                self.preview_annotation_point_signal.emit(0)
+
+    def childMouseMoveEvent(self, event: QMouseEvent):
         scene_idx_under_mouse = self.get_annotation_visualizer_idx_under_mouse()
         if scene_idx_under_mouse is None:
             print("not on image")
@@ -253,6 +273,7 @@ class InteractiveGraphicsView(QGraphicsView):
     mouseWheelScroll: pyqtSignal = pyqtSignal(QWheelEvent)
     mouseMove: pyqtSignal = pyqtSignal(QMouseEvent)
     clicked: pyqtSignal = pyqtSignal(bool)
+    mousePressSignal: pyqtSignal = pyqtSignal(QMouseEvent)
 
     def __init__(self, parent, width: int = 1024, height: int = 1024) -> None:
         super().__init__(parent=parent)
@@ -299,6 +320,7 @@ class InteractiveGraphicsView(QGraphicsView):
 
     def mousePressEvent(self, event: QMouseEvent):
         self.mouse_down = True
+        self.mousePressSignal.emit(event)
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):

@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 
@@ -20,8 +21,16 @@ class App:
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
         self.ui.back_button.clicked.connect(self.last_mask)
+        self.ui.manual_annotation_button.clicked.connect(self.manual_annotation)
 
+        self.ui.mouse_position.connect(self.mouse_move_on_img)
         self.ui.load_img_signal.connect(self.load_img)
+        self.ui.preview_annotation_point_signal.connect(
+            self.add_sam_preview_annotation_point
+        )
+
+        self.manual_sam_preview_updates_per_sec = 10
+        self.last_sam_preview_time_stamp = time.time_ns()
 
     def run(self) -> None:
         self.ui.run()
@@ -39,7 +48,7 @@ class App:
 
     def update_ui_imgs(self):
         mviss = self.annotator.annotation.mask_visualizations
-        fields = ["img", "mask", "masked_img_cnt", "mask_collection_cnt"]
+        fields = ["img", "mask", "img_sam_preview", "mask_collection_cnt"]
         if len(fields) > 4:
             print(
                 f"Too many fields selected for visualization ({len(fields)}) expected 4"
@@ -68,3 +77,21 @@ class App:
         done = self.annotator.update_mask_idx(self.annotator.mask_idx - 1)
         # TODO: error handling if mask idx is out of bounds
         self.update_ui_imgs()
+
+    def manual_annotation(self):
+        self.annotator.toggle_manual_annotation()
+
+    def mouse_move_on_img(self, point: tuple[int]):
+        current_time = time.time_ns()
+        delta = current_time - self.last_sam_preview_time_stamp
+        if delta * 1e-9 > 1 / self.manual_sam_preview_updates_per_sec:
+            self.mouse_pos = point
+            self.annotator.mouse_move_callback(point)
+            self.last_sam_preview_time_stamp = current_time
+            self.update_ui_imgs()
+
+    def add_sam_preview_annotation_point(self, label: int):
+        if not self.annotator.manual_annotation_enabled:
+            return
+        self.annotator.manual_mask_points.append(self.mouse_pos)
+        self.annotator.manual_mask_point_labels.append(label)

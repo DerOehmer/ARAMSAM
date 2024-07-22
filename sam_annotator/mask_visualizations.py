@@ -16,6 +16,7 @@ class MaskData:
 @dataclass
 class MaskVisualizationData:  # TODO add img and mask, mask collection white machen, an namen kommen
     img: np.ndarray = None
+    img_sam_preview: np.ndarray = None
     mask: np.ndarray = None
     maskinrgb: np.ndarray = None
     masked_img: np.ndarray = None
@@ -40,6 +41,7 @@ class MaskVisualization:
         self.mask_collection: np.ndarray = None
         self.masked_img_cnt: np.ndarray = None
         self.mask_collection_cnt: np.ndarray = None
+        self.img_sam_preview: np.ndarray = None
 
     @property
     def colormap(self) -> np.ndarray:
