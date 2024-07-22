@@ -67,7 +67,7 @@ class Annotator:
             return
         self.manual_annotation_enabled = not self.manual_annotation_enabled
 
-    def mouse_move_callback(self, position: tuple[int]):
+    def predict_sam_manually(self, position: tuple[int]):
         if self.manual_annotation_enabled:
             # create live mask preview
             self.annotation.preview_mask = self.sam.predict(
@@ -75,8 +75,6 @@ class Annotator:
                 pts_labels=np.array([1, *self.manual_mask_point_labels]),
             )
             self.update_collections(self.annotation)
-            # self.annotation.add_masks(masks)
-            # print(masks)
 
     def update_mask_idx(self, new_idx: int = 0):
         # TODO: error handling if new_idx is out of bounds
@@ -205,7 +203,7 @@ class Annotator:
                     img_sam_preview,
                     center=p,
                     radius=2,
-                    color=(255 * l, 0, 255 * l),
+                    color=(255 * l, 255 * l, 255),
                     thickness=-1,
                 )
             mvis_data.img_sam_preview = img_sam_preview

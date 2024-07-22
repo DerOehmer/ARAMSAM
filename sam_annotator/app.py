@@ -86,12 +86,20 @@ class App:
         delta = current_time - self.last_sam_preview_time_stamp
         if delta * 1e-9 > 1 / self.manual_sam_preview_updates_per_sec:
             self.mouse_pos = point
-            self.annotator.mouse_move_callback(point)
+            self.annotator.predict_sam_manually(point)
             self.last_sam_preview_time_stamp = current_time
             self.update_ui_imgs()
 
     def add_sam_preview_annotation_point(self, label: int):
         if not self.annotator.manual_annotation_enabled:
             return
-        self.annotator.manual_mask_points.append(self.mouse_pos)
-        self.annotator.manual_mask_point_labels.append(label)
+        if label == -1:
+            if self.annotator.manual_mask_points:
+                self.annotator.manual_mask_points.pop()
+                self.annotator.manual_mask_point_labels.pop()
+        else:
+            self.annotator.manual_mask_points.append(self.mouse_pos)
+            self.annotator.manual_mask_point_labels.append(label)
+
+        self.annotator.predict_sam_manually(self.mouse_pos)
+        self.update_ui_imgs()

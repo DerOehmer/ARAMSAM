@@ -134,6 +134,16 @@ class UserInterface(QMainWindow):
             self.good_mask_button.click()
         elif event.text() == "m":
             self.bad_mask_button.click()
+        elif event.text() == "b":
+            self.back_button.click()
+        elif event.text() == "q":
+            self.manual_annotation_button.click()
+        elif event.text() == "a":
+            self.preview_annotation_point_signal.emit(1)
+        elif event.text() == "s":
+            self.preview_annotation_point_signal.emit(0)
+        elif event.text() == "d":
+            self.preview_annotation_point_signal.emit(-1)
 
     def childMousePressEvent(self, event: QMouseEvent):
         if event.button().name == "RightButton":
