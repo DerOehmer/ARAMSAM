@@ -22,7 +22,6 @@ class AnnotationObject:
             self.img = self.img[:, :, :3]
         self.masks: list[MaskData] = []
         self.good_masks: list[MaskData] = []
-        # changed mask_decisions from ndarray to list --> okay? JB
         self.mask_decisions: list[bool] = []
 
         self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
@@ -32,7 +31,6 @@ class AnnotationObject:
 
     def set_masks(self, maskobject: list[MaskData]):
         self.masks = maskobject
-        # changed mask_decisions from ndarray to list --> okay? JB
         self.mask_decisions = [False for _ in range(len(self.masks))]
 
     def set_current_mask(self, mask_idx: int):
@@ -100,7 +98,6 @@ class Annotator:
         self.preselect_mask()
 
     def good_mask(self):
-        done = False
         annot = self.annotation
         annot.good_masks.append(annot.masks[self.mask_idx])
         annot.mask_decisions[self.mask_idx] = True
@@ -108,27 +105,28 @@ class Annotator:
 
         self.update_collections(annot)
         if self.mask_idx >= len(annot.masks) - 1:
-            done = True  # all masks have been labeled
+            next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
             self.preselect_mask()
+            next_mask_center = self.annotation.masks[self.mask_idx].center
         # TODO: instead of done return coordinates of center of next mask
-        return done
+        return next_mask_center
 
     def bad_mask(self):
-        done = False
         annot = self.annotation
         annot.mask_decisions[self.mask_idx] = False
         self.mask_idx += 1
 
         self.update_collections(annot)
         if self.mask_idx >= len(annot.masks) - 1:
-            done = True  # all masks have been labeled
+            next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
             self.preselect_mask()
+            next_mask_center = self.annotation.masks[self.mask_idx].center
         # TODO: instead of done return coordinates of center of next mask
-        return done
+        return next_mask_center
 
     def preselect_mask(self, max_overlap_ratio: float = 0.4):
         annot = self.annotation
