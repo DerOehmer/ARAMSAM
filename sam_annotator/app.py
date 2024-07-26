@@ -82,16 +82,16 @@ class App:
                 self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
 
     def add_good_mask(self):
-        done = self.annotator.good_mask()
-        if done:
+        nex_mask_center = self.annotator.good_mask()
+        if nex_mask_center is None:
             self.ui.create_message_box(False, "All masks are done")
         # TODO: instead of done receive coordinates of center of next mask
         # TODO: use coordinates to center the view on mask
         self.update_ui_imgs()
 
     def add_bad_mask(self):
-        done = self.annotator.bad_mask()
-        if done:
+        nex_mask_center = self.annotator.bad_mask()
+        if nex_mask_center is None:
             self.ui.create_message_box(False, "All masks are done")
         # TODO: instead of done receive coordinates of center of next mask
         # TODO: use coordinates to center the view on mask
