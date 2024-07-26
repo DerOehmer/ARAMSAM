@@ -69,17 +69,13 @@ class UserInterface(QMainWindow):
         self.labelCoords.move(400, 20)
         self.labelCoords.show()
 
-        vis_width = int(self.width() / 2)
-        vis_height = int(self.height() / 2)
+        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         self.annotation_visualizers: list[InteractiveGraphicsView] = []
         for i in range(2):
             for j in range(2):
                 annotation_visualizer = InteractiveGraphicsView(
                     self, width=vis_width, height=vis_height
-                )
-                annotation_visualizer.move(
-                    int(i * vis_width / 2), int(j * vis_height / 2)
                 )
                 annotation_visualizer.setGeometry(
                     self.offset + i * vis_width,
@@ -115,6 +111,11 @@ class UserInterface(QMainWindow):
 
         self.next_img_button = QPushButton(text="next image", parent=self)
         self.next_img_button.move(520, 20)
+
+    def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
+        vis_width = int((self.width() - self.offset) / 2)
+        vis_height = int((self.height() - self.offset) / 2)
+        return vis_width, vis_height
 
     def load_img(self):
         self.load_img_signal.emit(1)
@@ -275,15 +276,11 @@ class UserInterface(QMainWindow):
         self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
-        vis_width = int(self.width() / 2)
-        vis_height = int(self.height() / 2)
+        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         idx = 0
         for i in range(2):
             for j in range(2):
-                self.annotation_visualizers[idx].move(
-                    int(i * vis_width / 2), int(j * vis_height / 2)
-                )
                 self.annotation_visualizers[idx].setGeometry(
                     self.offset + i * vis_width,
                     self.offset + j * vis_height,
