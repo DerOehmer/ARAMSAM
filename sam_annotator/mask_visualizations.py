@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 from scipy.spatial import KDTree
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Tuple
 
 
 @dataclass
@@ -25,15 +27,57 @@ class MaskVisualizationData:  # TODO add img and mask, mask collection white mac
     mask_collection_cnt: np.ndarray = None
 
 
+class AnnotationObject:
+    def __init__(self, filepath: Path) -> None:
+        self.filepath: str = str(filepath)
+        self.img: np.ndarray = cv2.imread(self.filepath)
+
+        if self.img.shape[2] == 4:
+            print("Loaded image with 4 channels - ignoring last")
+            self.img = self.img[:, :, :3]
+        self.masks: list[MaskData] = []
+        self.good_masks: list[MaskData] = []
+        self.mask_decisions: list[bool] = []
+
+        self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
+            img=self.img
+        )
+        self.preview_mask = None
+
+    def set_masks(self, maskobject: list[MaskData]):
+        self.masks = maskobject
+        self.mask_decisions = [False for _ in range(len(self.masks))]
+
+    def set_current_mask(self, mask_idx: int):
+        self.mask_visualizations.mask = cv2.cvtColor(
+            self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
+        )
+
+    def add_masks(self, masks):
+        self.masks.extend(masks)
+        self.mask_decisions.extend([False for _ in range(len(masks))])
+
+
 class MaskVisualization:
     def __init__(
         self,
-        img: np.ndarray,
-        mask_objs: list[MaskData],
+        annotation: AnnotationObject = None,
+        img: np.ndarray = None,
+        mask_objs: list[MaskData] = None,
         cnt_color: tuple[int] = (0, 255, 0),
     ):
-        self.img = img
-        self.mask_objs = mask_objs
+        if annotation is not None:
+            self.img: np.ndarray = annotation.img
+            self.mask_objs: list[MaskData] = annotation.good_masks
+            self.preview_mask = annotation.preview_mask
+
+        elif img is not None and mask_objs is not None:
+            self.img: np.ndarray = img
+            self.mask_objs: list[MaskData] = mask_objs
+            self.preview_mask = None
+        else:
+            raise ValueError("Either annotation or img and mask_objs must be provided")
+
         self.cnt_color = cnt_color
 
         self.masked_img: np.ndarray = None
@@ -191,3 +235,20 @@ class MaskVisualization:
                 ymin, ymax = np.amin(yindcs), np.amax(yindcs)
                 cx, cy = (xmin + xmax) // 2, (ymin + ymax) // 2
                 m.center = (cx, cy)
+
+    def get_sam_preview(
+        self, manual_mask_points: list[Tuple[int]], manual_mask_point_labels: list[int]
+    ) -> np.ndarray:
+        red_img = np.zeros(self.img.shape, dtype="uint8")
+        red_img[:, :] = (0, 255, 0)
+        red_mask = cv2.bitwise_and(red_img, red_img, mask=self.preview_mask)
+        self.img_sam_preview = cv2.addWeighted(red_mask, 1, self.img, 1, 0)
+        for p, l in zip(manual_mask_points, manual_mask_point_labels):
+            self.img_sam_preview = cv2.circle(
+                self.img_sam_preview,
+                center=p,
+                radius=2,
+                color=(255 * l, 255 * l, 255),
+                thickness=-1,
+            )
+        return self.img_sam_preview

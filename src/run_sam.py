@@ -107,8 +107,7 @@ class SamInference:
 
                 ymins.append(ymin)
                 xmins.append(xmin)
-
-        mvis = MaskVisualization(annotated_image, mask_objs)
+        mvis = MaskVisualization(img=annotated_image, mask_objs=mask_objs)
         annotated_image = mvis.get_masked_img()
         mvis_mask_objs = mvis.mask_objs
 

@@ -4,43 +4,14 @@ import cv2
 from PIL import Image
 from pathlib import Path
 
+
 from src.run_sam import SamInference
 from sam_annotator.mask_visualizations import (
     MaskData,
     MaskVisualization,
     MaskVisualizationData,
+    AnnotationObject,
 )
-
-
-class AnnotationObject:
-    def __init__(self, filepath: Path) -> None:
-        self.filepath: str = str(filepath)
-        self.img: np.ndarray = cv2.imread(self.filepath)
-
-        if self.img.shape[2] == 4:
-            print("Loaded image with 4 channels - ignoring last")
-            self.img = self.img[:, :, :3]
-        self.masks: list[MaskData] = []
-        self.good_masks: list[MaskData] = []
-        self.mask_decisions: list[bool] = []
-
-        self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
-            img=self.img
-        )
-        self.preview_mask = None
-
-    def set_masks(self, maskobject: list[MaskData]):
-        self.masks = maskobject
-        self.mask_decisions = [False for _ in range(len(self.masks))]
-
-    def set_current_mask(self, mask_idx: int):
-        self.mask_visualizations.mask = cv2.cvtColor(
-            self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
-        )
-
-    def add_masks(self, masks):
-        self.masks.extend(masks)
-        self.mask_decisions.extend([False for _ in range(len(masks))])
 
 
 class Annotator:
@@ -167,7 +138,8 @@ class Annotator:
 
     def update_collections(self, annot: AnnotationObject):
 
-        mask_vis = MaskVisualization(annot.img, annot.good_masks)
+        mask_vis = MaskVisualization(annotation=annot)
+        mvis_data: MaskVisualizationData = self.annotation.mask_visualizations
         masked_img = mask_vis.get_masked_img()
         mask_collection = mask_vis.get_mask_collection()
         if len(annot.masks) > self.mask_idx:
@@ -181,29 +153,16 @@ class Annotator:
             masked_img_cnt = np.zeros_like(masked_img)
             mask_collection_cnt = np.zeros_like(masked_img)
 
-        mvis_data: MaskVisualizationData = self.annotation.mask_visualizations
+        if self.manual_annotation_enabled:
+            img_sam_preview = mask_vis.get_sam_preview(
+                self.manual_mask_points, self.manual_mask_point_labels
+            )
+            mvis_data.img_sam_preview = img_sam_preview
+
         mvis_data.maskinrgb = maskinrgb
         mvis_data.masked_img = masked_img
         mvis_data.mask_collection = mask_collection
         mvis_data.masked_img_cnt = masked_img_cnt
         mvis_data.mask_collection_cnt = mask_collection_cnt
-
-        # TODO: pack this where you want
-        if self.manual_annotation_enabled:
-            red_img = np.zeros(self.annotation.img.shape, dtype="uint8")
-            red_img[:, :] = (0, 255, 0)
-            red_mask = cv2.bitwise_and(
-                red_img, red_img, mask=self.annotation.preview_mask
-            )
-            img_sam_preview = cv2.addWeighted(red_mask, 1, self.annotation.img, 1, 0)
-            for p, l in zip(self.manual_mask_points, self.manual_mask_point_labels):
-                img_sam_preview = cv2.circle(
-                    img_sam_preview,
-                    center=p,
-                    radius=2,
-                    color=(255 * l, 255 * l, 255),
-                    thickness=-1,
-                )
-            mvis_data.img_sam_preview = img_sam_preview
 
         self.annotation.good_masks = mask_vis.mask_objs
