@@ -39,9 +39,14 @@ class Annotator:
     def predict_sam_manually(self, position: tuple[int]):
         if self.manual_annotation_enabled:
             # create live mask preview
-            self.annotation.preview_mask = self.sam.predict(
-                pts=np.array([[position[0], position[1]], *self.manual_mask_points]),
-                pts_labels=np.array([1, *self.manual_mask_point_labels]),
+            self.annotation.preview_mask = (
+                self.sam.predict(
+                    pts=np.array(
+                        [[position[0], position[1]], *self.manual_mask_points]
+                    ),
+                    pts_labels=np.array([1, *self.manual_mask_point_labels]),
+                )
+                * 255
             )
             self.update_collections(self.annotation)
 
@@ -70,8 +75,16 @@ class Annotator:
 
     def good_mask(self):
         annot = self.annotation
-        annot.good_masks.append(annot.masks[self.mask_idx])
-        annot.mask_decisions[self.mask_idx] = True
+
+        if self.manual_annotation_enabled:
+            mask_to_store = MaskData(mask=annot.preview_mask, origin="sam_interactive")
+            annot.masks.insert(self.mask_idx, mask_to_store)
+            annot.mask_decisions.insert(self.mask_idx, True)
+        else:
+            mask_to_store = annot.masks[self.mask_idx]
+            annot.mask_decisions[self.mask_idx] = True
+
+        annot.good_masks.append(mask_to_store)
         self.mask_idx += 1
 
         self.update_collections(annot)
@@ -86,6 +99,7 @@ class Annotator:
 
     def bad_mask(self):
         annot = self.annotation
+
         annot.mask_decisions[self.mask_idx] = False
         self.mask_idx += 1
 
