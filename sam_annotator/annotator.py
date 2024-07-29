@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import cv2
-from PIL import Image
 from pathlib import Path
 
 
@@ -21,6 +20,7 @@ class Annotator:
             sam_checkpoint="sam_vit_b_01ec64.pth", model_type="vit_b", device=device
         )
         self.annotation: AnnotationObject = None
+        self.next_annotation: AnnotationObject = None
         self.mask_idx = 0
 
         self.manual_annotation_enabled = False
@@ -80,8 +80,44 @@ class Annotator:
         self.mask_idx = new_idx
         self.annotation.set_current_mask(self.mask_idx)
 
-    def create_new_annotation(self, filepath: Path):
-        self.annotation = AnnotationObject(filepath=filepath)
+    def create_new_annotation(
+        self, filepath: Path, next_filepath: Path = None
+    ) -> tuple[bool]:
+        embed_current = False
+        embed_next = False
+        if self.next_annotation is None:
+            self.annotation = AnnotationObject(filepath=filepath)
+            embed_current = True
+        else:
+            # TODO: check for bugs of shallow copies
+            self.annotation = self.next_annotation
+
+        if next_filepath is None:
+            self.next_annotation = None
+        else:
+            self.next_annotation = AnnotationObject(filepath=next_filepath)
+            embed_next = True
+
+        return embed_current, embed_next
+
+    def get_annotation_img_name(self):
+        if self.annotation:
+            return self.annotation.img_name
+        else:
+            return None
+
+    def get_next_annotation_img_name(self):
+        if self.next_annotation:
+            return self.next_annotation.img_name
+        else:
+            return None
+
+    def update_sam_features_to_current_annotation(self):
+        self.sam.predictor.set_features(
+            features=self.annotation.features,
+            original_size=self.annotation.original_size,
+            input_size=self.annotation.input_size,
+        )
 
     def predict_with_sam(self):
         if self.annotation is None:
