@@ -9,8 +9,8 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QRunnable, QThreadPool, pyqtSignal, QThreadPool, QObject
 from natsort import natsorted
-from segment_anything import SamPredictor
 
+from src.run_sam import CustomSamPredictor
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
 
@@ -25,6 +25,7 @@ class App:
         self.ui = UserInterface()
         self.annotator = Annotator()
         self.threadpool = QThreadPool()
+        self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
 
         self.ui.test_button.clicked.connect(self.segment_anything)
@@ -51,12 +52,16 @@ class App:
     def load_img(self, _) -> None:
         print("loading new image")
         img_fpath = self.ui.open_img_load_file_dialog()
+        if img_fpath == "":
+            return
         self.img_fnames.append(img_fpath)
         self.select_next_img()
 
     def load_img_folder(self, _) -> None:
         print("loading folder")
         img_dir = self.ui.open_load_folder_dialog()
+        if img_dir == "":
+            return
         img_fnames = [
             join(img_dir, f) for f in listdir(img_dir) if isfile(join(img_dir, f))
         ]
@@ -65,51 +70,114 @@ class App:
         self.select_next_img()
 
     def select_next_img(self):
-        if self.img_fnames:
-            next_img_name = Path(self.img_fnames.pop())
-            self.annotator.create_new_annotation(next_img_name)
-            self.update_ui_imgs()
-            self.embed_img(basename(next_img_name))
-        else:
+        if not self.img_fnames:
             print("No image left in the queue")
+            return
+        if self.threadpool.activeThreadCount() > 0:
+            print(
+                "Wait for embedding calculation to be finished before skipping to next img"
+            )
+            return
+        img_name = Path(self.img_fnames.pop())
+        if self.img_fnames:
+            next_img_name = Path(self.img_fnames[-1])
+        else:
+            next_img_name = None
+
+        embed_current, embed_next = self.annotator.create_new_annotation(
+            filepath=img_name, next_filepath=next_img_name
+        )
+        if embed_current:
+            self.embed_img(basename(img_name))
+        else:
+            self.annotator.update_sam_features_to_current_annotation()
+            self.segment_anything()
+        if embed_next:
+            self.embed_img(basename(next_img_name))
 
     def embed_img(self, img_name: str):
+        current_ann_name = self.annotator.get_annotation_img_name()
+        next_ann_name = self.annotator.get_next_annotation_img_name()
+
+        img_to_embed = None
+
+        if current_ann_name:
+            if current_ann_name == img_name:
+                img_to_embed = self.annotator.annotation.img
+                delay = 0.0
+
+        if next_ann_name:
+            if next_ann_name == img_name:
+                img_to_embed = self.annotator.next_annotation.img
+                delay = 1.5
+
+        if img_to_embed is None:
+            print(f"Could not find img name ({img_name}) in annotations")
+            print(f"Found {current_ann_name} and {next_ann_name}")
+            raise ValueError("Embedding could not be matched to images")
+
         worker = PyQtWorker(
             sam_predictor=self.annotator.sam.predictor,
-            img=self.annotator.annotation.img,
+            img=img_to_embed,
             img_name=img_name,
+            delay=delay,
         )
-        worker.signals.result.connect(self.receive_predictor)
+        worker.signals.result.connect(self.receive_embedding_from_thread)
         worker.signals.finished.connect(self.embedding_done)
         self.threadpool.start(worker)
 
         embedding_threads = self.threadpool.activeThreadCount()
-        if embedding_threads > 1:
-            self.ui.performing_embedding_label.setText(
-                f"Embedding {embedding_threads} images"
-            )
-        else:
-            self.ui.performing_embedding_label.setText(f"Embed img ... - {img_name}")
+        self.ui.performing_embedding_label.setText(
+            f"Embedding {embedding_threads} images"
+        )
 
     def embedding_done(self, img_name: str):
-        # TODO: if multiple images should be embedded in the background
-        # filter and map them by the image name here
-        self.annotator.sam.is_img_embedded = True
-
+        print(f"Embedding of {img_name} done")
         embedding_threads = self.threadpool.activeThreadCount()
         if embedding_threads > 0:
             self.ui.performing_embedding_label.setText(
                 f"Embedding {embedding_threads} images"
             )
         else:
-            self.ui.performing_embedding_label.setText(f"Embedding done! - {img_name}")
+            self.ui.performing_embedding_label.setText(f"Embeddings done!")
 
-    def receive_predictor(self, predictor: SamPredictor):
-        self.annotator.sam.predictor = predictor
+    def receive_embedding_from_thread(self, result: tuple):
+        features, original_size, input_size, img_name = result
+        current_ann_name = self.annotator.get_annotation_img_name()
+        if current_ann_name:
+            if current_ann_name == img_name:
+                self.annotator.annotation.set_sam_parameters(
+                    features=features,
+                    original_size=original_size,
+                    input_size=input_size,
+                )
+
+                self.annotator.update_sam_features_to_current_annotation()
+                self.segment_anything()
+
+                return
+
+        next_ann_name = self.annotator.get_next_annotation_img_name()
+        if next_ann_name:
+            if next_ann_name == img_name:
+                self.annotator.next_annotation.set_sam_parameters(
+                    features=features,
+                    original_size=original_size,
+                    input_size=input_size,
+                )
+                return
+        print(f"Warning could not find annotation object with fitting name {img_name}")
 
     def segment_anything(self):
+        now = time.time()
         self.annotator.predict_with_sam()
+        duration = time.time() - now
+        print(f"SAM inference {duration}")
+
+        now = time.time()
         self.update_ui_imgs()
+        duration = time.time() - now
+        print(f"update ui {duration}")
 
     def update_ui_imgs(self):
         mviss = self.annotator.annotation.mask_visualizations
@@ -172,24 +240,39 @@ class App:
 class PyQtWorker(QRunnable):
     finished: pyqtSignal = pyqtSignal(str)
     error: pyqtSignal = pyqtSignal(tuple)
-    result: pyqtSignal = pyqtSignal(SamPredictor)
+    result: pyqtSignal = pyqtSignal(tuple)
 
-    def __init__(self, sam_predictor: SamPredictor, img: np.ndarray, img_name: str):
+    def __init__(
+        self,
+        sam_predictor: CustomSamPredictor,
+        img: np.ndarray,
+        img_name: str,
+        delay: float = 0.0,
+    ):
         super(PyQtWorker, self).__init__()
         self.signals = WorkerSignals()
         self.sam_predictor = sam_predictor
         self.img = img
         self.img_name = img_name
+        self.delay = delay
 
     def run(self):
         try:
-            self.sam_predictor.set_image(self.img)
+            now = time.time()
+            features, original_size, input_size = (
+                self.sam_predictor.get_img_ebedding_without_overiding_current_embedding(
+                    self.img
+                )
+            )
+            duration = time.time() - now
+            print(f"embedding took {duration}")
+            result = (features, original_size, input_size, self.img_name)
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, value, traceback.format_exc()))
         else:
-            self.signals.result.emit(self.sam_predictor)
+            self.signals.result.emit(result)
         finally:
             self.signals.finished.emit(self.img_name)
 
@@ -197,4 +280,4 @@ class PyQtWorker(QRunnable):
 class WorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(str)
     error: pyqtSignal = pyqtSignal(tuple)
-    result: pyqtSignal = pyqtSignal(object)
+    result: pyqtSignal = pyqtSignal(tuple)

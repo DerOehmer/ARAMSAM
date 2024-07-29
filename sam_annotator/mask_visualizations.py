@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from scipy.spatial import KDTree
 from dataclasses import dataclass
+from os.path import basename
 from pathlib import Path
 from typing import Tuple
 
@@ -31,13 +32,17 @@ class AnnotationObject:
     def __init__(self, filepath: Path) -> None:
         self.filepath: str = str(filepath)
         self.img: np.ndarray = cv2.imread(self.filepath)
-
+        self.img_name = basename(filepath)
         if self.img.shape[2] == 4:
             print("Loaded image with 4 channels - ignoring last")
             self.img = self.img[:, :, :3]
         self.masks: list[MaskData] = []
         self.good_masks: list[MaskData] = []
         self.mask_decisions: list[bool] = []
+
+        self.features = None
+        self.original_size = None
+        self.input_size = None
 
         self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
             img=self.img
@@ -56,6 +61,14 @@ class AnnotationObject:
     def add_masks(self, masks):
         self.masks.extend(masks)
         self.mask_decisions.extend([False for _ in range(len(masks))])
+
+    def set_sam_parameters(self, features, original_size, input_size):
+        self.features = features
+        self.original_size = original_size
+        self.input_size = input_size
+
+    def get_sam_parameters(self):
+        return self.features, self.original_size, self.input_size
 
 
 class MaskVisualization:

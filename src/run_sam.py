@@ -1,10 +1,11 @@
-from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 import torch
 import cv2
 import numpy as np
 import pandas as pd
 
-# import threading
+from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
+from segment_anything.modeling import Sam
+
 from sam_annotator.mask_visualizations import MaskVisualization, MaskData
 
 
@@ -16,7 +17,6 @@ class SamInference:
         self.model_type = model_type
 
         self.device = device
-        self.is_img_embedded = False
 
         checkpoint = torch.load(sam_checkpoint, map_location=torch.device(device))
 
@@ -29,7 +29,7 @@ class SamInference:
         # Move the model to the appropriate device
         self.sam.to(device=self.device)
 
-        self.predictor = SamPredictor(self.sam)
+        self.predictor = CustomSamPredictor(self.sam)
         self.img = None
 
     def amg(self, img, msize_thresh=10000, pt_grid=None):
@@ -180,7 +180,7 @@ class SamInference:
         mask_input: torch.Tensor = None,
     ):
 
-        if not self.is_img_embedded:
+        if not self.predictor.is_image_set:
             raise ValueError("Image embedding has not been initialized yet")
         masks, scores, logits = self.predictor.predict_torch(
             point_coords=pts,
@@ -198,7 +198,7 @@ class SamInference:
         bboxes: np.ndarray = None,
         mask_input: np.ndarray = None,
     ):
-        if not self.is_img_embedded:
+        if not self.predictor.is_image_set:
             raise ValueError("Image embedding has not been initialized yet")
         masks, scores, logits = self.predictor.predict(
             point_coords=pts,
@@ -255,3 +255,60 @@ class SamInference:
 
     def reset_img(self):
         self.predictor.reset_image()
+
+
+class CustomSamPredictor(SamPredictor):
+    def __init__(
+        self,
+        sam_model: Sam,
+    ) -> None:
+        super().__init__(sam_model=sam_model)
+
+    def get_img_ebedding_without_overiding_current_embedding(
+        self,
+        image: np.ndarray,
+        image_format: str = "RGB",
+    ):
+        assert image_format in [
+            "RGB",
+            "BGR",
+        ], f"image_format must be in ['RGB', 'BGR'], is {image_format}."
+        if image_format != self.model.image_format:
+            image = image[..., ::-1]
+
+        # Transform the image to the form expected by the model
+        input_image = self.transform.apply_image(image)
+        input_image_torch = torch.as_tensor(input_image, device=self.device)
+        input_image_torch = input_image_torch.permute(2, 0, 1).contiguous()[
+            None, :, :, :
+        ]
+
+        features, original_size, input_size = self.to_torch_img(
+            input_image_torch, image.shape[:2]
+        )
+        return features, original_size, input_size
+
+    def to_torch_img(
+        self,
+        transformed_image: torch.Tensor,
+        original_image_size: tuple[int, ...],
+    ):
+        assert (
+            len(transformed_image.shape) == 4
+            and transformed_image.shape[1] == 3
+            and max(*transformed_image.shape[2:]) == self.model.image_encoder.img_size
+        ), f"set_torch_image input must be BCHW with long side {self.model.image_encoder.img_size}."
+
+        original_size = original_image_size
+        input_size = tuple(transformed_image.shape[-2:])
+        input_image = self.model.preprocess(transformed_image)
+        features = self.model.image_encoder(input_image)
+
+        return features, original_size, input_size
+
+    def set_features(self, features, original_size, input_size):
+        self.reset_image()
+        self.original_size = original_size
+        self.input_size = input_size
+        self.features = features
+        self.is_image_set = True
