@@ -107,8 +107,11 @@ class UserInterface(QMainWindow):
         )
         self.manual_annotation_button.move(420, 20)
 
+        self.draw_poly_button = QPushButton(text="draw polygon", parent=self)
+        self.draw_poly_button.move(520, 20)
+
         self.next_img_button = QPushButton(text="next image", parent=self)
-        self.next_img_button.move(520, 20)
+        self.next_img_button.move(620, 20)
 
         self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
         self.performing_embedding_label.move(650, 20)

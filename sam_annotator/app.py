@@ -33,6 +33,7 @@ class App:
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
         self.ui.back_button.clicked.connect(self.last_mask)
         self.ui.manual_annotation_button.clicked.connect(self.manual_annotation)
+        self.ui.draw_poly_button.clicked.connect(self.draw_polygon)
         self.ui.next_img_button.clicked.connect(self.select_next_img)
 
         self.ui.mouse_position.connect(self.mouse_move_on_img)
@@ -212,6 +213,9 @@ class App:
     def manual_annotation(self):
         self.annotator.toggle_manual_annotation()
 
+    def draw_polygon(self):
+        self.annotator.toggle_polygon_drawing()
+
     def mouse_move_on_img(self, point: tuple[int]):
         current_time = time.time_ns()
         delta = current_time - self.last_sam_preview_time_stamp
@@ -222,7 +226,10 @@ class App:
             self.update_ui_imgs()
 
     def add_sam_preview_annotation_point(self, label: int):
-        if not self.annotator.manual_annotation_enabled:
+        if (
+            not self.annotator.manual_annotation_enabled
+            and not self.annotator.polygon_drawing_enabled
+        ):
             return
         if label == -1:
             if self.annotator.manual_mask_points:
@@ -232,7 +239,11 @@ class App:
             self.annotator.manual_mask_points.append(self.mouse_pos)
             self.annotator.manual_mask_point_labels.append(label)
 
-        self.annotator.predict_sam_manually(self.mouse_pos)
+        if self.annotator.manual_annotation_enabled:
+            self.annotator.predict_sam_manually(self.mouse_pos)
+        elif self.annotator.polygon_drawing_enabled:
+            self.annotator.mask_from_polygon()
+
         self.update_ui_imgs()
 
 
