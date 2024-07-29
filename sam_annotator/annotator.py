@@ -24,17 +24,29 @@ class Annotator:
         self.mask_idx = 0
 
         self.manual_annotation_enabled = False
+        self.polygon_drawing_enabled = False
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
 
     def toggle_manual_annotation(self):
-        self.annotation.preview_mask = None
-        self.manual_mask_points = []
-        self.manual_mask_point_labels = []
+        self.reset_manual_annotation()
         if not self.manual_annotation_enabled and not self.sam.is_img_embedded:
             print("Embed image before manually annotation")
             return
         self.manual_annotation_enabled = not self.manual_annotation_enabled
+        if self.manual_annotation_enabled:
+            self.polygon_drawing_enabled = False
+
+    def toggle_polygon_drawing(self):
+        self.reset_manual_annotation()
+        self.polygon_drawing_enabled = not self.polygon_drawing_enabled
+        if self.polygon_drawing_enabled:
+            self.manual_annotation_enabled = False
+
+    def reset_manual_annotation(self):
+        self.annotation.preview_mask = None
+        self.manual_mask_points = []
+        self.manual_mask_point_labels = []
 
     def predict_sam_manually(self, position: tuple[int]):
         if self.manual_annotation_enabled:
@@ -48,6 +60,18 @@ class Annotator:
                 )
                 * 255
             )
+            self.update_collections(self.annotation)
+
+    def mask_from_polygon(self):
+        if self.polygon_drawing_enabled:
+            self.annotation.preview_mask = np.zeros(
+                self.annotation.img.shape[:2], dtype=np.uint8
+            )
+            if len(self.manual_mask_points) > 2:
+                polypts = np.array(self.manual_mask_points, np.int32).reshape(
+                    (-1, 1, 2)
+                )
+                cv2.fillPoly(self.annotation.preview_mask, [polypts], 255)
             self.update_collections(self.annotation)
 
     def update_mask_idx(self, new_idx: int = 0):
@@ -80,6 +104,12 @@ class Annotator:
             mask_to_store = MaskData(mask=annot.preview_mask, origin="sam_interactive")
             annot.masks.insert(self.mask_idx, mask_to_store)
             annot.mask_decisions.insert(self.mask_idx, True)
+            self.reset_manual_annotation()
+        elif self.polygon_drawing_enabled:
+            mask_to_store = MaskData(mask=annot.preview_mask, origin="polygon")
+            annot.masks.insert(self.mask_idx, mask_to_store)
+            annot.mask_decisions.insert(self.mask_idx, True)
+            self.reset_manual_annotation()
         else:
             mask_to_store = annot.masks[self.mask_idx]
             annot.mask_decisions[self.mask_idx] = True
@@ -171,6 +201,10 @@ class Annotator:
             img_sam_preview = mask_vis.get_sam_preview(
                 self.manual_mask_points, self.manual_mask_point_labels
             )
+            mvis_data.img_sam_preview = img_sam_preview
+
+        elif self.polygon_drawing_enabled:
+            img_sam_preview = mask_vis.get_polygon_preview(self.manual_mask_points)
             mvis_data.img_sam_preview = img_sam_preview
 
         mvis_data.maskinrgb = maskinrgb
