@@ -3,7 +3,8 @@ import torch
 import cv2
 import numpy as np
 import pandas as pd
-import threading
+
+# import threading
 from sam_annotator.mask_visualizations import MaskVisualization, MaskData
 
 
@@ -15,8 +16,6 @@ class SamInference:
         self.model_type = model_type
 
         self.device = device
-        self.lock = threading.Lock()
-        self.img_embed_thread = None
         self.is_img_embedded = False
 
         checkpoint = torch.load(sam_checkpoint, map_location=torch.device(device))
@@ -170,15 +169,8 @@ class SamInference:
         return pt_tensor, label_tensor
 
     def image_embedding(self, img):
-        # img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         self.imgbgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         self.img = img
-        with self.lock:
-            self.is_img_embedded = True
-            self.img_embed_thread = threading.Thread(
-                target=self.predictor.set_image, args=(self.img,)
-            )
-            self.img_embed_thread.start()
 
     def predict_batch(
         self,
@@ -190,18 +182,13 @@ class SamInference:
 
         if not self.is_img_embedded:
             raise ValueError("Image embedding has not been initialized yet")
-        with self.lock:
-            if self.img_embed_thread.is_alive():
-                print("Waiting for image embedding to finish...")
-            self.img_embed_thread.join()
-            print("Image embedding done!")
-            masks, scores, logits = self.predictor.predict_torch(
-                point_coords=pts,
-                point_labels=pts_labels,
-                boxes=bboxes,
-                mask_input=mask_input,
-                multimask_output=False,
-            )
+        masks, scores, logits = self.predictor.predict_torch(
+            point_coords=pts,
+            point_labels=pts_labels,
+            boxes=bboxes,
+            mask_input=mask_input,
+            multimask_output=False,
+        )
         return masks
 
     def predict(
@@ -213,18 +200,13 @@ class SamInference:
     ):
         if not self.is_img_embedded:
             raise ValueError("Image embedding has not been initialized yet")
-        with self.lock:
-            if self.img_embed_thread.is_alive():
-                print("Waiting for image embedding to finish...")
-            self.img_embed_thread.join()
-            print("Image embedding done!")
-            masks, scores, logits = self.predictor.predict(
-                point_coords=pts,
-                point_labels=pts_labels,
-                box=bboxes,
-                mask_input=mask_input,
-                multimask_output=False,
-            )
+        masks, scores, logits = self.predictor.predict(
+            point_coords=pts,
+            point_labels=pts_labels,
+            box=bboxes,
+            mask_input=mask_input,
+            multimask_output=False,
+        )
         return masks[0].astype(np.uint8)
 
     def select_masks(self, masks, alpha=0.1):
