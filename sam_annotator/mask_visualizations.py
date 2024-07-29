@@ -85,7 +85,7 @@ class MaskVisualization:
         self.mask_collection: np.ndarray = None
         self.masked_img_cnt: np.ndarray = None
         self.mask_collection_cnt: np.ndarray = None
-        self.img_sam_preview: np.ndarray = None
+        self.img_man_preview: np.ndarray = None
 
     @property
     def colormap(self) -> np.ndarray:
@@ -236,19 +236,38 @@ class MaskVisualization:
                 cx, cy = (xmin + xmax) // 2, (ymin + ymax) // 2
                 m.center = (cx, cy)
 
+    def _weighted_mask(self, alpha=1):
+        if self.preview_mask is None:
+            return self.img
+        else:
+            red_img = np.zeros(self.img.shape, dtype="uint8")
+            red_img[:, :] = (0, 255, 0)
+            red_mask = cv2.bitwise_and(red_img, red_img, mask=self.preview_mask)
+            return cv2.addWeighted(red_mask, alpha, self.img, 1, 0)
+
     def get_sam_preview(
         self, manual_mask_points: list[Tuple[int]], manual_mask_point_labels: list[int]
     ) -> np.ndarray:
-        red_img = np.zeros(self.img.shape, dtype="uint8")
-        red_img[:, :] = (0, 255, 0)
-        red_mask = cv2.bitwise_and(red_img, red_img, mask=self.preview_mask)
-        self.img_sam_preview = cv2.addWeighted(red_mask, 1, self.img, 1, 0)
+
+        self.img_man_preview = self._weighted_mask(alpha=1)
         for p, l in zip(manual_mask_points, manual_mask_point_labels):
-            self.img_sam_preview = cv2.circle(
-                self.img_sam_preview,
+            self.img_man_preview = cv2.circle(
+                self.img_man_preview,
                 center=p,
                 radius=2,
                 color=(255 * l, 255 * l, 255),
                 thickness=-1,
             )
-        return self.img_sam_preview
+        return self.img_man_preview
+
+    def get_polygon_preview(self, manual_mask_points: list[Tuple[int]]) -> np.ndarray:
+        self.img_man_preview = self._weighted_mask(alpha=0.1)
+        for p in manual_mask_points:
+            self.img_man_preview = cv2.circle(
+                self.img_man_preview,
+                center=p,
+                radius=1,
+                color=(255, 255, 255),
+                thickness=-1,
+            )
+        return self.img_man_preview
