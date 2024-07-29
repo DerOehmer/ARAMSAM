@@ -109,8 +109,11 @@ class UserInterface(QMainWindow):
         )
         self.manual_annotation_button.move(420, 20)
 
+        self.draw_poly_button = QPushButton(text="draw polygon", parent=self)
+        self.draw_poly_button.move(520, 20)
+
         self.next_img_button = QPushButton(text="next image", parent=self)
-        self.next_img_button.move(520, 20)
+        self.next_img_button.move(620, 20)
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int((self.width() - self.offset) / 2)
