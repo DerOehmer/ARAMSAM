@@ -114,8 +114,8 @@ class UserInterface(QMainWindow):
         self.next_img_button.move(620, 20)
 
         self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
-        self.performing_embedding_label.move(650, 20)
-        self.performing_embedding_label.setMinimumWidth(self.width() - 650)
+        self.performing_embedding_label.move(750, 20)
+        self.performing_embedding_label.setMinimumWidth(self.width() - 750)
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int((self.width() - self.offset) / 2)
