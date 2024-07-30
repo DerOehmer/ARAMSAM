@@ -30,7 +30,7 @@ class Annotator:
 
     def toggle_manual_annotation(self):
         self.reset_manual_annotation()
-        if not self.manual_annotation_enabled and not self.sam.is_img_embedded:
+        if not self.manual_annotation_enabled and not self.sam.predictor.is_image_set:
             print("Embed image before manually annotation")
             return
         self.manual_annotation_enabled = not self.manual_annotation_enabled
