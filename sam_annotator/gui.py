@@ -15,7 +15,6 @@ from PyQt6.QtGui import (
     QBrush,
     QColor,
     QCursor,
-    QWindow,
 )
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -27,7 +26,6 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
     QFrame,
-    QGridLayout,
 )
 
 
@@ -114,6 +112,10 @@ class UserInterface(QMainWindow):
 
         self.next_img_button = QPushButton(text="next image", parent=self)
         self.next_img_button.move(620, 20)
+
+        self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
+        self.performing_embedding_label.move(750, 20)
+        self.performing_embedding_label.setMinimumWidth(self.width() - 750)
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int((self.width() - self.offset) / 2)
