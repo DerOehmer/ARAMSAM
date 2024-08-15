@@ -84,7 +84,7 @@ class Annotator:
         self.annotation.set_current_mask(self.mask_idx)
 
     def create_new_annotation(
-        self, filepath: Path, next_filepath: Path = None
+        self, filepath: Path, next_filepath: Path | None = None
     ) -> tuple[bool]:
         embed_current = False
         embed_next = False
@@ -210,10 +210,10 @@ class Annotator:
 
         if self.mask_idx > 0:
 
-            if annot.mask_decisions[-1]:
+            if annot.mask_decisions[self.mask_idx-1]:
                 annot.good_masks.pop()
 
-            annot.mask_decisions[self.mask_idx] = False
+            annot.mask_decisions[self.mask_idx-1] = False
             self.mask_idx -= 1
             self.update_collections(annot)
 
@@ -244,6 +244,7 @@ class Annotator:
             img_sam_preview = mask_vis.get_polygon_preview(self.manual_mask_points)
             mvis_data.img_sam_preview = img_sam_preview
 
+        self.annotation.set_current_mask(self.mask_idx)
         mvis_data.maskinrgb = maskinrgb
         mvis_data.masked_img = masked_img
         mvis_data.mask_collection = mask_collection
