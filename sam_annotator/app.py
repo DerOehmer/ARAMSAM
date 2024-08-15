@@ -206,7 +206,8 @@ class App:
         self.update_ui_imgs()
 
     def last_mask(self):
-        done = self.annotator.update_mask_idx(self.annotator.mask_idx - 1)
+        #done = self.annotator.update_mask_idx(self.annotator.mask_idx - 1)
+        self.annotator.step_back()
         # TODO: error handling if mask idx is out of bounds
         self.update_ui_imgs()
 
