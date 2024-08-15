@@ -17,7 +17,7 @@ class MaskData:
 
 
 @dataclass
-class MaskVisualizationData:  # TODO add img and mask, mask collection white machen, an namen kommen
+class MaskVisualizationData:  
     img: np.ndarray = None
     img_sam_preview: np.ndarray = None
     mask: np.ndarray = None
