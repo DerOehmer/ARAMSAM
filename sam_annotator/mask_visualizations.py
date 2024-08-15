@@ -151,6 +151,8 @@ class MaskVisualization:
             thickness=2,
             lineType=cv2.LINE_8,
         )
+        if self.preview_mask is not None:
+            self.masked_img_cnt[self.preview_mask==255] = 255, 150, 100
         return self.masked_img_cnt
 
     def get_mask_collection(self) -> np.ndarray:
@@ -180,6 +182,9 @@ class MaskVisualization:
             thickness=2,
             lineType=cv2.LINE_8,
         )
+        if self.preview_mask is not None:
+            self.mask_collection_cnt[self.preview_mask==255] = 255, 150, 100 
+            
 
         return self.mask_collection_cnt
 
@@ -243,7 +248,10 @@ class MaskVisualization:
     def _set_mask_centers(self):
         for m in self.mask_objs:
             if m.center is None:
-                yindcs, xindcs = np.where(m.mask == 255)
+                try:
+                    yindcs, xindcs = np.where(m.mask == 255)
+                except ValueError:
+                    print("error")
                 xmin, xmax = np.amin(xindcs), np.amax(xindcs)
                 ymin, ymax = np.amin(yindcs), np.amax(yindcs)
                 cx, cy = (xmin + xmax) // 2, (ymin + ymax) // 2

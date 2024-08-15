@@ -138,7 +138,7 @@ class Annotator:
 
     def good_mask(self):
         annot = self.annotation
-
+        #TODO: ensure that correct mask is stored when switching modes
         if self.manual_annotation_enabled:
             mask_to_store = MaskData(mask=annot.preview_mask, origin="sam_interactive")
             annot.masks.insert(self.mask_idx, mask_to_store)
@@ -210,10 +210,11 @@ class Annotator:
 
         if self.mask_idx > 0:
 
-            if annot.mask_decisions[self.mask_idx-1]:
+            if annot.mask_decisions[self.mask_idx-1] and len(annot.good_masks) > 0:
                 annot.good_masks.pop()
 
             annot.mask_decisions[self.mask_idx-1] = False
+            
             self.mask_idx -= 1
             self.update_collections(annot)
 
