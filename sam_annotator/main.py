@@ -6,5 +6,6 @@ def main():
     print("app")
     app.run()
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()
