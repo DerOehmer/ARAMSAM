@@ -34,9 +34,12 @@ class UserInterface(QMainWindow):
     load_img_folder_signal: pyqtSignal = pyqtSignal(int)
     mouse_position: pyqtSignal = pyqtSignal(tuple)
     preview_annotation_point_signal: pyqtSignal = pyqtSignal(int)
+    layout_options_signal: pyqtSignal = pyqtSignal(list)
 
-    def __init__(self) -> None:
+    def __init__(self, ui_options: dict = None) -> None:
         super().__init__(parent=None)
+
+        self.ui_options = ui_options
 
         monitors = get_monitors()
         width = 1920
@@ -129,9 +132,17 @@ class UserInterface(QMainWindow):
         self.load_img_folder_signal.emit(1)
 
     def open_layout_settings_box(self):
-        options = ["image", "mask", "other mask"]
-        self.options_window = OptionsWindow(options=options)
+        self.options_window = OptionsWindow(
+            layout_options=self.ui_options["layout_settings_options"]
+        )
         self.options_window.show()
+        self.options_window.layout_settings_options_signal.connect(
+            self._recv_layout_options_changes
+        )
+
+    def _recv_layout_options_changes(self, layout_options: list[str]):
+        self.ui_options["layout_settings_options"]["current"] = layout_options
+        self.layout_options_signal.emit(layout_options)
 
     def handleCoords(self, point: QPoint):
         if not point.isNull():
@@ -381,29 +392,37 @@ class InteractiveGraphicsView(QGraphicsView):
 
 
 class OptionsWindow(QMainWindow):
-    def __init__(self, options: list[str]) -> None:
+    layout_settings_options_signal: pyqtSignal = pyqtSignal(list)
+
+    def __init__(self, layout_options: list[str]) -> None:
         super().__init__(parent=None)
-        box_height = 50
-        box_width = 100
+        box_height = 40
+        box_width = 150
 
         self.setWindowTitle("Options")
         self.resize(2 * box_width, 3 * box_height + 10)
 
-        self.comboboxes = []
-
+        self.comboboxes: list[QtWidgets.QComboBox] = []
         for i in range(2):
             for j in range(2):
                 combobox = QtWidgets.QComboBox(self)
                 combobox.setGeometry(
                     i * box_width, j * box_height, box_width, box_height
                 )
-                [combobox.addItem(option) for option in options]
+                [combobox.addItem(option) for option in layout_options["options"]]
+                combobox.setCurrentText(layout_options["current"][i * 2 + j])
                 self.comboboxes.append(combobox)
         self.ok_button = QPushButton(parent=self, text="OK")
-        self.ok_button.setGeometry(0, box_height * 2 + 10, box_width, box_height)
-
-        self.ok_button.setIcon(QtGui.QIcon.fromTheme("edit-undo"))
-        self.abort_button = QPushButton(parent=self, text="Abort")
-        self.abort_button.setGeometry(
-            box_width, box_height * 2 + 10, box_width, box_height
+        self.ok_button.setGeometry(
+            int(box_width / 2), box_height * 2 + 10, box_width, box_height
         )
+        self.ok_button.setIcon(QtGui.QIcon.fromTheme("edit-undo"))
+        self.ok_button.clicked.connect(self._accept)
+
+    def _accept(self):
+        combobox = QtWidgets.QComboBox(self)
+        options = []
+        for combobox in self.comboboxes:
+            options.append(combobox.currentText())
+
+        self.layout_settings_options_signal.emit(options)

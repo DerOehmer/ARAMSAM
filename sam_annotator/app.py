@@ -21,10 +21,10 @@ class App:
     Contains the UI with main thread and subprocesses for the annotation
     """
 
-    def __init__(self) -> None:
+    def __init__(self, ui_options: dict = None) -> None:
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
-        self.ui = UserInterface()
+        self.ui = UserInterface(ui_options=ui_options)
         self.annotator = Annotator()
         self.threadpool = QThreadPool()
         self.threadpool.setMaxThreadCount(1)
@@ -44,6 +44,10 @@ class App:
         self.ui.preview_annotation_point_signal.connect(
             self.add_sam_preview_annotation_point
         )
+
+        self.ui.layout_options_signal.connect(self._ui_config_changed)
+
+        self.fields = ui_options["layout_settings_options"]["default"]
 
         self.manual_sam_preview_updates_per_sec = 10
         self.last_sam_preview_time_stamp = time.time_ns()
@@ -182,14 +186,16 @@ class App:
         duration = time.time() - now
         print(f"update ui {duration}")
 
+    def _ui_config_changed(self, fields: list[str]):
+        assert (
+            len(fields) == 4
+        ), f"Too many fields selected for visualization ({len(fields)}) expected 4"
+        self.fields = fields
+        self.update_ui_imgs()
+
     def update_ui_imgs(self):
         mviss = self.annotator.annotation.mask_visualizations
-        fields = ["img", "mask", "img_sam_preview", "mask_collection_cnt"]
-        if len(fields) > 4:
-            print(
-                f"Too many fields selected for visualization ({len(fields)}) expected 4"
-            )
-        for idx, field in enumerate(fields):
+        for idx, field in enumerate(self.fields):
             if getattr(mviss, field) is not None:
                 self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
 
