@@ -29,6 +29,7 @@ class App:
         self.threadpool = QThreadPool()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
+        self.output_dir = None
 
         self.ui.test_button.clicked.connect(self.segment_anything)
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
@@ -41,6 +42,8 @@ class App:
         self.ui.mouse_position.connect(self.mouse_move_on_img)
         self.ui.load_img_signal.connect(self.load_img)
         self.ui.load_img_folder_signal.connect(self.load_img_folder)
+        self.ui.output_dir_signal.connect(self.change_output_dir)
+        self.ui.save_signal.connect(self.save_annotation)
         self.ui.preview_annotation_point_signal.connect(
             self.add_sam_preview_annotation_point
         )
@@ -55,6 +58,24 @@ class App:
     def run(self) -> None:
         self.ui.run()
         sys.exit(self.application.exec())
+
+    def save_annotation(self, _):
+        if self.output_dir is None:
+            print("Select output directory before saving")
+            self.ui._open_ouput_dir_selection()
+            self.ui.save()
+            return
+        if not Path(self.output_dir).exists():
+            print(f"Path {self.output_dir} does not exist")
+            self.ui._open_ouput_dir_selection()
+            self.ui.save()
+            return
+
+        with open(join(self.output_dir, "test_save.txt"), mode="w") as f:
+            f.write("test")
+
+    def change_output_dir(self, out_dir: str):
+        self.output_dir = out_dir
 
     def load_img(self, _) -> None:
         print("loading new image")

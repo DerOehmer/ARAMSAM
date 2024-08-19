@@ -35,6 +35,8 @@ class UserInterface(QMainWindow):
     mouse_position: pyqtSignal = pyqtSignal(tuple)
     preview_annotation_point_signal: pyqtSignal = pyqtSignal(int)
     layout_options_signal: pyqtSignal = pyqtSignal(list)
+    output_dir_signal: pyqtSignal = pyqtSignal(str)
+    save_signal: pyqtSignal = pyqtSignal(int)
 
     def __init__(self, ui_options: dict = None) -> None:
         super().__init__(parent=None)
@@ -55,10 +57,15 @@ class UserInterface(QMainWindow):
         self.menu = self.menuBar().addMenu("Menu")
         self.menu_open = self.menuBar().addMenu("Open")
         self.menu_settings = self.menuBar().addMenu("Settings")
-        self.menu.addAction("Exit", self.close)
+        self.menu.addAction("Save", self.save)
+        self.menu.addAction("Save As", self.save_as)
+        self.menu.addAction("Exit", self.exit)
         self.menu_open.addAction("Load Image", self.load_img)
         self.menu_open.addAction("Load Folder", self.load_img_folder)
         self.menu_settings.addAction("Change Layout", self.open_layout_settings_box)
+        self.menu_settings.addAction(
+            "Set Ouput Directory", self._open_ouput_dir_selection
+        )
         self.zoom_level = 0
         self.zoom_factor = 1.25
 
@@ -125,11 +132,36 @@ class UserInterface(QMainWindow):
         vis_height = int((self.height() - self.offset) / 2)
         return vis_width, vis_height
 
+    def exit(self):
+        ret = QMessageBox.question(self, "Exit", "Are you sure you want to exit?")
+        if ret == QMessageBox.StandardButton.Yes:
+            self.close()
+
+    def save(self):
+        self.save_signal.emit(1)
+
+    def save_as(self):
+        user_selected_dir = self._open_ouput_dir_selection()
+        if user_selected_dir:
+            self.save()
+
     def load_img(self):
         self.load_img_signal.emit(1)
 
     def load_img_folder(self):
         self.load_img_folder_signal.emit(1)
+
+    def _open_ouput_dir_selection(self) -> bool:
+        filepath = QFileDialog.getExistingDirectory(
+            parent=self,
+            caption="Select Output Folder",
+            directory="${HOME}/output",
+        )
+        if filepath is not None:
+            self.output_dir_signal.emit(filepath)
+            return True
+        else:
+            return False
 
     def open_layout_settings_box(self):
         self.options_window = OptionsWindow(
