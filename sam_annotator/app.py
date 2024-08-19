@@ -25,7 +25,9 @@ class App:
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
         self.ui = UserInterface(ui_options=ui_options)
-        self.annotator = Annotator()
+        self.annotator = Annotator(
+            sam_ckpt="sam_vit_b_01ec64.pth", sam_model_type="vit_b"
+        )
         self.threadpool = QThreadPool()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
@@ -43,6 +45,7 @@ class App:
         self.ui.load_img_signal.connect(self.load_img)
         self.ui.load_img_folder_signal.connect(self.load_img_folder)
         self.ui.output_dir_signal.connect(self.change_output_dir)
+        self.ui.sam_path_signal.connect(self.changed_sam_model)
         self.ui.save_signal.connect(self.save_annotation)
         self.ui.preview_annotation_point_signal.connect(
             self.add_sam_preview_annotation_point
@@ -76,6 +79,27 @@ class App:
 
     def change_output_dir(self, out_dir: str):
         self.output_dir = out_dir
+
+    def changed_sam_model(self, model_path: str):
+        if "vit_b" in model_path:
+            model_type = "vit_b"
+        elif "vit_h" in model_path:
+            model_type = "vit_h"
+        elif "vit_l" in model_path:
+            model_type = "vit_l"
+        else:
+            print(f"could not infer model type from model path {model_path}")
+            print("model path must include one of [vit_b, vit_h, vit_l]")
+        self.annotator = Annotator(sam_ckpt=model_path, sam_model_type=model_type)
+
+        ### this is lazy and shouled be changed! ###
+        self.ui.construct_ui()
+        ### this is lazy and shouled be changed! ###
+
+        self.threadpool = QThreadPool()
+        self.threadpool.setMaxThreadCount(1)
+        self.img_fnames = []
+        self.output_dir = None
 
     def load_img(self, _) -> None:
         print("loading new image")

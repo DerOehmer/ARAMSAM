@@ -15,10 +15,12 @@ from sam_annotator.mask_visualizations import (
 
 
 class Annotator:
-    def __init__(self) -> None:
+    def __init__(
+        self, sam_ckpt: str = "sam_vit_b_01ec64.pth", sam_model_type: str = "vit_b"
+    ) -> None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.sam = SamInference(
-            sam_checkpoint="sam_vit_b_01ec64.pth", model_type="vit_b", device=device
+            sam_checkpoint=sam_ckpt, model_type=sam_model_type, device=device
         )
         self.prev_annotation: AnnotationObject = None
         self.annotation: AnnotationObject = None
@@ -138,7 +140,7 @@ class Annotator:
 
     def good_mask(self):
         annot = self.annotation
-        #TODO: ensure that correct mask is stored when switching modes
+        # TODO: ensure that correct mask is stored when switching modes
         if self.manual_annotation_enabled:
             mask_to_store = MaskData(mask=annot.preview_mask, origin="sam_interactive")
             annot.masks.insert(self.mask_idx, mask_to_store)
@@ -210,11 +212,11 @@ class Annotator:
 
         if self.mask_idx > 0:
 
-            if annot.mask_decisions[self.mask_idx-1] and len(annot.good_masks) > 0:
+            if annot.mask_decisions[self.mask_idx - 1] and len(annot.good_masks) > 0:
                 annot.good_masks.pop()
 
-            annot.mask_decisions[self.mask_idx-1] = False
-            
+            annot.mask_decisions[self.mask_idx - 1] = False
+
             self.mask_idx -= 1
             self.update_collections(annot)
 

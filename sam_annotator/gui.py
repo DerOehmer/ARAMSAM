@@ -36,6 +36,7 @@ class UserInterface(QMainWindow):
     preview_annotation_point_signal: pyqtSignal = pyqtSignal(int)
     layout_options_signal: pyqtSignal = pyqtSignal(list)
     output_dir_signal: pyqtSignal = pyqtSignal(str)
+    sam_path_signal: pyqtSignal = pyqtSignal(str)
     save_signal: pyqtSignal = pyqtSignal(int)
 
     def __init__(self, ui_options: dict = None) -> None:
@@ -66,6 +67,7 @@ class UserInterface(QMainWindow):
         self.menu_settings.addAction(
             "Set Ouput Directory", self._open_ouput_dir_selection
         )
+        self.menu_settings.addAction("Set SAM Model", self._open_sam_model_selection)
         self.zoom_level = 0
         self.zoom_factor = 1.25
 
@@ -162,6 +164,22 @@ class UserInterface(QMainWindow):
             return True
         else:
             return False
+
+    def _open_sam_model_selection(self):
+        ret = QMessageBox.question(
+            self,
+            "SAM Model Selection",
+            "Are you sure you want to discard everything and load a different SAM model?",
+        )
+        if ret == QMessageBox.StandardButton.Yes:
+            sam_path = QFileDialog.getOpenFileName(
+                parent=self,
+                caption="Select SAM Model",
+                directory="${HOME}",
+                filter="*.pth",
+            )
+            if sam_path is not None:
+                self.sam_path_signal.emit(sam_path[0])
 
     def open_layout_settings_box(self):
         self.options_window = OptionsWindow(
