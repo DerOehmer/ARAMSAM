@@ -102,20 +102,17 @@ class UserInterface(QMainWindow):
                 )
                 self.annotation_visualizers.append(annotation_visualizer)
 
-        self.test_button = QPushButton(text="segment anything!", parent=self)
-        self.test_button.move(20, 20)
-
-        self.good_mask_button = QPushButton(text="good mask", parent=self)
+        self.good_mask_button = QPushButton(text="good mask (n)", parent=self)
         self.good_mask_button.move(120, 20)
 
-        self.bad_mask_button = QPushButton(text="bad mask", parent=self)
+        self.bad_mask_button = QPushButton(text="bad mask (m)", parent=self)
         self.bad_mask_button.move(220, 20)
 
-        self.back_button = QPushButton(text="undo OR back", parent=self)
+        self.back_button = QPushButton(text="back (b)", parent=self)
         self.back_button.move(320, 20)
 
         self.manual_annotation_button = QPushButton(
-            text="add mask manually", parent=self
+            text="add mask manually (q)", parent=self
         )
         self.manual_annotation_button.move(420, 20)
 

@@ -33,7 +33,6 @@ class App:
         self.img_fnames = []
         self.output_dir = None
 
-        self.ui.test_button.clicked.connect(self.segment_anything)
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
         self.ui.back_button.clicked.connect(self.last_mask)
