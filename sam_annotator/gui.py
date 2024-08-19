@@ -53,7 +53,9 @@ class UserInterface(QMainWindow):
             if m.height < height:
                 height = m.height
 
-        self.offset = 50
+        self.height_offset = 70
+        self.buttons_min_width = 100
+        self.buttons_spacing = 10
         self.resize(width, height)
         self.menu = self.menuBar().addMenu("Menu")
         self.menu_open = self.menuBar().addMenu("Open")
@@ -75,10 +77,6 @@ class UserInterface(QMainWindow):
         self.showMaximized()
 
     def construct_ui(self):
-        self.labelCoords = QLabel(self, text="Pixel Pos.")
-        self.labelCoords.move(400, 20)
-        self.labelCoords.show()
-
         vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         self.annotation_visualizers: list[InteractiveGraphicsView] = []
@@ -88,8 +86,8 @@ class UserInterface(QMainWindow):
                     self, width=vis_width, height=vis_height
                 )
                 annotation_visualizer.setGeometry(
-                    self.offset + i * vis_width,
-                    self.offset + j * vis_height,
+                    i * vis_width,
+                    self.height_offset + j * vis_height,
                     vis_width,
                     vis_height,
                 )
@@ -103,32 +101,63 @@ class UserInterface(QMainWindow):
                 self.annotation_visualizers.append(annotation_visualizer)
 
         self.good_mask_button = QPushButton(text="good mask (n)", parent=self)
-        self.good_mask_button.move(120, 20)
+        self.good_mask_button.move(self.buttons_spacing, int(self.height_offset / 2))
+        self.good_mask_button.setMinimumWidth(self.buttons_min_width)
 
         self.bad_mask_button = QPushButton(text="bad mask (m)", parent=self)
-        self.bad_mask_button.move(220, 20)
+        self.bad_mask_button.move(
+            2 * self.buttons_spacing + 1 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.bad_mask_button.setMinimumWidth(self.buttons_min_width)
 
         self.back_button = QPushButton(text="back (b)", parent=self)
-        self.back_button.move(320, 20)
-
-        self.manual_annotation_button = QPushButton(
-            text="add mask manually (q)", parent=self
+        self.back_button.move(
+            3 * self.buttons_spacing + 2 * self.buttons_min_width,
+            int(self.height_offset / 2),
         )
-        self.manual_annotation_button.move(420, 20)
+        self.back_button.setMinimumWidth(self.buttons_min_width)
+
+        self.manual_annotation_button = QPushButton(text="manual (q)", parent=self)
+        self.manual_annotation_button.move(
+            4 * self.buttons_spacing + 3 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.manual_annotation_button.setMinimumWidth(self.buttons_min_width)
 
         self.draw_poly_button = QPushButton(text="draw polygon", parent=self)
-        self.draw_poly_button.move(520, 20)
+        self.draw_poly_button.move(
+            5 * self.buttons_spacing + 4 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.draw_poly_button.setMinimumWidth(self.buttons_min_width)
 
         self.next_img_button = QPushButton(text="next image", parent=self)
-        self.next_img_button.move(620, 20)
+        self.next_img_button.move(
+            6 * self.buttons_spacing + 5 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.next_img_button.setMinimumWidth(self.buttons_min_width)
+
+        self.labelCoords = QLabel(self, text="Pixel Pos.")
+        self.labelCoords.move(
+            7 * self.buttons_spacing + 6 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.labelCoords.show()
 
         self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
-        self.performing_embedding_label.move(750, 20)
-        self.performing_embedding_label.setMinimumWidth(self.width() - 750)
+        self.performing_embedding_label.move(
+            8 * self.buttons_spacing + 7 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.performing_embedding_label.setMinimumWidth(
+            self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
+        )
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
-        vis_width = int((self.width() - self.offset) / 2)
-        vis_height = int((self.height() - self.offset) / 2)
+        vis_width = int(self.width() / 2)
+        vis_height = int((self.height() - self.height_offset) / 2)
         return vis_width, vis_height
 
     def exit(self):
@@ -345,8 +374,8 @@ class UserInterface(QMainWindow):
         for i in range(2):
             for j in range(2):
                 self.annotation_visualizers[idx].setGeometry(
-                    self.offset + i * vis_width,
-                    self.offset + j * vis_height,
+                    i * vis_width,
+                    self.height_offset + j * vis_height,
                     vis_width,
                     vis_height,
                 )
