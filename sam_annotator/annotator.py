@@ -5,7 +5,7 @@ from pathlib import Path
 from scipy.spatial import KDTree
 
 
-from src.run_sam import SamInference
+from src.run_sam import SamInference, Sam2Inference
 from sam_annotator.mask_visualizations import (
     MaskData,
     MaskVisualization,
@@ -15,13 +15,10 @@ from sam_annotator.mask_visualizations import (
 
 
 class Annotator:
-    def __init__(
-        self, sam_ckpt: str = "sam_vit_b_01ec64.pth", sam_model_type: str = "vit_b"
-    ) -> None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.sam = SamInference(
-            sam_checkpoint=sam_ckpt, model_type=sam_model_type, device=device
-        )
+    def __init__(self, sam_ckpt: str = None, sam_model_type: str = None) -> None:
+        self.sam_ckpt = sam_ckpt
+        self.sam_model_type = sam_model_type
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.prev_annotation: AnnotationObject = None
         self.annotation: AnnotationObject = None
         self.next_annotation: AnnotationObject = None
@@ -31,6 +28,40 @@ class Annotator:
         self.polygon_drawing_enabled = False
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
+
+    def set_sam_version(self, sam2=False):
+
+        if sam2:
+            if self.sam_ckpt is None:
+                sam2_ckpt = "sam2_hiera_small.pt"
+            else:
+                sam2_ckpt = self.sam_ckpt
+            if self.sam_model_type is None:
+                sam2_model_type = "sam2_hiera_s.yaml"
+            else:
+                sam2_model_type = self.sam_model_type
+            self.sam = Sam2Inference(
+                sam2_checkpoint=sam2_ckpt, cfg_path=sam2_model_type
+            )
+        else:
+            if self.sam_ckpt is None:
+                sam1_ckpt = "sam_vit_b_01ec64.pth"
+            else:
+                sam1_ckpt = self.sam_ckpt
+            if self.sam_model_type is None:
+                sam1_model_type = "vit_b"
+            else:
+                sam1_model_type = self.sam_model_type
+            self.sam = SamInference(
+                sam_checkpoint=sam1_ckpt,
+                model_type=sam1_model_type,
+                device=self.device,
+            )
+
+    def reset_toggles(self):
+        self.reset_manual_annotation()
+        self.manual_annotation_enabled = False
+        self.polygon_drawing_enabled = False
 
     def toggle_manual_annotation(self):
         self.reset_manual_annotation()
@@ -55,14 +86,14 @@ class Annotator:
     def predict_sam_manually(self, position: tuple[int]):
         if self.manual_annotation_enabled:
             # create live mask preview
-            self.annotation.preview_mask = (
-                self.sam.predict(
-                    pts=np.array(
-                        [[position[0], position[1]], *self.manual_mask_points]
-                    ),
-                    pts_labels=np.array([1, *self.manual_mask_point_labels]),
-                )
-                * 255
+            self.annotation.preview_mask = self.sam.predict(
+                pts=np.array(
+                    [[position[0], position[1]], *self.manual_mask_points],
+                    dtype=np.float32,
+                ),
+                pts_labels=np.array(
+                    [1, *self.manual_mask_point_labels], dtype=np.int32
+                ),
             )
             self.update_collections(self.annotation)
 
@@ -96,6 +127,7 @@ class Annotator:
         else:
             # TODO: check for bugs of shallow copies
             self.annotation = self.next_annotation
+            self.reset_toggles()
 
         if next_filepath is None:
             self.next_annotation = None
@@ -129,14 +161,24 @@ class Annotator:
             raise ValueError("No annotation object found.")
 
         print(self.annotation.img.shape)
-        self.sam.image_embedding(self.annotation.img)
+        self.sam.custom_amg.set_visualization_img(self.annotation.img)
         mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
+        assert (
+            isinstance(mask_objs, list)
+            and isinstance(mask_objs[0], MaskData)
+            and annotated_image.dtype == np.uint8
+        )
         self.annotation.mask_visualizations.masked_img = annotated_image
-        self.annotation.set_masks(mask_objs)
+        self.annotation.add_masks(mask_objs)
 
         self.update_mask_idx()
         self.update_collections(self.annotation)
         self.preselect_mask()
+
+    def track_good_masks(self):
+        self.sam.set_masks(self.annotation.good_masks)
+        prop_mask_objs: list[MaskData] = self.sam.propagate_to_next_img()
+        self.next_annotation.add_masks(prop_mask_objs, decision=True)
 
     def good_mask(self):
         annot = self.annotation
@@ -163,7 +205,8 @@ class Annotator:
             next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
-            self.preselect_mask()
+            if self.preselect_mask() is None:
+                return None
             next_mask_center = self.annotation.masks[self.mask_idx].center
         return next_mask_center
 
@@ -178,7 +221,8 @@ class Annotator:
             next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
-            self.preselect_mask()
+            if self.preselect_mask() is None:
+                return None
             next_mask_center = self.annotation.masks[self.mask_idx].center
         return next_mask_center
 
@@ -187,6 +231,7 @@ class Annotator:
         mask_obj: MaskData = annot.masks[self.mask_idx]
         mask = mask_obj.mask
         maskorigin = mask_obj.origin
+        mcenter = (0, 0)
 
         mask_coll_bin = (
             np.any(
@@ -200,12 +245,11 @@ class Annotator:
         overlap_ratio = mask_overlap_size / mask_size
 
         if overlap_ratio > max_overlap_ratio:
-            self.bad_mask()
+            mcenter = self.bad_mask()
 
-        if maskorigin == "sam_tracking" and len(annot.mask_decisions) == len(
-            annot.good_masks
-        ):
-            self.good_mask()
+        if maskorigin == "sam_tracking" or maskorigin == "sam2_propagated":
+            mcenter = self.good_mask()
+        return mcenter
 
     def step_back(self):
         annot = self.annotation

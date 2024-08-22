@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
     QFrame,
+    QCheckBox,
 )
 
 
@@ -154,6 +155,10 @@ class UserInterface(QMainWindow):
         self.performing_embedding_label.setMinimumWidth(
             self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
         )
+
+        self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
+        self.sam2_checkbox.move(1000, 20)
+        self.sam2_checkbox.setChecked(True)
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int(self.width() / 2)
