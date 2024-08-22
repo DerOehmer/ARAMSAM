@@ -161,7 +161,7 @@ class Annotator:
 
     def good_mask(self):
         annot = self.annotation
-        #TODO: ensure that correct mask is stored when switching modes
+        # TODO: ensure that correct mask is stored when switching modes
         if self.manual_annotation_enabled:
             mask_to_store = MaskData(mask=annot.preview_mask, origin="sam_interactive")
             annot.masks.insert(self.mask_idx, mask_to_store)
@@ -184,7 +184,8 @@ class Annotator:
             next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
-            self.preselect_mask()
+            if self.preselect_mask() is None:
+                return None
             next_mask_center = self.annotation.masks[self.mask_idx].center
         return next_mask_center
 
@@ -199,7 +200,8 @@ class Annotator:
             next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
-            self.preselect_mask()
+            if self.preselect_mask() is None:
+                return None
             next_mask_center = self.annotation.masks[self.mask_idx].center
         return next_mask_center
 
@@ -208,6 +210,7 @@ class Annotator:
         mask_obj: MaskData = annot.masks[self.mask_idx]
         mask = mask_obj.mask
         maskorigin = mask_obj.origin
+        mcenter = (0, 0)
 
         mask_coll_bin = (
             np.any(
@@ -221,23 +224,22 @@ class Annotator:
         overlap_ratio = mask_overlap_size / mask_size
 
         if overlap_ratio > max_overlap_ratio:
-            self.bad_mask()
+            mcenter = self.bad_mask()
 
-        if maskorigin == "sam_tracking" and len(annot.mask_decisions) == len(
-            annot.good_masks
-        ):
-            self.good_mask()
+        if maskorigin == "sam_tracking" or maskorigin == "sam2_propagated":
+            mcenter = self.good_mask()
+        return mcenter
 
     def step_back(self):
         annot = self.annotation
 
         if self.mask_idx > 0:
 
-            if annot.mask_decisions[self.mask_idx-1] and len(annot.good_masks) > 0:
+            if annot.mask_decisions[self.mask_idx - 1] and len(annot.good_masks) > 0:
                 annot.good_masks.pop()
 
-            annot.mask_decisions[self.mask_idx-1] = False
-            
+            annot.mask_decisions[self.mask_idx - 1] = False
+
             self.mask_idx -= 1
             self.update_collections(annot)
 
