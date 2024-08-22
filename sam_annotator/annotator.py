@@ -140,10 +140,15 @@ class Annotator:
             raise ValueError("No annotation object found.")
 
         print(self.annotation.img.shape)
-        self.sam.image_embedding(self.annotation.img)
+        self.sam.custom_amg.set_visualization_img(self.annotation.img)
         mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
+        assert (
+            isinstance(mask_objs, list)
+            and isinstance(mask_objs[0], MaskData)
+            and annotated_image.dtype == np.uint8
+        )
         self.annotation.mask_visualizations.masked_img = annotated_image
-        self.annotation.set_masks(mask_objs)
+        self.annotation.add_masks(mask_objs)
 
         self.update_mask_idx()
         self.update_collections(self.annotation)
