@@ -5,7 +5,7 @@ from pathlib import Path
 from scipy.spatial import KDTree
 
 
-from src.run_sam import SamInference
+from src.run_sam import SamInference, Sam2Inference
 from sam_annotator.mask_visualizations import (
     MaskData,
     MaskVisualization,
@@ -16,10 +16,7 @@ from sam_annotator.mask_visualizations import (
 
 class Annotator:
     def __init__(self) -> None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.sam = SamInference(
-            sam_checkpoint="sam_vit_b_01ec64.pth", model_type="vit_b", device=device
-        )
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.prev_annotation: AnnotationObject = None
         self.annotation: AnnotationObject = None
         self.next_annotation: AnnotationObject = None
@@ -29,6 +26,21 @@ class Annotator:
         self.polygon_drawing_enabled = False
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
+
+    def set_sam_version(self, sam2=False):
+        if sam2:
+            self.sam = Sam2Inference()
+        else:
+            self.sam = SamInference(
+                sam_checkpoint="sam_vit_b_01ec64.pth",
+                model_type="vit_b",
+                device=self.device,
+            )
+
+    def reset_toggles(self):
+        self.reset_manual_annotation()
+        self.manual_annotation_enabled = False
+        self.polygon_drawing_enabled = False
 
     def toggle_manual_annotation(self):
         self.reset_manual_annotation()
