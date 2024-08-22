@@ -65,14 +65,14 @@ class Annotator:
     def predict_sam_manually(self, position: tuple[int]):
         if self.manual_annotation_enabled:
             # create live mask preview
-            self.annotation.preview_mask = (
-                self.sam.predict(
-                    pts=np.array(
-                        [[position[0], position[1]], *self.manual_mask_points]
-                    ),
-                    pts_labels=np.array([1, *self.manual_mask_point_labels]),
-                )
-                * 255
+            self.annotation.preview_mask = self.sam.predict(
+                pts=np.array(
+                    [[position[0], position[1]], *self.manual_mask_points],
+                    dtype=np.float32,
+                ),
+                pts_labels=np.array(
+                    [1, *self.manual_mask_point_labels], dtype=np.int32
+                ),
             )
             self.update_collections(self.annotation)
 
