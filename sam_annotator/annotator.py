@@ -106,6 +106,7 @@ class Annotator:
         else:
             # TODO: check for bugs of shallow copies
             self.annotation = self.next_annotation
+            self.reset_toggles()
 
         if next_filepath is None:
             self.next_annotation = None
