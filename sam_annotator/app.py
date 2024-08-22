@@ -51,12 +51,18 @@ class App:
 
         self.manual_sam_preview_updates_per_sec = 10
         self.last_sam_preview_time_stamp = time.time_ns()
+        self.sam2 = False
 
     def run(self) -> None:
         self.ui.run()
         sys.exit(self.application.exec())
 
+    def set_sam(self):
+        self.sam2 = self.ui.sam2_checkbox.isChecked()
+        self.annotator.set_sam_version(sam2=self.sam2)
+
     def load_img(self, _) -> None:
+        self.set_sam()
         print("loading new image")
         img_fpath = self.ui.open_img_load_file_dialog()
         if img_fpath == "":
@@ -65,6 +71,7 @@ class App:
         self.select_next_img()
 
     def load_img_folder(self, _) -> None:
+        self.set_sam()
         print("loading folder")
         img_dir = self.ui.open_load_folder_dialog()
         if img_dir == "":
@@ -91,9 +98,15 @@ class App:
         else:
             next_img_name = None
 
+        if self.sam2:
+            self.propagate_good_masks()
+
         embed_current, embed_next = self.annotator.create_new_annotation(
             filepath=img_name, next_filepath=next_img_name
         )
+        if self.sam2:
+            self.embed_img_pair()
+            return
         if embed_current:
             self.embed_img(basename(img_name))
         else:
@@ -101,6 +114,18 @@ class App:
             self.segment_anything()
         if embed_next:
             self.embed_img(basename(next_img_name))
+
+    def propagate_good_masks(self):
+        # SAM2
+        if not self.annotator.sam.predictor.is_image_set:
+            return
+        self.annotator.track_good_masks()
+
+    def embed_img_pair(self):
+        # SAM2
+        img_pair = [self.annotator.annotation.img, self.annotator.next_annotation.img]
+        self.annotator.sam.set_features(img_pair)
+        self.segment_anything()
 
     def embed_img(self, img_name: str):
         current_ann_name = self.annotator.get_annotation_img_name()
