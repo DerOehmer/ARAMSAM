@@ -17,7 +17,7 @@ class MaskData:
 
 
 @dataclass
-class MaskVisualizationData:  
+class MaskVisualizationData:
     img: np.ndarray = None
     img_sam_preview: np.ndarray = None
     mask: np.ndarray = None
@@ -49,8 +49,8 @@ class AnnotationObject:
         )
         self.preview_mask = None
 
-    def set_masks(self, maskobject: list[MaskData]):
-        self.masks = maskobject
+    def set_masks(self, mask_objects: list[MaskData]):
+        self.masks = mask_objects
         self.mask_decisions = [False for _ in range(len(self.masks))]
 
     def set_current_mask(self, mask_idx: int):
@@ -58,9 +58,9 @@ class AnnotationObject:
             self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
         )
 
-    def add_masks(self, masks):
+    def add_masks(self, masks, decision=False):
         self.masks.extend(masks)
-        self.mask_decisions.extend([False for _ in range(len(masks))])
+        self.mask_decisions.extend([decision for _ in range(len(masks))])
 
     def set_sam_parameters(self, features, original_size, input_size):
         self.features = features
@@ -152,7 +152,7 @@ class MaskVisualization:
             lineType=cv2.LINE_8,
         )
         if self.preview_mask is not None:
-            self.masked_img_cnt[self.preview_mask==255] = 255, 150, 100
+            self.masked_img_cnt[self.preview_mask == 255] = 255, 150, 100
         return self.masked_img_cnt
 
     def get_mask_collection(self) -> np.ndarray:
@@ -183,8 +183,7 @@ class MaskVisualization:
             lineType=cv2.LINE_8,
         )
         if self.preview_mask is not None:
-            self.mask_collection_cnt[self.preview_mask==255] = 255, 150, 100 
-            
+            self.mask_collection_cnt[self.preview_mask == 255] = 255, 150, 100
 
         return self.mask_collection_cnt
 
