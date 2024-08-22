@@ -149,6 +149,11 @@ class Annotator:
         self.update_collections(self.annotation)
         self.preselect_mask()
 
+    def track_good_masks(self):
+        self.sam.set_masks(self.annotation.good_masks)
+        prop_mask_objs: list[MaskData] = self.sam.propagate_to_next_img()
+        self.next_annotation.add_masks(prop_mask_objs, decision=True)
+
     def good_mask(self):
         annot = self.annotation
         #TODO: ensure that correct mask is stored when switching modes
