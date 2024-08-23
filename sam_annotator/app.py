@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QRunnable, QThreadPool, pyqtSignal, QThreadPool, QObject
 from natsort import natsorted
 
-from src.run_sam import CustomSamPredictor
+from sam_annotator.run_sam import CustomSamPredictor
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
 

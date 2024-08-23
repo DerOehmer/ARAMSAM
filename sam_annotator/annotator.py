@@ -5,7 +5,7 @@ from pathlib import Path
 from scipy.spatial import KDTree
 
 
-from src.run_sam import SamInference, Sam2Inference
+from sam_annotator.run_sam import SamInference, Sam2Inference
 from sam_annotator.mask_visualizations import (
     MaskData,
     MaskVisualization,
