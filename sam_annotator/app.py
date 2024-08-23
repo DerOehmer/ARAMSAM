@@ -25,9 +25,7 @@ class App:
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
         self.ui = UserInterface(ui_options=ui_options)
-        self.annotator = Annotator(
-            sam_ckpt="sam_vit_b_01ec64.pth", sam_model_type="vit_b"
-        )
+        self.annotator = Annotator()
         self.threadpool = QThreadPool()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
