@@ -44,7 +44,7 @@ class App:
         self.ui.load_img_folder_signal.connect(self.load_img_folder)
         self.ui.output_dir_signal.connect(self.change_output_dir)
         self.ui.sam_path_signal.connect(self.changed_sam_model)
-        self.ui.save_signal.connect(self.save_annotation)
+        self.ui.save_signal.connect(self.save_output)
         self.ui.preview_annotation_point_signal.connect(
             self.add_sam_preview_annotation_point
         )
@@ -65,7 +65,7 @@ class App:
         self.sam2 = self.ui.sam2_checkbox.isChecked()
         self.annotator.set_sam_version(sam2=self.sam2)
 
-    def save_annotation(self, _):
+    def save_output(self, _=None):
         if self.output_dir is None:
             print("Select output directory before saving")
             self.ui._open_ouput_dir_selection()
@@ -77,11 +77,12 @@ class App:
             self.ui.save()
             return
 
-        img_file_name = os.path.basename(Path(self.img_fnames[-1]))
-        img_name = os.path.splitext(img_file_name)[0]
-
-        with open(join(self.output_dir, "test_save.txt"), mode="w") as f:
-            f.write("test")
+        output_exists = self.annotator.save_annotations(self.output_dir)
+        if output_exists:
+            self.ui.create_message_box(
+                True,
+                "Annotations already exist. Maybe outpupath should be provided together with input path, so programme can check whether this img has already been annotated?",
+            )
 
     def change_output_dir(self, out_dir: str):
         self.output_dir = out_dir
@@ -130,6 +131,9 @@ class App:
         self.select_next_img()
 
     def select_next_img(self):
+        if self.annotator.annotation is not None:
+            self.ui.open_save_annots_box()
+
         if not self.img_fnames:
             print("No image left in the queue")
             return
