@@ -169,7 +169,13 @@ class App:
 
     def embed_img_pair(self):
         # SAM2
-        img_pair = [self.annotator.annotation.img, self.annotator.next_annotation.img]
+        if self.annotator.next_annotation is not None:
+            img_pair = [
+                self.annotator.annotation.img,
+                self.annotator.next_annotation.img,
+            ]
+        else:
+            img_pair = [self.annotator.annotation.img]
         self.annotator.sam.set_features(img_pair)
         self.segment_anything()
 
