@@ -3,6 +3,7 @@ import torch
 import cv2
 from pathlib import Path
 from scipy.spatial import KDTree
+import os
 
 
 from sam_annotator.run_sam import SamInference, Sam2Inference
@@ -28,6 +29,17 @@ class Annotator:
         self.polygon_drawing_enabled = False
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
+
+        self.origin_codes = {
+            "Sam1_proposed": "s1p",
+            "Sam2_proposed": "s2p",
+            "Sam1_interactive": "s1i",
+            "Sam2_interactive": "s2i",
+            "Polygon_drawing": "plg",
+            "Sam2_tracking": "s2t",
+            "Panorama_tracking": "pat",
+            "Kalman_tracking": "kat",
+        }
 
     def set_sam_version(self, sam2=False):
 
@@ -184,12 +196,17 @@ class Annotator:
         annot = self.annotation
         # TODO: ensure that correct mask is stored when switching modes
         if self.manual_annotation_enabled:
-            mask_to_store = MaskData(mask=annot.preview_mask, origin="sam_interactive")
+            origin = (
+                "Sam1_interactive"
+                if isinstance(self.sam, SamInference)
+                else "Sam2_interactive"
+            )
+            mask_to_store = MaskData(mask=annot.preview_mask, origin=origin)
             annot.masks.insert(self.mask_idx, mask_to_store)
             annot.mask_decisions.insert(self.mask_idx, True)
             self.reset_manual_annotation()
         elif self.polygon_drawing_enabled:
-            mask_to_store = MaskData(mask=annot.preview_mask, origin="polygon")
+            mask_to_store = MaskData(mask=annot.preview_mask, origin="Polygon_drawing")
             annot.masks.insert(self.mask_idx, mask_to_store)
             annot.mask_decisions.insert(self.mask_idx, True)
             self.reset_manual_annotation()
@@ -247,7 +264,7 @@ class Annotator:
         if overlap_ratio > max_overlap_ratio:
             mcenter = self.bad_mask()
 
-        if maskorigin == "sam_tracking" or maskorigin == "sam2_propagated":
+        if "tracking" in maskorigin:
             mcenter = self.good_mask()
         return mcenter
 
@@ -299,6 +316,45 @@ class Annotator:
         mvis_data.mask_collection_cnt = mask_collection_cnt
 
         self.annotation.good_masks = mask_vis.mask_objs
+
+    def save_annotations(self, save_path: Path):
+        output_masks_exist = False
+        img_id = os.path.splitext(self.annotation.img_name)[0]
+        annots_path = os.path.join(save_path, f"{img_id}_annots")
+
+        if not os.path.exists(annots_path):
+            os.makedirs(annots_path)
+
+        cv2.imwrite(
+            os.path.join(annots_path, "img.jpg"),
+            self.annotation.img,
+        )
+        cv2.imwrite(
+            os.path.join(annots_path, "annotations.jpg"),
+            self.annotation.mask_visualizations.masked_img,
+        )
+
+        mask_dir = os.path.join(annots_path, "masks")
+
+        if not os.path.exists(mask_dir):
+            os.makedirs(mask_dir)
+        else:
+            output_masks_exist = True
+            return output_masks_exist
+
+        for i, m in enumerate(self.annotation.good_masks):
+
+            if m.origin not in self.origin_codes.keys():
+                raise ValueError(f"Origin code not found for {m.origin}")
+
+            mask_code = self.origin_codes[m.origin]
+
+            mask_name = f"mask_{mask_code}_{i}.png"
+            mask_dest_path = os.path.join(mask_dir, mask_name)
+            cv2.imwrite(mask_dest_path, m.mask)
+
+        print(f"Annotations saved to {annots_path}")
+        return output_masks_exist
 
 
 class PanoImageAligner:
