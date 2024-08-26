@@ -1,4 +1,5 @@
 import sys
+import os
 import time
 import numpy as np
 import traceback
@@ -75,6 +76,9 @@ class App:
             self.ui._open_ouput_dir_selection()
             self.ui.save()
             return
+
+        img_file_name = os.path.basename(Path(self.img_fnames[-1]))
+        img_name = os.path.splitext(img_file_name)[0]
 
         with open(join(self.output_dir, "test_save.txt"), mode="w") as f:
             f.write("test")
