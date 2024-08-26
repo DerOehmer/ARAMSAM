@@ -221,6 +221,17 @@ class UserInterface(QMainWindow):
             self._recv_layout_options_changes
         )
 
+    def open_save_annots_box(self):
+        ret = QMessageBox.question(
+            self,
+            "Save Annotations",
+            "Do you want to save the annotations before moving on to the next image?",
+        )
+        if ret == QMessageBox.StandardButton.Yes:
+            self.save()
+        elif ret == QMessageBox.StandardButton.No:
+            return
+
     def _recv_layout_options_changes(self, layout_options: list[str]):
         self.ui_options["layout_settings_options"]["current"] = layout_options
         self.layout_options_signal.emit(layout_options)
