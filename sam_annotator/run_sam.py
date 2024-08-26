@@ -290,7 +290,7 @@ class Sam2Inference:
                 for i, out_obj_id in enumerate(out_obj_ids):
                     np_mask = self._logits_to_npmask(out_mask_logits[i])
                     if np_mask is not None:
-                        prop_masks.append(MaskData(np_mask, "sam2_propagated"))
+                        prop_masks.append(MaskData(np_mask, "Sam2_tracking"))
         return prop_masks
 
     def _logits_to_npmask(self, out_mask_logit):
@@ -339,7 +339,12 @@ class CustomAMG:
                 if np.amax(kernelmask) != 255:
                     continue
                 mask_lst.append(kernelmask)
-                mask_objs.append(MaskData(kernelmask, "sam_proposed"))
+                origin = (
+                    "Sam1_proposed"
+                    if isinstance(self.sam_cls, SamInference)
+                    else "Sam2_proposed"
+                )
+                mask_objs.append(MaskData(kernelmask, origin))
 
                 ycords, xcords = np.where(kernelmask == 255)
                 # annotated_image[ycords, xcords] = b, g, r
