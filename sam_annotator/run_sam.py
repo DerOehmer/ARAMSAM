@@ -213,8 +213,8 @@ class Sam2Inference:
             self.predictor.reset_state(self.inference_state)
         self.imgs = imgs
         assert (
-            len(imgs) == 2 and imgs[0].dtype == np.uint8 and imgs[0].shape[2] == 3
-        ), "Expecting exactly 2 RGB Numpy arrays with shape (H, W, 3) and dtype uint8"
+            len(imgs) >= 1 and imgs[0].dtype == np.uint8 and imgs[0].shape[2] == 3
+        ), "Expecting one or more RGB Numpy arrays with shape (H, W, 3) and dtype uint8"
 
         self.inference_state = self.predictor.init_state(
             video_path=imgs,
