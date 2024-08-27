@@ -27,3 +27,4 @@ checkpoints/*.pt
 images
 videos
 sav_dataset
+_test*
