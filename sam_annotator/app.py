@@ -167,7 +167,10 @@ class App:
 
     def propagate_good_masks(self):
         # SAM2
-        if not self.annotator.sam.predictor.is_image_set:
+        if (
+            not self.annotator.sam.predictor.is_image_set
+            and self.annotator.annotation is None
+        ) or not self.annotator.annotation.good_masks:
             return
         self.annotator.track_good_masks()
 
