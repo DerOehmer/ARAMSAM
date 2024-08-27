@@ -210,15 +210,17 @@ class Annotator:
             annot.masks.insert(self.mask_idx, mask_to_store)
             annot.mask_decisions.insert(self.mask_idx, True)
             self.reset_manual_annotation()
-        else:
+        elif len(annot.masks) > self.mask_idx:
             mask_to_store = annot.masks[self.mask_idx]
             annot.mask_decisions[self.mask_idx] = True
+        else:
+            return None
 
         annot.good_masks.append(mask_to_store)
         self.mask_idx += 1
 
         self.update_collections(annot)
-        if self.mask_idx >= len(annot.masks) - 1:
+        if self.mask_idx >= len(annot.masks):
             next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
@@ -229,12 +231,14 @@ class Annotator:
 
     def bad_mask(self):
         annot = self.annotation
+        if self.mask_idx >= len(annot.masks):
+            return None
 
         annot.mask_decisions[self.mask_idx] = False
         self.mask_idx += 1
 
         self.update_collections(annot)
-        if self.mask_idx >= len(annot.masks) - 1:
+        if self.mask_idx >= len(annot.masks):
             next_mask_center = None  # all masks have been labeled
         else:
             self.annotation.set_current_mask(self.mask_idx)
@@ -294,9 +298,10 @@ class Annotator:
             masked_img_cnt = mask_vis.get_masked_img_cnt(cnt)
             mask_collection_cnt = mask_vis.get_mask_collection_cnt(cnt)
         else:
-            maskinrgb = np.zeros_like(masked_img)
-            masked_img_cnt = np.zeros_like(masked_img)
-            mask_collection_cnt = np.zeros_like(masked_img)
+            # after all proposed masks have been labeled
+            maskinrgb = mvis_data.img
+            masked_img_cnt = masked_img
+            mask_collection_cnt = mask_collection
 
         if self.manual_annotation_enabled:
             img_sam_preview = mask_vis.get_sam_preview(
@@ -307,8 +312,8 @@ class Annotator:
         elif self.polygon_drawing_enabled:
             img_sam_preview = mask_vis.get_polygon_preview(self.manual_mask_points)
             mvis_data.img_sam_preview = img_sam_preview
-
-        self.annotation.set_current_mask(self.mask_idx)
+        if len(annot.masks) > self.mask_idx:
+            self.annotation.set_current_mask(self.mask_idx)
         mvis_data.maskinrgb = maskinrgb
         mvis_data.masked_img = masked_img
         mvis_data.mask_collection = mask_collection
