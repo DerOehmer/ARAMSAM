@@ -230,8 +230,8 @@ class Sam2Inference:
             pts.dtype == np.float32 and pts.shape[-1] == 2
         ), "Expecting numpy array with shape (N, 2) and dtype float32"
         assert (
-            pts_labels.dtype == np.int32 and pts_labels.shape[-1] == 1
-        ), "Expecting numpy array with shape (N, 1) and dtype int32"
+            pts_labels.dtype == np.int32 and pts_labels.ndim == 1
+        ), "Expecting numpy array with shape (N) and dtype int32"
 
         _, out_obj_ids, out_mask_logits = self.predictor.add_new_points(
             inference_state=self.inference_state,
