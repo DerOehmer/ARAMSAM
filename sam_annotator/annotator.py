@@ -168,7 +168,7 @@ class Annotator:
             input_size=self.annotation.input_size,
         )
 
-    def predict_with_sam(self):
+    def predict_with_sam(self, pano_aligner: PanoImageAligner = None):
         if self.annotation is None:
             raise ValueError("No annotation object found.")
 
@@ -180,6 +180,10 @@ class Annotator:
             and isinstance(mask_objs[0], MaskData)
             and annotated_image.dtype == np.uint8
         )
+        if pano_aligner is not None:
+            pano_aligner.add_image(self.annotation.img, mask_objs)
+            prop_mask_objs = pano_aligner.match_and_align()
+            self.annotation.add_masks(prop_mask_objs, decision=True)
         self.annotation.mask_visualizations.masked_img = annotated_image
         self.annotation.add_masks(mask_objs)
 

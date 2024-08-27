@@ -14,7 +14,7 @@ from natsort import natsorted
 
 from sam_annotator.run_sam import CustomSamPredictor
 from sam_annotator.gui import UserInterface
-from sam_annotator.annotator import Annotator
+from sam_annotator.annotator import Annotator, PanoImageAligner
 
 
 class App:
@@ -55,6 +55,7 @@ class App:
 
         self.manual_sam_preview_updates_per_sec = 10
         self.last_sam_preview_time_stamp = time.time_ns()
+        self.pano_aligner = None
         self.sam2 = False
 
     def run(self) -> None:
@@ -148,8 +149,7 @@ class App:
         else:
             next_img_name = None
 
-        if self.sam2:
-            self.propagate_good_masks()
+        self.propagate_good_masks()
 
         embed_current, embed_next = self.annotator.create_new_annotation(
             filepath=img_name, next_filepath=next_img_name
@@ -166,13 +166,19 @@ class App:
             self.embed_img(basename(next_img_name))
 
     def propagate_good_masks(self):
-        # SAM2
         if (
             not self.annotator.sam.predictor.is_image_set
             and self.annotator.annotation is None
         ) or not self.annotator.annotation.good_masks:
             return
-        self.annotator.track_good_masks()
+        if self.sam2:
+            self.annotator.track_good_masks()
+        else:
+            if self.pano_aligner is None:
+                self.pano_aligner = PanoImageAligner()
+            self.pano_aligner.add_image(
+                self.annotator.annotation.img, self.annotator.annotation.good_masks
+            )
 
     def embed_img_pair(self):
         # SAM2
@@ -261,7 +267,7 @@ class App:
 
     def segment_anything(self):
         now = time.time()
-        self.annotator.predict_with_sam()
+        self.annotator.predict_with_sam(self.pano_aligner)
         duration = time.time() - now
         print(f"SAM inference {duration}")
 
