@@ -156,14 +156,15 @@ class App:
         )
         if self.sam2:
             self.embed_img_pair()
-            return
-        if embed_current:
-            self.embed_img(basename(img_name))
         else:
-            self.annotator.update_sam_features_to_current_annotation()
-            self.segment_anything()
-        if embed_next:
-            self.embed_img(basename(next_img_name))
+            if embed_current:
+                self.embed_img(basename(img_name))
+            else:
+                self.annotator.update_sam_features_to_current_annotation()
+                self.segment_anything()
+            if embed_next:
+                self.embed_img(basename(next_img_name))
+        self.annotator.init_time_stamp()
 
     def propagate_good_masks(self):
         if (
