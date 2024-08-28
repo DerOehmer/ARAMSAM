@@ -3,7 +3,8 @@ import torch
 import cv2
 from pathlib import Path
 import os
-
+import json
+import time
 
 from sam_annotator.run_sam import SamInference, Sam2Inference
 from sam_annotator.tracker import PanoImageAligner
@@ -40,6 +41,7 @@ class Annotator:
             "Panorama_tracking": "pat",
             "Kalman_tracking": "kat",
         }
+        self.time_stamp = None  # in deciseconds (1/10th of a second)
 
     def set_sam_version(self, sam2=False):
 
@@ -69,6 +71,13 @@ class Annotator:
                 model_type=sam1_model_type,
                 device=self.device,
             )
+
+    def init_time_stamp(self):
+        self.time_stamp = round(time.time() * 10)
+
+    def _get_time_stamp(self):
+        current_ts = round(time.time() * 10)
+        return current_ts - self.time_stamp
 
     def reset_toggles(self):
         self.reset_manual_annotation()
@@ -205,18 +214,34 @@ class Annotator:
                 if isinstance(self.sam, SamInference)
                 else "Sam2_interactive"
             )
-            mask_to_store = MaskData(mask=annot.preview_mask, origin=origin)
+            mask_to_store = MaskData(
+                mask=annot.preview_mask,
+                origin=origin,
+                time_stamp=self._get_time_stamp(),
+            )
             annot.masks.insert(self.mask_idx, mask_to_store)
             annot.mask_decisions.insert(self.mask_idx, True)
             self.reset_manual_annotation()
+
         elif self.polygon_drawing_enabled:
-            mask_to_store = MaskData(mask=annot.preview_mask, origin="Polygon_drawing")
+            mask_to_store = MaskData(
+                mask=annot.preview_mask,
+                origin="Polygon_drawing",
+                time_stamp=self._get_time_stamp(),
+            )
             annot.masks.insert(self.mask_idx, mask_to_store)
             annot.mask_decisions.insert(self.mask_idx, True)
             self.reset_manual_annotation()
+
         elif len(annot.masks) > self.mask_idx:
-            mask_to_store = annot.masks[self.mask_idx]
+            mask_obj = annot.masks[self.mask_idx]
+            mask_to_store = MaskData(
+                mask=mask_obj.mask,
+                origin=mask_obj.origin,
+                time_stamp=self._get_time_stamp(),
+            )
             annot.mask_decisions[self.mask_idx] = True
+
         else:
             return None
 
@@ -351,16 +376,49 @@ class Annotator:
             output_masks_exist = True
             return output_masks_exist
 
-        for i, m in enumerate(self.annotation.good_masks):
+        good_masks_log_dict, total_time = self._log_and_save_masks(
+            self.annotation.good_masks, mask_dir
+        )
+        all_masks_log_dict, _ = self._log_and_save_masks(self.annotation.masks)
+        log_dict = {
+            "All_masks": all_masks_log_dict,
+            "Selected_masks": good_masks_log_dict,
+            "Total_time": total_time,
+        }
 
-            if m.origin not in self.origin_codes.keys():
-                raise ValueError(f"Origin code not found for {m.origin}")
+        log_path = os.path.join(annots_path, "log.json")
 
-            mask_code = self.origin_codes[m.origin]
-
-            mask_name = f"mask_{mask_code}_{i}.png"
-            mask_dest_path = os.path.join(mask_dir, mask_name)
-            cv2.imwrite(mask_dest_path, m.mask)
+        with open(log_path, "w") as json_file:
+            json.dump(log_dict, json_file, indent=4)
 
         print(f"Annotations saved to {annots_path}")
         return output_masks_exist
+
+    def _log_and_save_masks(
+        self, mask_objs: list[MaskData], mask_dir: str = None
+    ) -> list[MaskData]:
+        """Masks are only saved if mask_dir is provided"""
+        log_dict = {key: 0 for key in self.origin_codes.keys()}
+        latest_ts = 0
+        for i, m in enumerate(mask_objs):
+
+            if m.origin not in self.origin_codes.keys():
+                raise ValueError(f"Origin code not found for {m.origin}")
+            log_dict[m.origin] += 1
+            mask_code = self.origin_codes[m.origin]
+
+            if mask_dir is not None:
+                mask_ts = m.time_stamp
+                if mask_ts > latest_ts:
+                    latest_ts = mask_ts
+                mask_name = f"mask_{mask_code}_{mask_ts}_{i}.png"
+                mask_dest_path = os.path.join(mask_dir, mask_name)
+                cv2.imwrite(mask_dest_path, m.mask)
+
+        total_mask_n = len(mask_objs)
+        log_dict["Total_masks"] = total_mask_n
+
+        if mask_dir:
+            return log_dict, latest_ts
+        else:
+            return log_dict, None

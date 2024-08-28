@@ -11,6 +11,7 @@ from typing import Tuple
 class MaskData:
     mask: np.ndarray
     origin: str
+    time_stamp: int = None  # in deciseconds (1/10th of a second)
     center: tuple = None
     color_idx: int = None
     contour: np.ndarray = None
