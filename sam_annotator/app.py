@@ -388,6 +388,40 @@ class PyQtWorker(QRunnable):
             self.signals.finished.emit(self.img_name)
 
 
+class Sam2PropagationWorker(QRunnable):
+    finished: pyqtSignal = pyqtSignal(str)
+    error: pyqtSignal = pyqtSignal(tuple)
+    result: pyqtSignal = pyqtSignal(tuple)
+
+    def __init__(
+        self,
+        delay: float = 0.0,
+    ):
+        super(PyQtWorker, self).__init__()
+        self.signals = WorkerSignals()
+        self.delay = delay
+
+    def run(self):
+        try:
+            now = time.time()
+            features, original_size, input_size = (
+                self.sam_predictor.get_img_ebedding_without_overiding_current_embedding(
+                    self.img
+                )
+            )
+            duration = time.time() - now
+            print(f"embedding took {duration}")
+            result = (features, original_size, input_size, self.img_name)
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+        else:
+            self.signals.result.emit(result)
+        finally:
+            self.signals.finished.emit(self.img_name)
+
+
 class WorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(str)
     error: pyqtSignal = pyqtSignal(tuple)
