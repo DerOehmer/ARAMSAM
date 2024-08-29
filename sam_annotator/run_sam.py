@@ -184,6 +184,7 @@ class Sam2Inference:
     ):
         from sam2.build_sam import build_sam2_video_predictor
         from sam2.sam2_video_predictor import SAM2VideoPredictor
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
 
         if not torch.cuda.is_available():
             raise RuntimeError(
@@ -203,14 +204,17 @@ class Sam2Inference:
             cfg_path, sam2_checkpoint, device="cuda"
         )
         self.custom_amg = CustomAMG(self)
-        self.imgs: list[np.ndarray] = None  # expecting len 2 rgb uint8 images
+        self.img_predictor = SAM2ImagePredictor(self.predictor)
+        self.imgs: list[np.ndarray] = None
         self.inference_state: dict = None
         self.latest_obj_id = 0
         self.predictor.is_image_set = False
 
     def set_features(self, imgs: list[np.ndarray]):
         if self.predictor.is_image_set:
+            print_gpu_usage()
             self.predictor.reset_state(self.inference_state)
+            self.img_predictor.reset_predictor()
         self.imgs = imgs
         assert (
             len(imgs) >= 1 and imgs[0].dtype == np.uint8 and imgs[0].shape[2] == 3
@@ -223,6 +227,34 @@ class Sam2Inference:
             async_loading_frames=True,
         )
         self.predictor.is_image_set = True
+        frame_idx = 0
+        self._set_img_predictor_features(
+            self.inference_state["cached_features"][frame_idx][1]
+        )
+
+    def _set_img_predictor_features(self, backbone_out):
+        h, w, c = self.imgs[0].shape
+        self.img_predictor._orig_hw = [(h, w)]
+
+        ### copied from sam2_image_predictor.SAM2ImagePredictor.set_image:
+        _, vision_feats, _, _ = self.img_predictor.model._prepare_backbone_features(
+            backbone_out
+        )
+        # Add no_mem_embed, which is added to the lowest rest feat. map during training on videos
+        if self.img_predictor.model.directly_add_no_mem_embed:
+            vision_feats[-1] = vision_feats[-1] + self.img_predictor.model.no_mem_embed
+
+        feats = [
+            feat.permute(1, 2, 0).view(1, -1, *feat_size)
+            for feat, feat_size in zip(
+                vision_feats[::-1], self.img_predictor._bb_feat_sizes[::-1]
+            )
+        ][::-1]
+        self.img_predictor._features = {
+            "image_embed": feats[-1],
+            "high_res_feats": feats[:-1],
+        }
+        self.img_predictor._is_image_set = True
 
     def predict(self, pts: np.ndarray, pts_labels: np.ndarray):
         # single object
@@ -233,16 +265,12 @@ class Sam2Inference:
             pts_labels.dtype == np.int32 and pts_labels.ndim == 1
         ), "Expecting numpy array with shape (N) and dtype int32"
 
-        _, out_obj_ids, out_mask_logits = self.predictor.add_new_points(
-            inference_state=self.inference_state,
-            frame_idx=0,
-            obj_id=0,
-            points=pts,
-            labels=pts_labels,
+        mask, scores, logits = self.img_predictor.predict(
+            point_coords=pts,
+            point_labels=pts_labels,
+            multimask_output=False,
         )
-
-        self.predictor.reset_state(self.inference_state)
-        return self._logits_to_npmask(out_mask_logits[-1])
+        return self._logits_to_npmask(mask)
 
     def predict_batch(self, pts: np.ndarray, pts_labels: np.ndarray):
         # multiple objects
@@ -256,15 +284,13 @@ class Sam2Inference:
         ), "Expecting numpy array with shape (N, M, 1) and dtype int32"
         masks = []
         for obj_idx in range(pts.shape[0]):
-            _, out_obj_ids, out_mask_logits = self.predictor.add_new_points(
-                inference_state=self.inference_state,
-                frame_idx=0,
-                obj_id=self.latest_obj_id,
-                points=pts[obj_idx],
-                labels=pts_labels[obj_idx],
+            mask, scores, logits = self.img_predictor.predict(
+                point_coords=pts[obj_idx],
+                point_labels=pts_labels[obj_idx],
+                multimask_output=False,
             )
-            self.latest_obj_id += 1
-            masks.append(out_mask_logits[obj_idx] > 0.0)
+            # self.latest_obj_id += 1
+            masks.append(mask > 0.0)
         return masks
 
     def set_masks(self, mask_objs: list[MaskData]):
@@ -293,8 +319,11 @@ class Sam2Inference:
                         prop_masks.append(MaskData(np_mask, "Sam2_tracking"))
         return prop_masks
 
-    def _logits_to_npmask(self, out_mask_logit):
-        boolmask = (out_mask_logit > 0.0).cpu().numpy()
+    def _logits_to_npmask(self, out_mask_logit: torch.Tensor | np.ndarray):
+        if isinstance(out_mask_logit, np.ndarray):
+            boolmask = out_mask_logit > 0.0
+        else:
+            boolmask = (out_mask_logit > 0.0).cpu().numpy()
         if np.any(boolmask):
             npmask = np.transpose(boolmask, (1, 2, 0))
             npmask = np.array(npmask, dtype=np.uint8).reshape(npmask.shape[:2]) * 255
@@ -332,7 +361,8 @@ class CustomAMG:
         annotated_image = self.imgbgr.copy()
 
         for mask in masks:
-            mask = mask.cpu().numpy()
+            if not isinstance(mask, np.ndarray):
+                mask = mask.cpu().numpy()
             if np.count_nonzero(mask) < msize_thresh and np.any(mask):
                 kernelmask = np.array(mask, dtype=np.uint8) * 255
                 kernelmask = np.squeeze(kernelmask, axis=0)
