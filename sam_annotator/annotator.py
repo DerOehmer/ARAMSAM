@@ -214,6 +214,8 @@ class Annotator:
                 if isinstance(self.sam, SamInference)
                 else "Sam2_interactive"
             )
+            if annot.preview_mask is None:
+                return "Mask not ready"
             mask_to_store = MaskData(
                 mask=annot.preview_mask,
                 origin=origin,
