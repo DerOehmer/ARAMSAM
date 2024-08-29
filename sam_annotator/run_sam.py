@@ -413,3 +413,19 @@ class CustomAMG:
 
     def set_visualization_img(self, img):
         self.imgbgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+
+def print_gpu_usage():
+    if torch.cuda.is_available():
+
+        print(
+            f"torch.cuda.memory_allocated: {torch.cuda.memory_allocated(0)/1024/1024/1024} GB"
+        )
+        print(
+            f"torch.cuda.memory_reserved: {torch.cuda.memory_reserved(0)/1024/1024/1024} GB"
+        )
+        print(
+            f"torch.cuda.max_memory_reserved: {torch.cuda.max_memory_reserved(0)/1024/1024/1024} GB"
+        )
+    else:
+        print("CUDA is not available. No GPU memory stats to show.")
