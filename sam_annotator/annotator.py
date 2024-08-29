@@ -116,7 +116,7 @@ class Annotator:
                     [1, *self.manual_mask_point_labels], dtype=np.int32
                 ),
             )
-            self.update_collections(self.annotation)
+            self.update_collections(self.annotation, quick_update=True)
 
     def mask_from_polygon(self):
         if self.polygon_drawing_enabled:
@@ -314,10 +314,17 @@ class Annotator:
             self.mask_idx -= 1
             self.update_collections(annot)
 
-    def update_collections(self, annot: AnnotationObject):
+    def update_collections(self, annot: AnnotationObject, quick_update: bool = False):
 
         mask_vis = MaskVisualization(annotation=annot)
         mvis_data: MaskVisualizationData = self.annotation.mask_visualizations
+        if quick_update:
+            if self.manual_annotation_enabled:
+                img_sam_preview = mask_vis.get_sam_preview(
+                    self.manual_mask_points, self.manual_mask_point_labels
+                )
+                mvis_data.img_sam_preview = img_sam_preview
+            return
         masked_img = mask_vis.get_masked_img()
         mask_collection = mask_vis.get_mask_collection()
         if len(annot.masks) > self.mask_idx:
@@ -332,13 +339,7 @@ class Annotator:
             masked_img_cnt = masked_img
             mask_collection_cnt = mask_collection
 
-        if self.manual_annotation_enabled:
-            img_sam_preview = mask_vis.get_sam_preview(
-                self.manual_mask_points, self.manual_mask_point_labels
-            )
-            mvis_data.img_sam_preview = img_sam_preview
-
-        elif self.polygon_drawing_enabled:
+        if self.polygon_drawing_enabled:
             img_sam_preview = mask_vis.get_polygon_preview(self.manual_mask_points)
             mvis_data.img_sam_preview = img_sam_preview
         if len(annot.masks) > self.mask_idx:
