@@ -13,14 +13,21 @@ from sam_annotator.mask_visualizations import (
     MaskVisualization,
     MaskVisualizationData,
     AnnotationObject,
+    MaskIdHandler,
 )
 
 
 class Annotator:
-    def __init__(self, sam_ckpt: str = None, sam_model_type: str = None) -> None:
+    def __init__(
+        self,
+        sam_ckpt: str = None,
+        sam_model_type: str = None,
+    ) -> None:
         self.sam_ckpt = sam_ckpt
         self.sam_model_type = sam_model_type
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.mask_id_handler = MaskIdHandler()
+
         self.prev_annotation: AnnotationObject = None
         self.annotation: AnnotationObject = None
         self.next_annotation: AnnotationObject = None
@@ -30,6 +37,8 @@ class Annotator:
         self.polygon_drawing_enabled = False
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
+
+        self.mask_track_batch_size = 5
 
         self.origin_codes = {
             "Sam1_proposed": "s1p",
@@ -55,7 +64,9 @@ class Annotator:
             else:
                 sam2_model_type = self.sam_model_type
             self.sam = Sam2Inference(
-                sam2_checkpoint=sam2_ckpt, cfg_path=sam2_model_type
+                self.mask_id_handler,
+                sam2_checkpoint=sam2_ckpt,
+                cfg_path=sam2_model_type,
             )
         else:
             if self.sam_ckpt is None:
@@ -67,6 +78,7 @@ class Annotator:
             else:
                 sam1_model_type = self.sam_model_type
             self.sam = SamInference(
+                self.mask_id_handler,
                 sam_checkpoint=sam1_ckpt,
                 model_type=sam1_model_type,
                 device=self.device,
@@ -217,6 +229,7 @@ class Annotator:
             if annot.preview_mask is None:
                 return "Mask not ready"
             mask_to_store = MaskData(
+                id=self.mask_id_handler.set_id(),
                 mask=annot.preview_mask,
                 origin=origin,
                 time_stamp=self._get_time_stamp(),
@@ -227,6 +240,7 @@ class Annotator:
 
         elif self.polygon_drawing_enabled:
             mask_to_store = MaskData(
+                id=self.mask_id_handler.set_id(),
                 mask=annot.preview_mask,
                 origin="Polygon_drawing",
                 time_stamp=self._get_time_stamp(),
@@ -238,6 +252,7 @@ class Annotator:
         elif len(annot.masks) > self.mask_idx:
             mask_obj = annot.masks[self.mask_idx]
             mask_to_store = MaskData(
+                id=self.mask_id_handler.set_id(),
                 mask=mask_obj.mask,
                 origin=mask_obj.origin,
                 time_stamp=self._get_time_stamp(),
@@ -249,6 +264,9 @@ class Annotator:
 
         annot.good_masks.append(mask_to_store)
         self.mask_idx += 1
+
+        if len(annot.masks) > self.mask_track_batch_size:
+            pass
 
         self.update_collections(annot)
         if self.mask_idx >= len(annot.masks):
@@ -397,9 +415,7 @@ class Annotator:
         print(f"Annotations saved to {annots_path}")
         return output_masks_exist
 
-    def _log_and_save_masks(
-        self, mask_objs: list[MaskData], mask_dir: str = None
-    ) -> list[MaskData]:
+    def _log_and_save_masks(self, mask_objs: list[MaskData], mask_dir: str = None):
         """Masks are only saved if mask_dir is provided"""
         log_dict = {key: 0 for key in self.origin_codes.keys()}
         latest_ts = 0

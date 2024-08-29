@@ -6,13 +6,18 @@ import pandas as pd
 from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 from segment_anything.modeling import Sam
 
-from sam_annotator.mask_visualizations import MaskVisualization, MaskData
+from sam_annotator.mask_visualizations import MaskVisualization, MaskData, MaskIdHandler
 
 
 class SamInference:
     def __init__(
-        self, sam_checkpoint="sam_vit_b_01ec64.pth", model_type="vit_b", device="cpu"
+        self,
+        mask_id_handler: MaskIdHandler,
+        sam_checkpoint="sam_vit_b_01ec64.pth",
+        model_type="vit_b",
+        device="cpu",
     ):
+        self.mask_id_handler = mask_id_handler
         self.sam_checkpoint = sam_checkpoint
         self.model_type = model_type
 
@@ -179,6 +184,7 @@ class CustomSamPredictor(SamPredictor):
 class Sam2Inference:
     def __init__(
         self,
+        mask_id_handler: MaskIdHandler,
         sam2_checkpoint: str = "sam2_hiera_small.pt",
         cfg_path: str = "sam2_hiera_s.yaml",
     ):
@@ -200,6 +206,7 @@ class Sam2Inference:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
 
+        self.mask_id_handler = mask_id_handler
         self.predictor: SAM2VideoPredictor = build_sam2_video_predictor(
             cfg_path, sam2_checkpoint, device="cuda"
         )
@@ -316,7 +323,9 @@ class Sam2Inference:
                 for i, out_obj_id in enumerate(out_obj_ids):
                     np_mask = self._logits_to_npmask(out_mask_logits[i])
                     if np_mask is not None:
-                        prop_masks.append(MaskData(np_mask, "Sam2_tracking"))
+                        prop_masks.append(
+                            MaskData(self.mask_id_handler, np_mask, "Sam2_tracking")
+                        )
         return prop_masks
 
     def _logits_to_npmask(self, out_mask_logit: torch.Tensor | np.ndarray):
@@ -374,7 +383,9 @@ class CustomAMG:
                     if isinstance(self.sam_cls, SamInference)
                     else "Sam2_proposed"
                 )
-                mask_objs.append(MaskData(kernelmask, origin))
+                mask_objs.append(
+                    MaskData(self.sam_cls.mask_id_handler.set_id(), kernelmask, origin)
+                )
 
                 ycords, xcords = np.where(kernelmask == 255)
                 # annotated_image[ycords, xcords] = b, g, r

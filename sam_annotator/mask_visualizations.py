@@ -7,8 +7,21 @@ from pathlib import Path
 from typing import Tuple
 
 
+class MaskIdHandler:
+    def __init__(self):
+        self._id = 0
+        self.ids: list[int] = []
+
+    def set_id(self):
+        current_id = self._id
+        self.ids.append(current_id)
+        self._id += 1
+        return current_id
+
+
 @dataclass
 class MaskData:
+    id: int
     mask: np.ndarray
     origin: str
     time_stamp: int = None  # in deciseconds (1/10th of a second)
