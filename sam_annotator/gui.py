@@ -378,10 +378,13 @@ class UserInterface(QMainWindow):
             QImage.Format.Format_RGB888,
         )
 
-    def update_main_pix_map(self, idx: int, img: np.ndarray):
-        q_img = self.convert_ndarray_to_qimage(img=img)
-        pixmap = QPixmap.fromImage(q_img)
-        self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
+    def update_main_pix_map(self, idx: int, img: np.ndarray | None):
+        if img is None:
+            self.annotation_visualizers[idx].set_pixmap(pixmap=None)
+        else:
+            q_img = self.convert_ndarray_to_qimage(img=img)
+            pixmap = QPixmap.fromImage(q_img)
+            self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
         vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
@@ -417,6 +420,9 @@ class InteractiveGraphicsView(QGraphicsView):
         self.pixmap_item = QGraphicsPixmapItem()
         self.pixmap_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
 
+        self.init_scene()
+    
+    def init_scene(self):
         self.graphics_scene.addItem(self.pixmap_item)
         self.setScene(self.graphics_scene)
 
@@ -427,9 +433,18 @@ class InteractiveGraphicsView(QGraphicsView):
         self.setBackgroundBrush(QBrush(QColor(30, 30, 30)))
         self.setFrameShape(QFrame.Shape.NoFrame)
 
-    def set_pixmap(self, pixmap: QPixmap):
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.pixmap_item.setPixmap(pixmap)
+    def reset_scene(self):
+        self.graphics_scene.removeItem(self.pixmap_item)
+        self.pixmap_item = QGraphicsPixmapItem()
+        self.pixmap_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
+        self.init_scene()
+
+    def set_pixmap(self, pixmap: QPixmap | None):
+        if pixmap is None:
+            self.reset_scene()
+        else:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            self.pixmap_item.setPixmap(pixmap)
 
     def wheelEvent(self, event: QWheelEvent):
         # and overwrite superclass method to avoid scrolling on mouse wheel
