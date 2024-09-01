@@ -10,22 +10,29 @@ class PanoImageAligner:
         self.matching_masks: list[list[MaskData]] = []
         self.h_matrix: np.ndarray = None
 
-    def add_image(self, img: np.ndarray, masks: list[MaskData]):
+    def add_image(self, img: np.ndarray, masks: list[MaskData] = None):
         imgbgr = img
         img_gray = cv2.cvtColor(imgbgr, cv2.COLOR_BGR2GRAY)
 
         # Add the image to the list
         self.images.append(img_gray)
-        self.matching_masks.append(masks)
+        if masks is not None:
+            self.matching_masks.append(masks)
         if len(self.images) > 2:
             # Keep only the two most recent images and masks
             self.images.pop(0)
-            self.matching_masks.pop(0)
+            if len(self.matching_masks) > 1:
+                self.matching_masks.pop(0)
 
     def match_and_align(self):
         for masks in self.matching_masks:
             if len(masks) == 0:
                 return []
+
+        assert (
+            len(self.images) == 2 and len(self.matching_masks) >= 1,
+            "Two images are required for panorama tracking",
+        )
 
         img_gray1, img_gray2 = self.images
 
@@ -42,7 +49,15 @@ class PanoImageAligner:
         matches = sorted(matches, key=lambda x: x.distance)
 
         # Draw top matches.
-        # img_matches = cv2.drawMatches(img_gray1, kp1, img_gray2, kp2, matches[:10], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        """img_matches = cv2.drawMatches(
+            img_gray1,
+            kp1,
+            img_gray2,
+            kp2,
+            matches[:10],
+            None,
+            flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+        )"""
 
         # Estimate homography.
         src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
@@ -53,29 +68,34 @@ class PanoImageAligner:
         height, width = img_gray2.shape
 
         tracked_masks = self._warp_masks(self.matching_masks[0], width, height)
-        selected_masks, centerpts = self._select_masks_with_highest_iou(
-            tracked_masks, self.matching_masks[1]
-        )
 
         """annotimg = cv2.cvtColor(img_gray2.copy(), cv2.COLOR_GRAY2BGR)
 
-        
         for m in self.masks[1]:
             mask = m.mask
-            annotimg = self.get_mask_cnts(annotimg, mask, col=(10,10,10))
+            annotimg = self._get_mask_cnts(annotimg, mask, col=(10,10,10))
         for m in tracked_masks:
-            annotimg = self.get_mask_cnts(annotimg, m, col=(100,100,100))
+            annotimg = self._get_mask_cnts(annotimg, m, col=(100, 100, 100))
         for m in selected_masks:
             #mask = cv2.warpPerspective(mask, self.h_matrix, (width, height))
-            annotimg = self.get_mask_cnts(annotimg, m, col=(255,0,0))
+            annotimg = self._get_mask_cnts(annotimg, m, col=(255,0,0))
         for pt in centerpts:
-            y,x = pt
-            annotimg = cv2.circle(annotimg, (x,y), 2, (0, 255, 0), -1)
+            y, x = pt
+            annotimg = cv2.circle(annotimg, (x, y), 2, (0, 255, 0), -1)
 
         # Save and display the results.
-        ShowMe([annotimg], factor=1)"""
-        print(len(selected_masks), "masks selected in panorama tracking")
-        return [MaskData(mask, "Panorama_tracking") for mask in selected_masks]
+
+        cv2.imshow("Annotated Image", annotimg)
+        cv2.waitKey(0)"""
+
+        if len(self.matching_masks) == 2:
+            selected_masks, centerpts = self._select_masks_with_highest_iou(
+                tracked_masks, self.matching_masks[1]
+            )
+            print(len(selected_masks), "masks selected in panorama tracking")
+            return [MaskData(mask, "Panorama_tracking") for mask in selected_masks]
+        elif len(self.matching_masks) == 1:
+            return tracked_masks
 
     def _warp_masks(self, masks, w, h):
         return [

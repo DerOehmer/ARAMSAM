@@ -123,6 +123,46 @@ class SamInference:
         transformed_pts = self.predictor.transform.apply_coords_torch(pt_tensor, shp)
         return transformed_pts, label_tensor
 
+    def masks_to_bboxes(self, masks: list[np.ndarray], shp: tuple[int, int]):
+        bboxes = []
+        for mask in masks:
+            if np.any(mask):
+                mask = mask.astype(np.uint8)
+                contours, _ = cv2.findContours(
+                    mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+                )
+                x, y, w, h = cv2.boundingRect(contours[0])
+                bboxes.append([x, y, x + w, y + h])
+        torch_boxes_orig_shape = torch.tensor(
+            bboxes, dtype=torch.int32, device=self.device
+        )
+        return self.predictor.transform.apply_boxes_torch(torch_boxes_orig_shape, shp)
+
+    def _prep_batch_masks(self, masks_np: list[np.ndarray]):
+        mask_input = torch.zeros(
+            (len(masks_np), 1, 256, 256), dtype=torch.float32, device=self.device
+        )
+        for i, m in enumerate(masks_np):
+            mask_resized = cv2.resize(m, (256, 256), m)
+            mask_float = mask_resized.astype(np.float32)  # / 255.0
+            mask_tensor = torch.tensor(
+                mask_float, dtype=torch.float32, device=self.device
+            )
+            mask_input[i] = mask_tensor
+
+        return mask_input
+
+    def _torch_to_npmasks(self, mask_tensor: torch.Tensor) -> list[np.ndarray]:
+        mask_lst = []
+        for mt in mask_tensor:
+            mask = mt.cpu().numpy()
+            if not np.any(mask):
+                continue
+            mask = mask.astype(np.uint8) * 255
+            mask = np.squeeze(mask, axis=0)
+            mask_lst.append(mask)
+        return mask_lst
+
 
 class CustomSamPredictor(SamPredictor):
     def __init__(

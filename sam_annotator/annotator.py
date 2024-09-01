@@ -195,16 +195,33 @@ class Annotator:
 
         print(self.annotation.img.shape)
         self.sam.custom_amg.set_visualization_img(self.annotation.img)
+
+        if pano_aligner is not None:
+            pano_aligner.add_image(self.annotation.img)
+            tracked_masks = pano_aligner.match_and_align()
+            input_bboxes = self.sam.masks_to_bboxes(
+                tracked_masks, self.annotation.img.shape[:2]
+            )
+            prop_mask_out_torch = self.sam.predict_batch(bboxes=input_bboxes)
+            prop_mask_out = self.sam._torch_to_npmasks(prop_mask_out_torch)
+            prop_mask_objs = [
+                MaskData(
+                    id=self.mask_id_handler.set_id(),
+                    mask=mask,
+                    origin="Panorama_tracking",
+                    time_stamp=self._get_time_stamp(),
+                )
+                for mask in prop_mask_out
+            ]
+            self.annotation.add_masks(prop_mask_objs, decision=True)
+
         mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
         assert (
             isinstance(mask_objs, list)
             and isinstance(mask_objs[0], MaskData)
             and annotated_image.dtype == np.uint8
         )
-        if pano_aligner is not None:
-            pano_aligner.add_image(self.annotation.img, mask_objs)
-            prop_mask_objs = pano_aligner.match_and_align()
-            self.annotation.add_masks(prop_mask_objs, decision=True)
+
         self.annotation.mask_visualizations.masked_img = annotated_image
         self.annotation.add_masks(mask_objs)
 
