@@ -104,6 +104,7 @@ class App:
         self.ui.construct_ui()
         ### this is lazy and shouled be changed! ###
 
+        # TODO: kill & collect old threads first!
         self.threadpool = QThreadPool()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
@@ -287,8 +288,7 @@ class App:
     def update_ui_imgs(self):
         mviss = self.annotator.annotation.mask_visualizations
         for idx, field in enumerate(self.fields):
-            if getattr(mviss, field) is not None:
-                self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
+            self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
 
     def add_good_mask(self):
         new_center = self.annotator.good_mask()

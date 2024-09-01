@@ -98,6 +98,7 @@ class Annotator:
 
     def toggle_manual_annotation(self):
         self.reset_manual_annotation()
+        # TODO: does sam2 predictor have the attribute is_image_set
         if not self.manual_annotation_enabled and not self.sam.predictor.is_image_set:
             print("Embed image before manually annotation")
             return
@@ -113,6 +114,7 @@ class Annotator:
 
     def reset_manual_annotation(self):
         self.annotation.preview_mask = None
+        self.annotation.mask_visualizations.img_sam_preview = None
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
 
