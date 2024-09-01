@@ -82,11 +82,18 @@ class SamInference:
         pts: torch.Tensor = None,
         pts_labels: torch.Tensor = None,
         bboxes: torch.Tensor = None,
-        mask_input: torch.Tensor = None,
+        mask_input: list[np.ndarray] = None,
     ):
+        assert (
+            (pts is not None and pts_labels is not None)
+            or (mask_input is not None)
+            or (bboxes is not None)
+        ), "Either pts and pts_labels or bboxes or masks must be provided"
 
         if not self.predictor.is_image_set:
             raise ValueError("Image embedding has not been initialized yet")
+        if mask_input is not None:
+            mask_input = self._prep_batch_masks(mask_input)
         masks, scores, logits = self.predictor.predict_torch(
             point_coords=pts,
             point_labels=pts_labels,
@@ -319,26 +326,32 @@ class Sam2Inference:
         )
         return self._logits_to_npmask(mask)
 
-    def predict_batch(self, pts: np.ndarray, pts_labels: np.ndarray):
+    def predict_batch(
+        self,
+        pts: np.ndarray = None,
+        pts_labels: np.ndarray = None,
+        bboxes: np.ndarray = None,
+        mask_input: list[np.ndarray] = None,
+    ):
         # multiple objects
         assert (
-            pts.dtype == np.float32 and pts.shape[-1] == 2 and pts.ndim == 3
-        ), "Expecting numpy array with shape (N, M, 2) and dtype float32"
-        assert (
-            pts_labels.dtype == np.int32
-            and pts_labels.shape[-1] == 1
-            and pts_labels.ndim == 2
-        ), "Expecting numpy array with shape (N, M, 1) and dtype int32"
-        masks = []
+            (pts is not None and pts_labels is not None)
+            or (mask_input is not None)
+            or (bboxes is not None)
+        ), "Either pts and pts_labels or bboxes or masks must be provided"
+
+        output_masks = []
         for obj_idx in range(pts.shape[0]):
             mask, scores, logits = self.img_predictor.predict(
-                point_coords=pts[obj_idx],
-                point_labels=pts_labels[obj_idx],
+                point_coords=pts[obj_idx] if pts is not None else None,
+                point_labels=pts_labels[obj_idx] if pts_labels is not None else None,
+                box=bboxes[obj_idx] if bboxes is not None else None,
+                mask_input=mask_input[obj_idx] if mask_input is not None else None,
                 multimask_output=False,
             )
             # self.latest_obj_id += 1
-            masks.append(mask > 0.0)
-        return masks
+            output_masks.append(mask > 0.0)
+        return output_masks
 
     def set_masks(self, mask_objs: list[MaskData]):
         self.predictor.reset_state(self.inference_state)
