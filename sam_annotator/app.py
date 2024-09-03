@@ -1,5 +1,4 @@
 import sys
-import os
 import time
 import numpy as np
 import traceback
@@ -9,12 +8,20 @@ from os import listdir
 from os.path import isfile, join, basename
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QRunnable, QThreadPool, pyqtSignal, QThreadPool, QObject
+from PyQt6.QtCore import (
+    QRunnable,
+    pyqtSignal,
+    QThreadPool,
+    QObject,
+    QMutex,
+    pyqtSlot,
+)
 from natsort import natsorted
 
-from sam_annotator.run_sam import CustomSamPredictor
+from sam_annotator.run_sam import CustomSamPredictor, Sam2Inference
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator, PanoImageAligner
+from sam_annotator.mask_visualizations import MaskData, AnnotationObject
 
 
 class App:
@@ -57,6 +64,10 @@ class App:
         self.last_sam_preview_time_stamp = time.time_ns()
         self.pano_aligner = None
         self.sam2 = False
+
+        self.mask_track_batch_size: int = 10
+        self.propagated_mids: list[int] = []
+        self.mutex = QMutex()
 
     def run(self) -> None:
         self.ui.run()
@@ -155,6 +166,9 @@ class App:
         embed_current, embed_next = self.annotator.create_new_annotation(
             filepath=img_name, next_filepath=next_img_name
         )
+
+        self.threadpool.waitForDone(-1)
+
         if self.sam2:
             self.embed_img_pair()
         else:
@@ -174,7 +188,8 @@ class App:
         ) or not self.annotator.annotation.good_masks:
             return
         if self.sam2:
-            self.annotator.track_good_masks()
+            self.start_mask_batch_thread(track_remaining=True)
+
         else:
             if self.pano_aligner is None:
                 self.pano_aligner = PanoImageAligner()
@@ -230,6 +245,62 @@ class App:
             f"Embedding {embedding_threads} images"
         )
 
+    def start_mask_batch_thread(self, track_remaining: bool = False):
+
+        if self.mask_track_batch_size is None:
+            print("Propagating masks in main thread")
+            self.annotator.sam.set_masks(self.annotator.annotation.good_masks)
+            prop_mask_objs: list[MaskData] = self.annotator.sam.propagate_to_next_img()
+            self.annotator.next_annotation.add_masks(prop_mask_objs, decision=True)
+        else:
+            # Batching of masks for propagation to next image
+            unpropagated_masks = [
+                mobj
+                for mobj in self.annotator.annotation.good_masks
+                if mobj.mid not in self.propagated_mids
+            ]
+            for mask_batch_idx in range(
+                0, len(unpropagated_masks), self.mask_track_batch_size
+            ):
+                mask_batch = unpropagated_masks[
+                    mask_batch_idx : mask_batch_idx + self.mask_track_batch_size
+                ]
+
+                if len(mask_batch) >= self.mask_track_batch_size or track_remaining:
+                    assert len(mask_batch) > 0 and mask_batch[0].mask is not None
+                    self.propagated_mids.extend([mobj.mid for mobj in mask_batch])
+                    s2p_worker = Sam2PropagationWorker(
+                        sam2_predictor=self.annotator.sam,
+                        mask_batch=mask_batch,
+                        next_annotation=self.annotator.next_annotation,
+                        mutex=self.mutex,
+                    )
+
+                    s2p_worker.signals.finished.connect(self.propagation_done)
+                    self.threadpool.start(s2p_worker)
+
+                    self.ui.performing_embedding_label.setText(
+                        f"Propagating {len(mask_batch)} masks"
+                    )
+            if track_remaining:
+                print("Tracking remaining masks")
+                self._purge_falsely_propagated_masks()
+                self.propagated_mids = []
+
+    def _purge_falsely_propagated_masks(self):
+        good_mask_ids = [mobj.mid for mobj in self.annotator.annotation.good_masks]
+        bad_mask_ids = [
+            mobj
+            for mobj in self.annotator.next_annotation.masks
+            if mobj.mid not in good_mask_ids
+        ]
+        self.annotator.next_annotation.masks = [
+            mobj
+            for mobj in self.annotator.next_annotation.masks
+            if mobj.mid in good_mask_ids
+        ]
+        print(f"{len(bad_mask_ids)} falsely propagated masks have been purged")
+
     def embedding_done(self, img_name: str):
         print(f"Embedding of {img_name} done")
         embedding_threads = self.threadpool.activeThreadCount()
@@ -239,6 +310,9 @@ class App:
             )
         else:
             self.ui.performing_embedding_label.setText(f"Embeddings done!")
+
+    def propagation_done(self, maskn):
+        self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
         features, original_size, input_size, img_name = result
@@ -291,6 +365,8 @@ class App:
             self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
 
     def add_good_mask(self):
+        if self.sam2:
+            self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:
             self.ui.create_message_box(False, "All masks are done")
@@ -360,13 +436,14 @@ class PyQtWorker(QRunnable):
         img_name: str,
         delay: float = 0.0,
     ):
-        super(PyQtWorker, self).__init__()
+        super().__init__()
         self.signals = WorkerSignals()
         self.sam_predictor = sam_predictor
         self.img = img
         self.img_name = img_name
         self.delay = delay
 
+    @pyqtSlot()
     def run(self):
         try:
             now = time.time()
@@ -389,40 +466,50 @@ class PyQtWorker(QRunnable):
 
 
 class Sam2PropagationWorker(QRunnable):
-    finished: pyqtSignal = pyqtSignal(str)
-    error: pyqtSignal = pyqtSignal(tuple)
-    result: pyqtSignal = pyqtSignal(tuple)
+    # finished: pyqtSignal = pyqtSignal(str)
+    # error: pyqtSignal = pyqtSignal(tuple)
+    # result: pyqtSignal = pyqtSignal(tuple)
 
     def __init__(
         self,
-        delay: float = 0.0,
+        sam2_predictor: Sam2Inference,
+        mask_batch: list[MaskData],
+        next_annotation: AnnotationObject,
+        mutex: QMutex,
     ):
-        super(PyQtWorker, self).__init__()
-        self.signals = WorkerSignals()
-        self.delay = delay
+        super().__init__()
+        self.signals = Sam2PropWorkerSignals()
+        self.sam2_predictor = sam2_predictor
+        self.next_annotation = next_annotation
+        self.mask_batch = mask_batch
+        self.mutex = mutex
 
+    @pyqtSlot()
     def run(self):
         try:
             now = time.time()
-            features, original_size, input_size = (
-                self.sam_predictor.get_img_ebedding_without_overiding_current_embedding(
-                    self.img
-                )
-            )
+            self.mutex.lock()
+            mask_objs = self.sam2_predictor.prop_thread_func(self.mask_batch)
+
             duration = time.time() - now
-            print(f"embedding took {duration}")
-            result = (features, original_size, input_size, self.img_name)
+            print(f"Propagatin of mask batch took {duration}")
+            self.next_annotation.add_masks(mask_objs, decision=True)
+            self.mutex.unlock()
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, value, traceback.format_exc()))
-        else:
-            self.signals.result.emit(result)
+
         finally:
-            self.signals.finished.emit(self.img_name)
+            self.signals.finished.emit(len(mask_objs))
 
 
 class WorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(str)
     error: pyqtSignal = pyqtSignal(tuple)
     result: pyqtSignal = pyqtSignal(tuple)
+
+
+class Sam2PropWorkerSignals(QObject):
+    finished: pyqtSignal = pyqtSignal(int)
+    error: pyqtSignal = pyqtSignal(tuple)
