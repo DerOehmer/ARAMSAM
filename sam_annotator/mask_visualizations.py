@@ -21,7 +21,7 @@ class MaskIdHandler:
 
 @dataclass
 class MaskData:
-    id: int
+    mid: int
     mask: np.ndarray
     origin: str
     time_stamp: int = None  # in deciseconds (1/10th of a second)
