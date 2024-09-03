@@ -363,10 +363,7 @@ class Sam2Inference:
                 m.mask.dtype == np.uint8 and m.mask.ndim == 2
             ), "Expecting numpy array with 2 dims and dtype bool"
             mask = m.mask.astype(bool)
-            self.predictor.add_new_mask(
-                self.inference_state, 0, self.latest_obj_id, mask
-            )
-            self.latest_obj_id += 1
+            self.predictor.add_new_mask(self.inference_state, 0, m.mid, mask)
 
     def propagate_to_next_img(self):
         prop_masks: list[MaskData] = []
@@ -376,13 +373,17 @@ class Sam2Inference:
             out_mask_logits,
         ) in self.predictor.propagate_in_video(self.inference_state):
             if out_frame_idx == 1:
-                for i, out_obj_id in enumerate(out_obj_ids):
+                for i, out_mid in enumerate(out_obj_ids):
                     np_mask = self._logits_to_npmask(out_mask_logits[i])
                     if np_mask is not None:
-                        prop_masks.append(
-                            MaskData(self.mask_id_handler, np_mask, "Sam2_tracking")
-                        )
+                        prop_masks.append(MaskData(out_mid, np_mask, "Sam2_tracking"))
         return prop_masks
+
+    def prop_thread_func(self, mask_objs: list[MaskData]):
+        self._init_mixed_precision()
+        self.predictor.reset_state(self.inference_state)
+        self.set_masks(mask_objs)
+        return self.propagate_to_next_img()
 
     def _logits_to_npmask(self, out_mask_logit: torch.Tensor | np.ndarray):
         if isinstance(out_mask_logit, np.ndarray):
