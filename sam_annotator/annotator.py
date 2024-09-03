@@ -38,8 +38,6 @@ class Annotator:
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
 
-        self.mask_track_batch_size = 5
-
         self.origin_codes = {
             "Sam1_proposed": "s1p",
             "Sam2_proposed": "s2p",
@@ -208,7 +206,7 @@ class Annotator:
             prop_mask_out = self.sam._torch_to_npmasks(prop_mask_out_torch)
             prop_mask_objs = [
                 MaskData(
-                    id=self.mask_id_handler.set_id(),
+                    mid=self.mask_id_handler.set_id(),
                     mask=mask,
                     origin="Panorama_tracking",
                     time_stamp=self._get_time_stamp(),
@@ -229,12 +227,9 @@ class Annotator:
 
         self.update_mask_idx()
         self.update_collections(self.annotation)
+        start_preselect = time.time()
         self.preselect_mask()
-
-    def track_good_masks(self):
-        self.sam.set_masks(self.annotation.good_masks)
-        prop_mask_objs: list[MaskData] = self.sam.propagate_to_next_img()
-        self.next_annotation.add_masks(prop_mask_objs, decision=True)
+        print(f"Preselect time: {time.time() - start_preselect}")
 
     def good_mask(self):
         annot = self.annotation
@@ -248,7 +243,7 @@ class Annotator:
             if annot.preview_mask is None:
                 return "Mask not ready"
             mask_to_store = MaskData(
-                id=self.mask_id_handler.set_id(),
+                mid=self.mask_id_handler.set_id(),
                 mask=annot.preview_mask,
                 origin=origin,
                 time_stamp=self._get_time_stamp(),
@@ -259,7 +254,7 @@ class Annotator:
 
         elif self.polygon_drawing_enabled:
             mask_to_store = MaskData(
-                id=self.mask_id_handler.set_id(),
+                mid=self.mask_id_handler.set_id(),
                 mask=annot.preview_mask,
                 origin="Polygon_drawing",
                 time_stamp=self._get_time_stamp(),
@@ -271,7 +266,7 @@ class Annotator:
         elif len(annot.masks) > self.mask_idx:
             mask_obj = annot.masks[self.mask_idx]
             mask_to_store = MaskData(
-                id=self.mask_id_handler.set_id(),
+                mid=self.mask_id_handler.set_id(),
                 mask=mask_obj.mask,
                 origin=mask_obj.origin,
                 time_stamp=self._get_time_stamp(),
@@ -283,9 +278,6 @@ class Annotator:
 
         annot.good_masks.append(mask_to_store)
         self.mask_idx += 1
-
-        if len(annot.masks) > self.mask_track_batch_size:
-            pass
 
         self.update_collections(annot)
         if self.mask_idx >= len(annot.masks):
