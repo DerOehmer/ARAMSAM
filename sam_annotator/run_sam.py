@@ -246,12 +246,7 @@ class Sam2Inference:
 
         self.device = "cuda"
 
-        torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
-
-        if torch.cuda.get_device_properties(0).major >= 8:
-            # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
+        self._init_mixed_precision()
 
         self.mask_id_handler = mask_id_handler
         self.predictor: SAM2VideoPredictor = build_sam2_video_predictor(
@@ -263,6 +258,14 @@ class Sam2Inference:
         self.inference_state: dict = None
         self.latest_obj_id = 0
         self.predictor.is_image_set = False
+
+    def _init_mixed_precision(self):
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+
+        if torch.cuda.get_device_properties(0).major >= 8:
+            # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
 
     def set_features(self, imgs: list[np.ndarray]):
         if self.predictor.is_image_set:
