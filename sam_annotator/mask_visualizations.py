@@ -150,6 +150,16 @@ class MaskVisualization:
                 -1,
                 lineType=cv2.LINE_8,
             )
+            cv2.putText(
+                self.masked_img,
+                str(m.mid),
+                m.center,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 0),
+                1,
+                cv2.LINE_AA,
+            )
 
         return self.masked_img
 
