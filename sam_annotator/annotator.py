@@ -96,7 +96,6 @@ class Annotator:
 
     def toggle_manual_annotation(self):
         self.reset_manual_annotation()
-        # TODO: does sam2 predictor have the attribute is_image_set
         if not self.manual_annotation_enabled and not self.sam.predictor.is_image_set:
             print("Embed image before manually annotation")
             return
@@ -213,6 +212,7 @@ class Annotator:
                 )
                 for mask in prop_mask_out
             ]
+            prop_mask_objs = self.convey_color_to_next_annot(prop_mask_objs)
             self.annotation.add_masks(prop_mask_objs, decision=True)
 
         mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
@@ -230,6 +230,14 @@ class Annotator:
         start_preselect = time.time()
         self.preselect_mask()
         print(f"Preselect time: {time.time() - start_preselect}")
+
+    def convey_color_to_next_annot(self, next_mask_objs: list[MaskData]):
+        for mobj in self.annotation.good_masks:
+            mid = mobj.mid
+            for next_mobj in next_mask_objs:
+                if next_mobj.mid == mid:
+                    next_mobj.color_idx = mobj.color_idx
+        return next_mask_objs
 
     def good_mask(self):
         annot = self.annotation
@@ -266,9 +274,14 @@ class Annotator:
         elif len(annot.masks) > self.mask_idx:
             mask_obj = annot.masks[self.mask_idx]
             mask_to_store = MaskData(
-                mid=self.mask_id_handler.set_id(),
+                mid=(
+                    self.mask_id_handler.set_id()
+                    if mask_obj.mid is None
+                    else mask_obj.mid
+                ),
                 mask=mask_obj.mask,
                 origin=mask_obj.origin,
+                color_idx=mask_obj.color_idx,
                 time_stamp=self._get_time_stamp(),
             )
             annot.mask_decisions[self.mask_idx] = True

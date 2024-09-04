@@ -167,8 +167,6 @@ class App:
             filepath=img_name, next_filepath=next_img_name
         )
 
-        self.threadpool.waitForDone(-1)
-
         if self.sam2:
             self.embed_img_pair()
         else:
@@ -196,6 +194,8 @@ class App:
             self.pano_aligner.add_image(
                 self.annotator.annotation.img, self.annotator.annotation.good_masks
             )
+        self.threadpool.waitForDone(-1)
+        self.annotator.convey_color_to_next_annot(self.annotator.next_annotation.masks)
 
     def embed_img_pair(self):
         # SAM2
@@ -251,6 +251,7 @@ class App:
             print("Propagating masks in main thread")
             self.annotator.sam.set_masks(self.annotator.annotation.good_masks)
             prop_mask_objs: list[MaskData] = self.annotator.sam.propagate_to_next_img()
+            prop_mask_objs = self.annotator.convey_color_to_next_annot(prop_mask_objs)
             self.annotator.next_annotation.add_masks(prop_mask_objs, decision=True)
         else:
             # Batching of masks for propagation to next image
