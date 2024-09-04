@@ -63,9 +63,9 @@ class AnnotationObject:
         )
         self.preview_mask = None
 
-    def set_masks(self, mask_objects: list[MaskData]):
+    """def set_masks(self, mask_objects: list[MaskData]):
         self.masks = mask_objects
-        self.mask_decisions = [False for _ in range(len(self.masks))]
+        self.mask_decisions = [False for _ in range(len(self.masks))]"""
 
     def set_current_mask(self, mask_idx: int):
         self.mask_visualizations.mask = cv2.cvtColor(
