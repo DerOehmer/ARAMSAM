@@ -5,7 +5,7 @@ from PyQt6 import QtWidgets
 from PyQt6 import QtGui
 from screeninfo import get_monitors
 
-from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QCoreApplication
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QGraphicsPixmapItem,
     QFrame,
     QCheckBox,
+    QProgressDialog,
 )
 
 
@@ -68,11 +69,13 @@ class UserInterface(QMainWindow):
         self.menu_open.addAction("Load Folder", self.load_img_folder)
         self.menu_settings.addAction("Change Layout", self.open_layout_settings_box)
         self.menu_settings.addAction(
-            "Set Ouput Directory", self._open_ouput_dir_selection
+            "Set Ouput Directory", self.open_ouput_dir_selection
         )
         self.menu_settings.addAction("Set SAM Model", self._open_sam_model_selection)
         self.zoom_level = 0
         self.zoom_factor = 1.25
+
+        self.loading_window = None
 
         self.construct_ui()
         self.showMaximized()
@@ -174,7 +177,7 @@ class UserInterface(QMainWindow):
         self.save_signal.emit(1)
 
     def save_as(self):
-        user_selected_dir = self._open_ouput_dir_selection()
+        user_selected_dir = self.open_ouput_dir_selection()
         if user_selected_dir:
             self.save()
 
@@ -184,7 +187,7 @@ class UserInterface(QMainWindow):
     def load_img_folder(self):
         self.load_img_folder_signal.emit(1)
 
-    def _open_ouput_dir_selection(self) -> bool:
+    def open_ouput_dir_selection(self) -> bool:
         filepath = QFileDialog.getExistingDirectory(
             parent=self,
             caption="Select Output Folder",
@@ -346,6 +349,27 @@ class UserInterface(QMainWindow):
         self.msg_box.setText(text)
         self.msg_box.show()
 
+    def create_loading_window(
+        self, label_text: str, max_val: int = 100, initial_val: int = 0
+    ):
+        self.loading_window = QProgressDialog(self)
+        self.loading_window.setWindowTitle("Loading...")
+        self.loading_window.setLabelText(label_text)
+        self.loading_window.setCancelButtonText(None)  # Hide the cancel button
+        self.loading_window.setRange(initial_val, max_val)
+        self.loading_window.setWindowModality(Qt.WindowModality.WindowModal)
+        self.loading_window.show()
+
+    def update_loading_window(self, val: int):
+        if isinstance(val, tuple):
+            val = int(val[0] / val[1] * 100)
+
+        if self.loading_window is not None:
+            print("updating loading window", val)
+            self.loading_window.setValue(val)
+            if val >= self.loading_window.maximum():
+                self.loading_window.close()
+
     def open_img_load_file_dialog(self):
         filepath = QFileDialog.getOpenFileName(
             parent=self,
@@ -421,7 +445,7 @@ class InteractiveGraphicsView(QGraphicsView):
         self.pixmap_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
 
         self.init_scene()
-    
+
     def init_scene(self):
         self.graphics_scene.addItem(self.pixmap_item)
         self.setScene(self.graphics_scene)

@@ -2,6 +2,7 @@ import torch
 import cv2
 import numpy as np
 import pandas as pd
+import time
 
 from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 from segment_anything.modeling import Sam
@@ -410,6 +411,7 @@ class CustomAMG:
     def __call__(self, roi_pts=False, n_points=100, msize_thresh=10000):
         pts = None
         pt_labels = None
+        start_getting_prompt_points = time.time()
         if roi_pts:
             pts, pt_labels = self._get_roi_points(n_points)
         else:
@@ -417,7 +419,12 @@ class CustomAMG:
         transformed_pts, transformed_lbls = self.sam_cls._prep_batch_pts_and_lbls(
             pts, pt_labels, self.imgbgr.shape[:2]
         )
+        print(
+            f"Time taken for only getting the prompt points: {time.time() - start_getting_prompt_points}"
+        )
+        startpredtimer = time.time()
         masks = self.sam_cls.predict_batch(transformed_pts, transformed_lbls)
+        print(f"Time taken for only the prediction: {time.time() - startpredtimer}")
 
         xmins = []
         ymins = []
@@ -425,7 +432,7 @@ class CustomAMG:
         mask_objs = []
 
         annotated_image = self.imgbgr.copy()
-
+        maskpostpocessingtimer = time.time()
         for mask in masks:
             if not isinstance(mask, np.ndarray):
                 mask = mask.cpu().numpy()
@@ -450,16 +457,26 @@ class CustomAMG:
 
                 ymins.append(ymin)
                 xmins.append(xmin)
-        mvis = MaskVisualization(img=annotated_image, mask_objs=mask_objs)
+        print(
+            f"Time taken for only the mask post processing: {time.time() - maskpostpocessingtimer}"
+        )
+        startmvistimer = time.time()
+        mvis = MaskVisualization()
+        mvis.set_annotation(img=annotated_image, mask_objs=mask_objs)
         annotated_image = mvis.get_masked_img()
         mvis_mask_objs = mvis.mask_objs
+        print(f"Time taken for only the visualization: {time.time() - startmvistimer}")
 
+        start_sorting_pts = time.time()
         cord_dict = {"ymins": ymins, "xmins": xmins}
         cord_df = pd.DataFrame(cord_dict)
         cord_df = cord_df.sort_values(by=["ymins", "xmins"])
         order = cord_df.index.to_list()
         # masks_np = np.array(mask_lst, dtype=np.uint8)[order]
         ordered_mask_objs = [mvis_mask_objs[i] for i in order]
+        print(
+            f"Time taken for only sorting the points: {time.time() - start_sorting_pts}"
+        )
         return ordered_mask_objs, annotated_image
 
     def _get_roi_points(self, n=100, lower_hsv=[28, 0, 0], higher_hsv=[179, 255, 255]):

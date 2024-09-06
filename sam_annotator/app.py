@@ -5,7 +5,7 @@ import traceback
 import qdarkstyle
 
 from os import listdir
-from os.path import isfile, join, basename
+from os.path import isfile, join, basename, isdir, splitext, basename
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import (
@@ -34,8 +34,8 @@ class App:
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
         self.ui = UserInterface(ui_options=ui_options)
         self.annotator = Annotator()
-        self.threadpool = QThreadPool()
-        self.threadpool.setMaxThreadCount(1)
+        self.threadpool = QThreadPool.globalInstance()
+        self.threadpool.setMaxThreadCount(8)
         self.img_fnames = []
         self.output_dir = None
 
@@ -65,7 +65,7 @@ class App:
         self.pano_aligner = None
         self.sam2 = False
 
-        self.mask_track_batch_size: int = 10
+        self.mask_track_batch_size: int = 50
         self.propagated_mids: list[int] = []
         self.mutex = QMutex()
 
@@ -80,12 +80,12 @@ class App:
     def save_output(self, _=None):
         if self.output_dir is None:
             print("Select output directory before saving")
-            self.ui._open_ouput_dir_selection()
+            self.ui.open_ouput_dir_selection()
             self.ui.save()
             return
         if not Path(self.output_dir).exists():
             print(f"Path {self.output_dir} does not exist")
-            self.ui._open_ouput_dir_selection()
+            self.ui.open_ouput_dir_selection()
             self.ui.save()
             return
 
@@ -93,7 +93,7 @@ class App:
         if output_exists:
             self.ui.create_message_box(
                 True,
-                "Annotations already exist. Maybe outpupath should be provided together with input path, so programme can check whether this img has already been annotated?",
+                "Incomplete outputfolder detected. Files have been overwritten",
             )
 
     def change_output_dir(self, out_dir: str):
@@ -144,9 +144,6 @@ class App:
         self.select_next_img()
 
     def select_next_img(self):
-        if self.annotator.annotation is not None:
-            self.ui.open_save_annots_box()
-
         if not self.img_fnames:
             print("No image left in the queue")
             return
@@ -160,6 +157,23 @@ class App:
             next_img_name = Path(self.img_fnames[-1])
         else:
             next_img_name = None
+
+        # check if img_name is already annotated in output_dir
+        current_img_done, next_img_done = self.check_annotations_done(
+            img_name, next_img_name
+        )
+        if current_img_done and next_img_done:
+            print(f"Both {img_name} and {next_img_name} are already annotated")
+            return self.select_next_img()
+
+        elif current_img_done and not next_img_done:
+            print(
+                f"{img_name} is already annotated but {next_img_name} is not. Loading previous annotations"
+            )
+            self.load_previous_annotations(img_name, next_img_name)
+
+        elif self.annotator.annotation is not None:
+            self.ui.open_save_annots_box()
 
         self.propagate_good_masks()
 
@@ -179,6 +193,46 @@ class App:
                 self.embed_img(basename(next_img_name))
         self.annotator.init_time_stamp()
 
+    def check_annotations_done(
+        self, img_name: str, next_img_name: str
+    ) -> tuple[bool, bool]:
+
+        if self.output_dir is None:
+            self.ui.open_ouput_dir_selection()
+        img_name_done = self._annot_log_exists(img_name)
+        next_img_name_done = self._annot_log_exists(next_img_name)
+        return img_name_done, next_img_name_done
+
+    def _annot_log_exists(self, img_name: str | None) -> bool:
+        if img_name is None:
+            return True
+
+        img_path = str(img_name)
+        img_id = splitext(basename(img_path))[0]
+        annot_id = f"{img_id}_annots"
+        annot_path = join(self.output_dir, annot_id)
+        if isdir(annot_path) and isfile(join(annot_path, "log.json")):
+            return True
+        return False
+
+    def load_previous_annotations(self, img_name: str, next_img_name: str):
+        img_path = str(img_name)
+        img_id = splitext(basename(img_path))[0]
+        annot_id = f"{img_id}_annots"
+        annot_path = join(self.output_dir, annot_id)
+        annot_masks_path = join(annot_path, "masks")
+        if not isdir(annot_masks_path):
+            raise FileNotFoundError(f"Could not find masks directory in {annot_path}")
+
+        self.annotator.create_new_annotation(
+            filepath=img_name, next_filepath=next_img_name
+        )
+        self.annotator.annotation.load_masks_from_dir(
+            Path(annot_masks_path), self.annotator.mask_id_handler
+        )
+        if self.sam2:
+            self.embed_img_pair(do_amg=False)
+
     def propagate_good_masks(self):
         if (
             not self.annotator.sam.predictor.is_image_set
@@ -186,7 +240,7 @@ class App:
         ) or not self.annotator.annotation.good_masks:
             return
         if self.sam2:
-            self.start_mask_batch_thread(track_remaining=True)
+            self.start_mask_batch_threads(track_remaining=True)
 
         else:
             if self.pano_aligner is None:
@@ -194,10 +248,15 @@ class App:
             self.pano_aligner.add_image(
                 self.annotator.annotation.img, self.annotator.annotation.good_masks
             )
+        if self.threadpool.activeThreadCount() > 0:
+            self.ui.create_loading_window("Propagating masks")
         self.threadpool.waitForDone(-1)
+        self.ui.update_loading_window(100)
         self.annotator.convey_color_to_next_annot(self.annotator.next_annotation.masks)
+        if self.annotator.time_stamp is None:
+            self.annotator.init_time_stamp()
 
-    def embed_img_pair(self):
+    def embed_img_pair(self, do_amg: bool = True):
         # SAM2
         if self.annotator.next_annotation is not None:
             img_pair = [
@@ -207,7 +266,8 @@ class App:
         else:
             img_pair = [self.annotator.annotation.img]
         self.annotator.sam.set_features(img_pair)
-        self.segment_anything()
+        if do_amg:
+            self.segment_anything()
 
     def embed_img(self, img_name: str):
         current_ann_name = self.annotator.get_annotation_img_name()
@@ -245,7 +305,7 @@ class App:
             f"Embedding {embedding_threads} images"
         )
 
-    def start_mask_batch_thread(self, track_remaining: bool = False):
+    def start_mask_batch_threads(self, track_remaining: bool = False):
 
         if self.mask_track_batch_size is None:
             print("Propagating masks in main thread")
@@ -274,19 +334,25 @@ class App:
                         sam2_predictor=self.annotator.sam,
                         mask_batch=mask_batch,
                         next_annotation=self.annotator.next_annotation,
+                        batch_progress=(mask_batch_idx, len(unpropagated_masks)),
                         mutex=self.mutex,
                     )
 
-                    s2p_worker.signals.finished.connect(self.propagation_done)
+                    # s2p_worker.signals.finished.connect(self.propagation_done)
+                    s2p_worker.signals.result.connect(self.ui.update_loading_window)
                     self.threadpool.start(s2p_worker)
 
-                    self.ui.performing_embedding_label.setText(
-                        f"Propagating {len(mask_batch)} masks"
-                    )
+                    # self.ui.performing_embedding_label.setText(
+                    # f"Propagating {len(mask_batch)} masks"
+                    # )
             if track_remaining:
                 print("Tracking remaining masks")
                 self._purge_falsely_propagated_masks()
                 self.propagated_mids = []
+
+    def progress_to_loading_window(self, progress: tuple[int, int]):
+        masks_done, all_masks = progress
+        self.ui.update_loading_window(int(masks_done / all_masks * 100))
 
     def _purge_falsely_propagated_masks(self):
         good_mask_ids = [mobj.mid for mobj in self.annotator.annotation.good_masks]
@@ -367,7 +433,7 @@ class App:
 
     def add_good_mask(self):
         if self.sam2:
-            self.start_mask_batch_thread()
+            self.start_mask_batch_threads()
         new_center = self.annotator.good_mask()
         if new_center is None:
             self.ui.create_message_box(False, "All masks are done")
@@ -476,6 +542,7 @@ class Sam2PropagationWorker(QRunnable):
         sam2_predictor: Sam2Inference,
         mask_batch: list[MaskData],
         next_annotation: AnnotationObject,
+        batch_progress: tuple[int, int],
         mutex: QMutex,
     ):
         super().__init__()
@@ -483,6 +550,7 @@ class Sam2PropagationWorker(QRunnable):
         self.sam2_predictor = sam2_predictor
         self.next_annotation = next_annotation
         self.mask_batch = mask_batch
+        self.batch_progress = batch_progress
         self.mutex = mutex
 
     @pyqtSlot()
@@ -495,6 +563,7 @@ class Sam2PropagationWorker(QRunnable):
             duration = time.time() - now
             print(f"Propagatin of mask batch took {duration}")
             self.next_annotation.add_masks(mask_objs, decision=True)
+            self.signals.result.emit(self.batch_progress)
             self.mutex.unlock()
         except:
             traceback.print_exc()
@@ -502,7 +571,7 @@ class Sam2PropagationWorker(QRunnable):
             self.signals.error.emit((exctype, value, traceback.format_exc()))
 
         finally:
-            self.signals.finished.emit(len(mask_objs))
+            self.signals.finished.emit(self.batch_progress[0])
 
 
 class WorkerSignals(QObject):
@@ -514,3 +583,4 @@ class WorkerSignals(QObject):
 class Sam2PropWorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(int)
     error: pyqtSignal = pyqtSignal(tuple)
+    result: pyqtSignal = pyqtSignal(tuple)

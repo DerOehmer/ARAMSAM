@@ -58,6 +58,7 @@ class AnnotationObject:
         self.original_size = None
         self.input_size = None
 
+        self.mask_visualizer = MaskVisualization()
         self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
             img=self.img
         )
@@ -84,35 +85,43 @@ class AnnotationObject:
     def get_sam_parameters(self):
         return self.features, self.original_size, self.input_size
 
+    def load_masks_from_dir(self, masks_dir: Path, mid_handler: MaskIdHandler):
+        mask_files = sorted(masks_dir.glob("*.png"))
+        for mask_file in mask_files:
+            if not mask_file.is_file():
+                raise FileNotFoundError(f"File {mask_file} not found")
+            mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
+            mask_data = MaskData(
+                mid=mid_handler.set_id(),
+                mask=mask,
+                origin="",
+            )
+            self.good_masks.append(mask_data)
+
 
 class MaskVisualization:
     def __init__(
         self,
-        annotation: AnnotationObject = None,
-        img: np.ndarray = None,
-        mask_objs: list[MaskData] = None,
         cnt_color: tuple[int] = (0, 255, 0),
     ):
-        if annotation is not None:
-            self.img: np.ndarray = annotation.img
-            self.mask_objs: list[MaskData] = annotation.good_masks
-            self.preview_mask = annotation.preview_mask
+        self.img = None
+        self.mask_objs = None
+        self.preview_mask = None
 
-        elif img is not None and mask_objs is not None:
-            self.img: np.ndarray = img
-            self.mask_objs: list[MaskData] = mask_objs
-            self.preview_mask = None
-        else:
-            raise ValueError("Either annotation or img and mask_objs must be provided")
+        self.mask_ids = []
+        self.mask_ids_to_remove = []
+        self.mask_ids_to_add = []
 
         self.cnt_color = cnt_color
-
         self.masked_img: np.ndarray = None
         self.maskinrgb: np.ndarray = None
         self.mask_collection: np.ndarray = None
+        self._mask_coll_bin: np.ndarray = None
         self.masked_img_cnt: np.ndarray = None
         self.mask_collection_cnt: np.ndarray = None
         self.img_man_preview: np.ndarray = None
+
+        self.no_collection_to_update = False
 
     @property
     def colormap(self) -> np.ndarray:
@@ -133,12 +142,68 @@ class MaskVisualization:
             dtype=np.uint8,
         )
 
+    def set_annotation(
+        self,
+        annotation: AnnotationObject = None,
+        img: np.ndarray = None,
+        mask_objs: list[MaskData] = None,
+    ):
+        if annotation is not None:
+            self.img = annotation.img
+            self.mask_objs = annotation.good_masks
+            self.preview_mask = annotation.preview_mask
+
+            new_ids = None
+            if self.mask_ids:
+                new_ids = self._compare_mask_ids()
+            self._set_mask_ids(new_ids)
+
+        elif img is not None and mask_objs is not None:
+            self.img = img
+            self.mask_objs = mask_objs
+            self.preview_mask = None
+        else:
+            raise ValueError("Either annotation or img and mask_objs must be provided")
+
+    def _set_mask_ids(self, mask_ids: list[int] | None):
+        if mask_ids is not None:
+            self.mask_ids = mask_ids
+        else:
+            self.mask_ids = [m.mid for m in self.mask_objs]
+
+    def _compare_mask_ids(self):
+        new_mask_ids = [m.mid for m in self.mask_objs]
+
+        old_set = set(self.mask_ids)
+        new_set = set(new_mask_ids)
+
+        mids_to_remove = old_set - new_set
+        mids_to_add = new_set - old_set
+        self.mask_ids_to_remove = list(mids_to_remove)
+        self.mask_ids_to_add = list(mids_to_add)
+        if new_mask_ids == self.mask_ids:
+            self.no_collection_to_update = True
+        else:
+            self.no_collection_to_update = False
+
+        return new_mask_ids
+
     def get_masked_img(self) -> np.ndarray:
+        if self.no_collection_to_update:
+            return self.masked_img
+        if self.masked_img is None or self.mask_ids_to_remove:
+            self.masked_img = self.img.copy()
+
         self._set_mask_centers()
         self._assign_mask_colors()
-        self.masked_img = self.img.copy()
 
         for m in self.mask_objs:
+            if (
+                self.mask_ids_to_add
+                and not self.mask_ids_to_remove
+                and m.mid not in self.mask_ids_to_add
+            ):
+                continue
             cnts, _ = cv2.findContours(m.mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
             m.contour = cnts
             r, g, b = self.colormap[m.color_idx]
@@ -180,15 +245,25 @@ class MaskVisualization:
         return self.masked_img_cnt
 
     def get_mask_collection(self) -> np.ndarray:
+        if self.no_collection_to_update:
+            return self.mask_collection
 
         y, x, _ = self.img.shape
-        self.mask_collection = np.zeros((y, x, 3), dtype=np.uint8)
-        mask_coll_bin = np.zeros((y, x), dtype=np.uint8)
+        if self.mask_collection is None or self.mask_ids_to_remove:
+            self.mask_collection = np.zeros((y, x, 3), dtype=np.uint8)
+        if self._mask_coll_bin is None or self.mask_ids_to_remove:
+            self._mask_coll_bin = np.zeros((y, x), dtype=np.uint8)
 
         for m in self.mask_objs:
+            if (
+                self.mask_ids_to_add
+                and not self.mask_ids_to_remove
+                and m.mid not in self.mask_ids_to_add
+            ):
+                continue
             m = m.mask
-            overlap = cv2.bitwise_and(m, mask_coll_bin)
-            mask_coll_bin = np.where(m == 255, 255, mask_coll_bin)
+            overlap = cv2.bitwise_and(m, self._mask_coll_bin)
+            self._mask_coll_bin = np.where(m == 255, 255, self._mask_coll_bin)
             self.mask_collection[np.where(m == 255)] = [255, 255, 255]
             self.mask_collection[np.where(overlap == 255)] = [0, 0, 255]
 
@@ -218,12 +293,12 @@ class MaskVisualization:
 
         return self.maskinrgb
 
-    def _assign_mask_colors(self):
+    def _assign_mask_colors(self, k: int = 8):
         masks = self.mask_objs
         coli = 0
         for i, m in enumerate(masks):
             if m.color_idx is None:
-                k = len(masks) - 1 if len(masks) - 1 < 7 else 7
+                k = len(masks) - 1 if len(masks) - 1 < k else k
                 if k:
                     nnbs = self._find_nearest_neighbors(
                         np.array([mask.center for mask in masks]), k
@@ -246,7 +321,7 @@ class MaskVisualization:
 
                 m.color_idx = coli
 
-    def _find_nearest_neighbors(self, points: np.ndarray, k: int = 5) -> np.ndarray:
+    def _find_nearest_neighbors(self, points: np.ndarray, k: int) -> np.ndarray:
         """
         Find the k nearest neighbors for each point in a 2D space.
 

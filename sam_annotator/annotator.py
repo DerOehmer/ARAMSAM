@@ -127,7 +127,7 @@ class Annotator:
                     [1, *self.manual_mask_point_labels], dtype=np.int32
                 ),
             )
-            self.update_collections(self.annotation, quick_update=True)
+            self.update_collections(self.annotation, quick_update=False)
 
     def mask_from_polygon(self):
         if self.polygon_drawing_enabled:
@@ -192,7 +192,7 @@ class Annotator:
         if self.annotation is None:
             raise ValueError("No annotation object found.")
 
-        print(self.annotation.img.shape)
+        start_mask_idx = 0
         self.sam.custom_amg.set_visualization_img(self.annotation.img)
 
         if pano_aligner is not None:
@@ -215,7 +215,23 @@ class Annotator:
             prop_mask_objs = self.convey_color_to_next_annot(prop_mask_objs)
             self.annotation.add_masks(prop_mask_objs, decision=True)
 
+        start_setting_masks = time.time()
+        if self.annotation.masks:
+            for dec, mobj in zip(self.annotation.mask_decisions, self.annotation.masks):
+                if dec:
+                    mobj.time_stamp = self._get_time_stamp()
+                    self.annotation.good_masks.append(mobj)
+                    if self.mask_id_handler._id == mobj.mid:
+                        raise ValueError("Mask ID is not unique and set correctly")
+                    start_mask_idx += 1
+                else:
+                    raise ValueError(
+                        "Tracked annotations have not been annotated Correctly. Mask decision 'False' received"
+                    )
+        print(f"Setting masks time: {time.time() - start_setting_masks}")
+        start_custom_amg = time.time()
         mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
+        print(f"Custom AMG time: {time.time() - start_custom_amg}")
         assert (
             isinstance(mask_objs, list)
             and isinstance(mask_objs[0], MaskData)
@@ -225,8 +241,10 @@ class Annotator:
         self.annotation.mask_visualizations.masked_img = annotated_image
         self.annotation.add_masks(mask_objs)
 
-        self.update_mask_idx()
+        self.update_mask_idx(start_mask_idx)
+        start_updating_collections = time.time()
         self.update_collections(self.annotation)
+        print(f"Updating collections time: {time.time() - start_updating_collections}")
         start_preselect = time.time()
         self.preselect_mask()
         print(f"Preselect time: {time.time() - start_preselect}")
@@ -282,6 +300,8 @@ class Annotator:
                 mask=mask_obj.mask,
                 origin=mask_obj.origin,
                 color_idx=mask_obj.color_idx,
+                center=mask_obj.center,
+                contour=mask_obj.contour,
                 time_stamp=self._get_time_stamp(),
             )
             annot.mask_decisions[self.mask_idx] = True
@@ -351,7 +371,16 @@ class Annotator:
         if self.mask_idx > 0:
 
             if annot.mask_decisions[self.mask_idx - 1] and len(annot.good_masks) > 0:
-                annot.good_masks.pop()
+                popped_mobj = annot.good_masks.pop()
+                # Recycle created mask meta data
+                for i, mobj in enumerate(annot.masks):
+                    if mobj.mid == popped_mobj.mid:
+                        if mobj.center is None:
+                            mobj.center = popped_mobj.center
+                        if mobj.contour is None:
+                            mobj.contour = popped_mobj.contour
+                        if mobj.color_idx is None:
+                            mobj.color_idx = popped_mobj.color_idx
 
             annot.mask_decisions[self.mask_idx - 1] = False
 
@@ -360,7 +389,9 @@ class Annotator:
 
     def update_collections(self, annot: AnnotationObject, quick_update: bool = False):
 
-        mask_vis = MaskVisualization(annotation=annot)
+        mask_vis = self.annotation.mask_visualizer
+        mask_vis.set_annotation(annotation=annot)
+
         mvis_data: MaskVisualizationData = self.annotation.mask_visualizations
         if quick_update:
             if self.manual_annotation_enabled:
@@ -369,6 +400,12 @@ class Annotator:
                 )
                 mvis_data.img_sam_preview = img_sam_preview
             return
+        else:
+            if self.manual_annotation_enabled:
+                img_sam_preview = mask_vis.get_sam_preview(
+                    self.manual_mask_points, self.manual_mask_point_labels
+                )
+                mvis_data.img_sam_preview = img_sam_preview
         masked_img = mask_vis.get_masked_img()
         mask_collection = mask_vis.get_mask_collection()
         if len(annot.masks) > self.mask_idx:
