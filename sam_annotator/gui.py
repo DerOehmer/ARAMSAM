@@ -358,14 +358,12 @@ class UserInterface(QMainWindow):
         self.loading_window.setCancelButtonText(None)  # Hide the cancel button
         self.loading_window.setRange(initial_val, max_val)
         self.loading_window.setWindowModality(Qt.WindowModality.WindowModal)
-        self.loading_window.show()
 
     def update_loading_window(self, val: int):
         if isinstance(val, tuple):
             val = int(val[0] / val[1] * 100)
 
         if self.loading_window is not None:
-            print("updating loading window", val)
             self.loading_window.setValue(val)
             if val >= self.loading_window.maximum():
                 self.loading_window.close()
