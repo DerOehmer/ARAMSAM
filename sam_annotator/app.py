@@ -35,7 +35,7 @@ class App:
         self.ui = UserInterface(ui_options=ui_options)
         self.annotator = Annotator()
         self.threadpool = QThreadPool.globalInstance()
-        self.threadpool.setMaxThreadCount(8)
+        self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
         self.output_dir = None
 
@@ -65,8 +65,8 @@ class App:
         self.pano_aligner = None
         self.sam2 = False
 
-        self.mask_track_batch_size: int = 50
-        self.propagated_mids: list[int] = []
+        self.mask_track_batch_size: int = 10
+        self.propagated_mids: set[int] = set()
         self.mutex = QMutex()
 
     def run(self) -> None:
@@ -143,6 +143,14 @@ class App:
         self.img_fnames = natsorted(self.img_fnames)
         self.select_next_img()
 
+    def _pop_img_fnames(self) -> tuple[Path, Path]:
+        img_name = Path(self.img_fnames.pop())
+        if self.img_fnames:
+            next_img_name = Path(self.img_fnames[-1])
+        else:
+            next_img_name = None
+        return img_name, next_img_name
+
     def select_next_img(self):
         if not self.img_fnames:
             print("No image left in the queue")
@@ -151,12 +159,8 @@ class App:
             print(
                 "Wait for embedding calculation to be finished before skipping to next img"
             )
-            return
-        img_name = Path(self.img_fnames.pop())
-        if self.img_fnames:
-            next_img_name = Path(self.img_fnames[-1])
-        else:
-            next_img_name = None
+            self.threadpool.waitForDone(-1)
+        img_name, next_img_name = self._pop_img_fnames()
 
         # check if img_name is already annotated in output_dir
         current_img_done, next_img_done = self.check_annotations_done(
@@ -171,6 +175,7 @@ class App:
                 f"{img_name} is already annotated but {next_img_name} is not. Loading previous annotations"
             )
             self.load_previous_annotations(img_name, next_img_name)
+            img_name, next_img_name = self._pop_img_fnames()
 
         elif self.annotator.annotation is not None:
             self.ui.open_save_annots_box()
@@ -240,7 +245,8 @@ class App:
         ) or not self.annotator.annotation.good_masks:
             return
         if self.sam2:
-            self.start_mask_batch_threads(track_remaining=True)
+
+            self.start_mask_batch_thread(track_remaining=True)
 
         else:
             if self.pano_aligner is None:
@@ -248,11 +254,11 @@ class App:
             self.pano_aligner.add_image(
                 self.annotator.annotation.img, self.annotator.annotation.good_masks
             )
-        if self.threadpool.activeThreadCount() > 0:
-            self.ui.create_loading_window("Propagating masks")
-        self.threadpool.waitForDone(-1)
-        self.ui.update_loading_window(100)
-        self.annotator.convey_color_to_next_annot(self.annotator.next_annotation.masks)
+
+        if self.sam2:
+            self.annotator.convey_color_to_next_annot(
+                self.annotator.next_annotation.masks
+            )
         if self.annotator.time_stamp is None:
             self.annotator.init_time_stamp()
 
@@ -305,7 +311,7 @@ class App:
             f"Embedding {embedding_threads} images"
         )
 
-    def start_mask_batch_threads(self, track_remaining: bool = False):
+    def start_mask_batch_thread(self, track_remaining: bool = False):
 
         if self.mask_track_batch_size is None:
             print("Propagating masks in main thread")
@@ -320,39 +326,59 @@ class App:
                 for mobj in self.annotator.annotation.good_masks
                 if mobj.mid not in self.propagated_mids
             ]
-            for mask_batch_idx in range(
-                0, len(unpropagated_masks), self.mask_track_batch_size
+
+            if len(unpropagated_masks) >= self.mask_track_batch_size or (
+                track_remaining and len(unpropagated_masks) > 0
             ):
-                mask_batch = unpropagated_masks[
-                    mask_batch_idx : mask_batch_idx + self.mask_track_batch_size
-                ]
+                self.threadpool.waitForDone(-1)
+                self.propagated_mids.update(
+                    {int(mobj.mid) for mobj in unpropagated_masks}
+                )
+                s2p_worker = Sam2PropagationWorker(
+                    sam2_predictor=self.annotator.sam,
+                    next_annotation=self.annotator.next_annotation,
+                    unpropagated_masks=unpropagated_masks,
+                    batch_size=self.mask_track_batch_size,
+                    track_remaining=track_remaining,
+                    mutex=self.mutex,
+                )
 
-                if len(mask_batch) >= self.mask_track_batch_size or track_remaining:
-                    assert len(mask_batch) > 0 and mask_batch[0].mask is not None
-                    self.propagated_mids.extend([mobj.mid for mobj in mask_batch])
-                    s2p_worker = Sam2PropagationWorker(
-                        sam2_predictor=self.annotator.sam,
-                        mask_batch=mask_batch,
-                        next_annotation=self.annotator.next_annotation,
-                        batch_progress=(mask_batch_idx, len(unpropagated_masks)),
-                        mutex=self.mutex,
-                    )
+                # s2p_worker.signals.finished.connect(self.propagation_done)
+                s2p_worker.signals.progress.connect(self.progress_to_loading_window)
+                s2p_worker.signals.error.connect(self.print_thread_error)
+                self.threadpool.start(s2p_worker)
 
-                    # s2p_worker.signals.finished.connect(self.propagation_done)
-                    s2p_worker.signals.result.connect(self.ui.update_loading_window)
-                    self.threadpool.start(s2p_worker)
-
-                    # self.ui.performing_embedding_label.setText(
-                    # f"Propagating {len(mask_batch)} masks"
-                    # )
+                self.ui.performing_embedding_label.setText(
+                    f"Propagating {len(unpropagated_masks)} masks"
+                )
             if track_remaining:
-                print("Tracking remaining masks")
+                self.ui.create_loading_window("Propagating masks")
+
+                while self.threadpool.activeThreadCount() > 0:
+                    self.ui.update_loading_window(
+                        (
+                            len(self.annotator.next_annotation.masks),
+                            len(self.annotator.annotation.good_masks),
+                        )
+                    )
+                    time.sleep(0.1)
+                self.threadpool.waitForDone(-1)
+                self.ui.update_loading_window(100)
+                self.ui.loading_window = None
                 self._purge_falsely_propagated_masks()
-                self.propagated_mids = []
+                self.propagated_mids = set()
 
     def progress_to_loading_window(self, progress: tuple[int, int]):
         masks_done, all_masks = progress
-        self.ui.update_loading_window(int(masks_done / all_masks * 100))
+        print("one batch done")
+        """if self.ui.loading_window is None:
+            self.ui.create_loading_window("Propagating masks")
+        self.ui.update_loading_window(int(masks_done / all_masks * 100))"""
+
+    def print_thread_error(self, error: tuple):
+        exctype, value, traceback_str = error
+        print(traceback_str)
+        raise exctype(value)
 
     def _purge_falsely_propagated_masks(self):
         good_mask_ids = [mobj.mid for mobj in self.annotator.annotation.good_masks]
@@ -418,6 +444,8 @@ class App:
         self.update_ui_imgs()
         duration = time.time() - now
         print(f"update ui {duration}")
+        if self.sam2:
+            self.start_mask_batch_thread()
 
     def _ui_config_changed(self, fields: list[str]):
         assert (
@@ -433,7 +461,7 @@ class App:
 
     def add_good_mask(self):
         if self.sam2:
-            self.start_mask_batch_threads()
+            self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:
             self.ui.create_message_box(False, "All masks are done")
@@ -540,23 +568,25 @@ class Sam2PropagationWorker(QRunnable):
     def __init__(
         self,
         sam2_predictor: Sam2Inference,
-        mask_batch: list[MaskData],
         next_annotation: AnnotationObject,
-        batch_progress: tuple[int, int],
+        unpropagated_masks: list[MaskData],
+        batch_size: int,
+        track_remaining: bool,
         mutex: QMutex,
     ):
         super().__init__()
         self.signals = Sam2PropWorkerSignals()
         self.sam2_predictor = sam2_predictor
         self.next_annotation = next_annotation
-        self.mask_batch = mask_batch
-        self.batch_progress = batch_progress
+        self.unpropagated_masks = unpropagated_masks
+        self.batch_size = batch_size
+        self.track_remaining = track_remaining
         self.mutex = mutex
 
     @pyqtSlot()
     def run(self):
         try:
-            now = time.time()
+            """now = time.time()
             self.mutex.lock()
             mask_objs = self.sam2_predictor.prop_thread_func(self.mask_batch)
 
@@ -564,14 +594,39 @@ class Sam2PropagationWorker(QRunnable):
             print(f"Propagatin of mask batch took {duration}")
             self.next_annotation.add_masks(mask_objs, decision=True)
             self.signals.result.emit(self.batch_progress)
-            self.mutex.unlock()
+            self.mutex.unlock()"""
+
+            # Batching of masks for propagation to next image
+            #
+            for mask_batch_idx in range(
+                0, len(self.unpropagated_masks), self.batch_size
+            ):
+
+                mask_batch = self.unpropagated_masks[
+                    mask_batch_idx : mask_batch_idx + self.batch_size
+                ]
+
+                if len(mask_batch) >= self.batch_size or self.track_remaining:
+                    self.mutex.lock()
+                    assert len(mask_batch) > 0 and mask_batch[0].mask is not None
+
+                    now = time.time()
+                    mask_objs = self.sam2_predictor.prop_thread_func(mask_batch)
+                    self.next_annotation.add_masks(mask_objs, decision=True)
+                    duration = time.time() - now
+                    print(f"Propagatin of mask batch took {duration}")
+                    self.mutex.unlock()
+                    self.signals.progress.emit(
+                        (mask_batch_idx, len(self.unpropagated_masks))
+                    )
+
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, value, traceback.format_exc()))
 
-        finally:
-            self.signals.finished.emit(self.batch_progress[0])
+        """finally:
+            self.signals.finished.emit(self.batch_progress[0])"""
 
 
 class WorkerSignals(QObject):
@@ -584,3 +639,4 @@ class Sam2PropWorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(int)
     error: pyqtSignal = pyqtSignal(tuple)
     result: pyqtSignal = pyqtSignal(tuple)
+    progress: pyqtSignal = pyqtSignal(tuple)
