@@ -606,19 +606,20 @@ class Sam2PropagationWorker(QRunnable):
                     mask_batch_idx : mask_batch_idx + self.batch_size
                 ]
 
-                if len(mask_batch) >= self.batch_size or self.track_remaining:
-                    self.mutex.lock()
-                    assert len(mask_batch) > 0 and mask_batch[0].mask is not None
+                self.mutex.lock()
+                assert len(mask_batch) > 0 and mask_batch[0].mask is not None
 
-                    now = time.time()
-                    mask_objs = self.sam2_predictor.prop_thread_func(mask_batch)
-                    self.next_annotation.add_masks(mask_objs, decision=True)
-                    duration = time.time() - now
-                    print(f"Propagatin of mask batch took {duration}")
-                    self.mutex.unlock()
-                    self.signals.progress.emit(
-                        (mask_batch_idx, len(self.unpropagated_masks))
-                    )
+                now = time.time()
+                mask_objs = self.sam2_predictor.prop_thread_func(mask_batch)
+                self.next_annotation.add_masks(mask_objs, decision=True)
+                duration = time.time() - now
+                print(
+                    f"Propagatin of mask batch containig {len(mask_batch)} masks took {duration}"
+                )
+                self.mutex.unlock()
+                self.signals.progress.emit(
+                    (mask_batch_idx, len(self.unpropagated_masks))
+                )
 
         except:
             traceback.print_exc()
