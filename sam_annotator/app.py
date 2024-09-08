@@ -355,13 +355,15 @@ class App:
                 self.ui.create_loading_window("Propagating masks")
 
                 while self.threadpool.activeThreadCount() > 0:
-                    self.ui.update_loading_window(
-                        (
-                            len(self.annotator.next_annotation.masks),
-                            len(self.annotator.annotation.good_masks),
+                    if self.mutex.tryLock(100):
+                        self.ui.update_loading_window(
+                            (
+                                len(self.annotator.next_annotation.masks),
+                                len(self.annotator.annotation.good_masks),
+                            )
                         )
-                    )
-                    time.sleep(0.1)
+                        self.mutex.unlock()
+                        time.sleep(0.1)
                 self.threadpool.waitForDone(-1)
                 self.ui.update_loading_window(100)
                 self.ui.loading_window = None
@@ -511,7 +513,9 @@ class App:
             self.annotator.manual_mask_point_labels.append(label)
 
         if self.annotator.manual_annotation_enabled:
-            self.annotator.predict_sam_manually(self.mouse_pos)
+            if self.mutex.tryLock(100):
+                self.annotator.predict_sam_manually(self.mouse_pos)
+                self.mutex.unlock()
         elif self.annotator.polygon_drawing_enabled:
             self.annotator.mask_from_polygon()
 
