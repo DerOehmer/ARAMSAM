@@ -189,7 +189,9 @@ class App:
         if self.sam2:
             self.embed_img_pair()
         else:
-            if embed_current:
+            if embed_current or (
+                current_img_done and not next_img_done
+            ):  # if previous annotations wer just loaded from disk, embedding is still required
                 self.embed_img(basename(img_name))
             else:
                 self.annotator.update_sam_features_to_current_annotation()
