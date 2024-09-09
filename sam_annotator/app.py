@@ -273,7 +273,13 @@ class App:
             ]
         else:
             img_pair = [self.annotator.annotation.img]
-        self.annotator.sam.set_features(img_pair)
+        img_embed_worker = Sam2ImgPairEmbeddingWorker(
+            self.annotator.sam, img_pair, self.mutex
+        )
+        img_embed_worker.signals.finished.connect(self.embedding_done)
+        img_embed_worker.signals.error.connect(self.print_thread_error)
+        self.ui.performing_embedding_label.setText(f"Embedding {len(img_pair)} images")
+        img_embed_worker.run()
         if do_amg:
             self.segment_anything()
 
@@ -344,15 +350,13 @@ class App:
                     track_remaining=track_remaining,
                     mutex=self.mutex,
                 )
-
-                # s2p_worker.signals.finished.connect(self.propagation_done)
-                s2p_worker.signals.progress.connect(self.progress_to_loading_window)
-                s2p_worker.signals.error.connect(self.print_thread_error)
-                self.threadpool.start(s2p_worker)
-
                 self.ui.performing_embedding_label.setText(
                     f"Propagating {len(unpropagated_masks)} masks"
                 )
+                s2p_worker.signals.finished.connect(self.propagation_done)
+                s2p_worker.signals.error.connect(self.print_thread_error)
+                self.threadpool.start(s2p_worker)
+
             if track_remaining:
                 self.ui.create_loading_window("Propagating masks")
 
@@ -371,13 +375,6 @@ class App:
                 self.ui.loading_window = None
                 self._purge_falsely_propagated_masks()
                 self.propagated_mids = set()
-
-    def progress_to_loading_window(self, progress: tuple[int, int]):
-        masks_done, all_masks = progress
-        print("one batch done")
-        """if self.ui.loading_window is None:
-            self.ui.create_loading_window("Propagating masks")
-        self.ui.update_loading_window(int(masks_done / all_masks * 100))"""
 
     def print_thread_error(self, error: tuple):
         exctype, value, traceback_str = error
@@ -398,15 +395,20 @@ class App:
         ]
         print(f"{len(bad_mask_ids)} falsely propagated masks have been purged")
 
-    def embedding_done(self, img_name: str):
-        print(f"Embedding of {img_name} done")
-        embedding_threads = self.threadpool.activeThreadCount()
-        if embedding_threads > 0:
+    def embedding_done(self, img_name: str | int):
+        if isinstance(img_name, int):
             self.ui.performing_embedding_label.setText(
-                f"Embedding {embedding_threads} images"
+                f"{img_name} images successfully embedded"
             )
         else:
-            self.ui.performing_embedding_label.setText(f"Embeddings done!")
+            print(f"Embedding of {img_name} done")
+            embedding_threads = self.threadpool.activeThreadCount()
+            if embedding_threads > 0:
+                self.ui.performing_embedding_label.setText(
+                    f"Embedding {embedding_threads} images"
+                )
+            else:
+                self.ui.performing_embedding_label.setText(f"Embeddings done!")
 
     def propagation_done(self, maskn):
         self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
@@ -581,7 +583,7 @@ class Sam2PropagationWorker(QRunnable):
         mutex: QMutex,
     ):
         super().__init__()
-        self.signals = Sam2PropWorkerSignals()
+        self.signals = Sam2WorkerSignals()
         self.sam2_predictor = sam2_predictor
         self.next_annotation = next_annotation
         self.unpropagated_masks = unpropagated_masks
@@ -592,18 +594,6 @@ class Sam2PropagationWorker(QRunnable):
     @pyqtSlot()
     def run(self):
         try:
-            """now = time.time()
-            self.mutex.lock()
-            mask_objs = self.sam2_predictor.prop_thread_func(self.mask_batch)
-
-            duration = time.time() - now
-            print(f"Propagatin of mask batch took {duration}")
-            self.next_annotation.add_masks(mask_objs, decision=True)
-            self.signals.result.emit(self.batch_progress)
-            self.mutex.unlock()"""
-
-            # Batching of masks for propagation to next image
-            #
             for mask_batch_idx in range(
                 0, len(self.unpropagated_masks), self.batch_size
             ):
@@ -620,20 +610,56 @@ class Sam2PropagationWorker(QRunnable):
                 self.next_annotation.add_masks(mask_objs, decision=True)
                 duration = time.time() - now
                 print(
-                    f"Propagatin of mask batch containig {len(mask_batch)} masks took {duration}"
+                    f"Propagating of mask batch containig {len(mask_batch)} masks took {duration}"
                 )
                 self.mutex.unlock()
-                self.signals.progress.emit(
-                    (mask_batch_idx, len(self.unpropagated_masks))
-                )
+                time.sleep(
+                    0.01
+                )  # give some time to the main thread to access data for loading window
 
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, value, traceback.format_exc()))
 
-        """finally:
-            self.signals.finished.emit(self.batch_progress[0])"""
+        finally:
+            self.signals.finished.emit(len(self.unpropagated_masks))
+
+
+class Sam2ImgPairEmbeddingWorker(QRunnable):
+    # finished: pyqtSignal = pyqtSignal(str)
+    # error: pyqtSignal = pyqtSignal(tuple)
+    # result: pyqtSignal = pyqtSignal(tuple)
+
+    def __init__(
+        self,
+        sam2: Sam2Inference,
+        img_pair: list[np.ndarray],
+        mutex: QMutex,
+    ):
+        super().__init__()
+        self.signals = Sam2WorkerSignals()
+        self.sam2 = sam2
+        self.img_pair = img_pair
+        self.mutex = mutex
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            self.mutex.lock()
+            now = time.time()
+            self.sam2.set_features(self.img_pair)
+            duration = time.time() - now
+            print(f"Embedding images with Sam2 took {duration}")
+            self.mutex.unlock()
+
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+
+        finally:
+            self.signals.finished.emit(len(self.img_pair))
 
 
 class WorkerSignals(QObject):
@@ -642,8 +668,6 @@ class WorkerSignals(QObject):
     result: pyqtSignal = pyqtSignal(tuple)
 
 
-class Sam2PropWorkerSignals(QObject):
+class Sam2WorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(int)
     error: pyqtSignal = pyqtSignal(tuple)
-    result: pyqtSignal = pyqtSignal(tuple)
-    progress: pyqtSignal = pyqtSignal(tuple)
