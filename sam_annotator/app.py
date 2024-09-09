@@ -279,7 +279,8 @@ class App:
         img_embed_worker.signals.finished.connect(self.embedding_done)
         img_embed_worker.signals.error.connect(self.print_thread_error)
         self.ui.performing_embedding_label.setText(f"Embedding {len(img_pair)} images")
-        img_embed_worker.run()
+        self.threadpool.start(img_embed_worker)
+        self.threadpool.waitForDone(-1)
         if do_amg:
             self.segment_anything()
 
