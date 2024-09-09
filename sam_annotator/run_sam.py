@@ -131,16 +131,8 @@ class SamInference:
         transformed_pts = self.predictor.transform.apply_coords_torch(pt_tensor, shp)
         return transformed_pts, label_tensor
 
-    def masks_to_bboxes(self, masks: list[np.ndarray], shp: tuple[int, int]):
-        bboxes = []
-        for mask in masks:
-            if np.any(mask):
-                mask = mask.astype(np.uint8)
-                contours, _ = cv2.findContours(
-                    mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-                )
-                x, y, w, h = cv2.boundingRect(contours[0])
-                bboxes.append([x, y, x + w, y + h])
+    def transform_bboxes(self, bboxes: list[np.ndarray], shp: tuple[int, int]):
+
         torch_boxes_orig_shape = torch.tensor(
             bboxes, dtype=torch.int32, device=self.device
         )

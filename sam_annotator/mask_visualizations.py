@@ -28,6 +28,7 @@ class MaskData:
     center: tuple = None
     color_idx: int = None
     contour: np.ndarray = None
+    kalman: object = None  # optional Kalman filter for tracking
 
 
 @dataclass

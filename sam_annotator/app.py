@@ -20,8 +20,9 @@ from natsort import natsorted
 
 from sam_annotator.run_sam import CustomSamPredictor, Sam2Inference
 from sam_annotator.gui import UserInterface
-from sam_annotator.annotator import Annotator, PanoImageAligner
+from sam_annotator.annotator import Annotator
 from sam_annotator.mask_visualizations import MaskData, AnnotationObject
+from sam_annotator.tracker import PanoImageAligner, MultiObjectTracker
 
 
 class App:
@@ -62,7 +63,7 @@ class App:
 
         self.manual_sam_preview_updates_per_sec = 10
         self.last_sam_preview_time_stamp = time.time_ns()
-        self.pano_aligner = None
+        self.bbox_tracker = None
         self.sam2 = False
 
         self.mask_track_batch_size: int = 10
@@ -251,11 +252,10 @@ class App:
             self.start_mask_batch_thread(track_remaining=True)
 
         else:
-            if self.pano_aligner is None:
-                self.pano_aligner = PanoImageAligner()
-            self.pano_aligner.add_image(
-                self.annotator.annotation.img, self.annotator.annotation.good_masks
-            )
+            if self.bbox_tracker is None:
+                self.bbox_tracker = PanoImageAligner()
+                #self.bbox_tracker = MultiObjectTracker()
+            self.bbox_tracker.add_annotation(self.annotator.annotation)
 
         if self.sam2:
             self.annotator.convey_color_to_next_annot(
@@ -443,7 +443,7 @@ class App:
 
     def segment_anything(self):
         now = time.time()
-        self.annotator.predict_with_sam(self.pano_aligner)
+        self.annotator.predict_with_sam(self.bbox_tracker)
         duration = time.time() - now
         print(f"SAM inference {duration}")
 

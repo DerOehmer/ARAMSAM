@@ -188,18 +188,17 @@ class Annotator:
             input_size=self.annotation.input_size,
         )
 
-    def predict_with_sam(self, pano_aligner: PanoImageAligner = None):
+    def predict_with_sam(self, bbox_tracker: PanoImageAligner = None):
         if self.annotation is None:
             raise ValueError("No annotation object found.")
 
         start_mask_idx = 0
         self.sam.custom_amg.set_visualization_img(self.annotation.img)
 
-        if pano_aligner is not None:
-            pano_aligner.add_image(self.annotation.img)
-            tracked_masks = pano_aligner.match_and_align()
-            input_bboxes = self.sam.masks_to_bboxes(
-                tracked_masks, self.annotation.img.shape[:2]
+        if bbox_tracker is not None:
+            tracked_bboxes = bbox_tracker.track(self.annotation)
+            input_bboxes = self.sam.transform_bboxes(
+                tracked_bboxes, self.annotation.img.shape[:2]
             )
             prop_mask_out_torch = self.sam.predict_batch(bboxes=input_bboxes)
             prop_mask_out = self.sam._torch_to_npmasks(prop_mask_out_torch)
