@@ -136,23 +136,47 @@ class UserInterface(QMainWindow):
         )
         self.draw_poly_button.setMinimumWidth(self.buttons_min_width)
 
+        self.delete_button = QPushButton(text="delete", parent=self)
+        self.delete_button.move(
+            6 * self.buttons_spacing + 5 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.delete_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #e35727;   /* Set the background color */
+                color: white;                /* Set the text color */
+                border-radius: 5px;          /* Rounded corners */
+                padding: 10px;               /* Padding inside the button */
+                font-size: 14px;             /* Font size of the text */
+            }
+            QPushButton:hover {
+                background-color: #2980b9;   /* Change background on hover */
+            }
+            QPushButton:pressed {
+                background-color: #1abc9c;   /* Change background on click */
+            }
+        """
+        )
+        self.delete_button.setMinimumWidth(self.buttons_min_width)
+
         self.next_img_button = QPushButton(text="next image", parent=self)
         self.next_img_button.move(
-            6 * self.buttons_spacing + 5 * self.buttons_min_width,
+            7 * self.buttons_spacing + 6 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
         self.next_img_button.setMinimumWidth(self.buttons_min_width)
 
         self.labelCoords = QLabel(self, text="Pixel Pos.")
         self.labelCoords.move(
-            7 * self.buttons_spacing + 6 * self.buttons_min_width,
+            8 * self.buttons_spacing + 7 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
         self.labelCoords.show()
 
         self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
         self.performing_embedding_label.move(
-            8 * self.buttons_spacing + 7 * self.buttons_min_width,
+            9 * self.buttons_spacing + 8 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
         self.performing_embedding_label.setMinimumWidth(
@@ -160,7 +184,10 @@ class UserInterface(QMainWindow):
         )
 
         self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
-        self.sam2_checkbox.move(1000, 20)
+        self.sam2_checkbox.move(
+            15 * self.buttons_spacing + 14 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
         self.sam2_checkbox.setChecked(True)
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:

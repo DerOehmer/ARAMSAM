@@ -35,6 +35,7 @@ class Annotator:
 
         self.manual_annotation_enabled = False
         self.polygon_drawing_enabled = False
+        self.mask_deletion_enabled = False
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
 
@@ -102,12 +103,21 @@ class Annotator:
         self.manual_annotation_enabled = not self.manual_annotation_enabled
         if self.manual_annotation_enabled:
             self.polygon_drawing_enabled = False
+            self.mask_deletion_enabled = False
 
     def toggle_polygon_drawing(self):
         self.reset_manual_annotation()
         self.polygon_drawing_enabled = not self.polygon_drawing_enabled
         if self.polygon_drawing_enabled:
             self.manual_annotation_enabled = False
+            self.mask_deletion_enabled = False
+
+    def toggle_mask_deletion(self):
+        self.reset_manual_annotation()
+        self.mask_deletion_enabled = not self.mask_deletion_enabled
+        if self.mask_deletion_enabled:
+            self.manual_annotation_enabled = False
+            self.polygon_drawing_enabled = False
 
     def reset_manual_annotation(self):
         self.annotation.preview_mask = None
