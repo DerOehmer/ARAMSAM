@@ -508,7 +508,7 @@ class CustomAMG:
         col_indices = np.linspace(pad_x, width - 1 - pad_x, cols, dtype=int)
 
         # Create a meshgrid of row and column indices
-        grid_y, grid_x = np.meshgrid(row_indices, col_indices)
+        grid_y, grid_x = np.meshgrid(col_indices, row_indices)
 
         # Flatten the meshgrid to get a list of coordinates
         grid_points = np.vstack([grid_y.ravel(), grid_x.ravel()]).T
