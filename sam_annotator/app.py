@@ -62,7 +62,7 @@ class App:
 
         self.fields = ui_options["layout_settings_options"]["default"]
 
-        self.manual_sam_preview_updates_per_sec = 10
+        self.manual_sam_preview_updates_per_sec = 5
         self.last_sam_preview_time_stamp = time.time_ns()
         self.bbox_tracker = None
         self.sam2 = False
