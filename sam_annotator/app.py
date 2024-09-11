@@ -462,10 +462,13 @@ class App:
         self.fields = fields
         self.update_ui_imgs()
 
-    def update_ui_imgs(self):
+    def update_ui_imgs(self, center: tuple | None | str = None):
         mviss = self.annotator.annotation.mask_visualizations
         for idx, field in enumerate(self.fields):
             self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
+
+        if type(center) == tuple:
+            self.ui.center_all_annotation_visualizers(center)
 
     def add_good_mask(self):
         if self.sam2:
@@ -473,15 +476,17 @@ class App:
         new_center = self.annotator.good_mask()
         if new_center is None:
             self.ui.create_message_box(False, "All masks are done")
-        # TODO: use center for centering large images
-        self.update_ui_imgs()
+        else:
+            # TODO: use center for centering large images
+            self.update_ui_imgs(center=new_center)
 
     def add_bad_mask(self):
         new_center = self.annotator.bad_mask()
         if new_center is None:
             self.ui.create_message_box(False, "All masks are done")
-        # TODO: use center for centering large images
-        self.update_ui_imgs()
+        else:
+            # TODO: use center for centering large images
+            self.update_ui_imgs(center=new_center)
 
     def last_mask(self):
         # done = self.annotator.update_mask_idx(self.annotator.mask_idx - 1)

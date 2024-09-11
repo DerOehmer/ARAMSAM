@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import time
 
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
@@ -367,11 +368,9 @@ class UserInterface(QMainWindow):
         if self.zoom_level == 0:
             self.fit_annotation_visualizers_to_view()
         else:
-            for _ in range(self.zoom_level):
-                self.annotation_visualizers[ann_viz_id].scale(
-                    self.zoom_factor, self.zoom_factor
-                )
-
+            self.annotation_visualizers[ann_viz_id].scale(
+                self.zoom_factor**self.zoom_level, self.zoom_factor**self.zoom_level
+            )
             if self.current_viewport is not None:
                 self.annotation_visualizers[ann_viz_id].setSceneRect(
                     self.current_viewport
@@ -388,6 +387,21 @@ class UserInterface(QMainWindow):
     def fit_annotation_visualizers_to_view(self):
         for ann_viz in self.annotation_visualizers:
             ann_viz.fitInView()
+
+    def center_all_annotation_visualizers(self, center_p):
+        self.fit_annotation_visualizers_to_view()
+        for ann_viz in self.annotation_visualizers:
+            ann_viz.scale(
+                self.zoom_factor**self.zoom_level, self.zoom_factor**self.zoom_level
+            )
+        self.annotation_visualizers[0].centerOn(*center_p)
+        self.current_viewport = (
+            self.annotation_visualizers[0]
+            .mapToScene(self.annotation_visualizers[0].viewport().geometry())
+            .boundingRect()
+        )
+        for ann_viz in self.annotation_visualizers:
+            ann_viz.setSceneRect(self.current_viewport)
 
     def create_message_box(self, crticial: bool = False, text: str = ""):
         self.msg_box = QMessageBox(self)
@@ -540,10 +554,10 @@ class InteractiveGraphicsView(QGraphicsView):
         super().leaveEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
+        super().mouseMoveEvent(event)
         self.updateCoordinates(event.position().toPoint())
         if self.mouse_down:
             self.mouseMove.emit(event)
-        super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
         self.mouse_down = True
