@@ -157,7 +157,7 @@ class UserInterface(QMainWindow):
         )
 
         self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
-        self.sam2_checkbox.move(1000, 20)
+        self.sam2_checkbox.move(1000, int(self.height_offset / 2))
         self.sam2_checkbox.setChecked(True)
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
