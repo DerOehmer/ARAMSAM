@@ -46,6 +46,7 @@ class App:
         self.ui.manual_annotation_button.clicked.connect(self.manual_annotation)
         self.ui.draw_poly_button.clicked.connect(self.draw_polygon)
         self.ui.next_img_button.clicked.connect(self.select_next_img)
+        self.ui.delete_button.clicked.connect(self.select_masks_to_delete)
 
         self.ui.mouse_position.connect(self.mouse_move_on_img)
         self.ui.load_img_signal.connect(self.load_img)
@@ -61,7 +62,7 @@ class App:
 
         self.fields = ui_options["layout_settings_options"]["default"]
 
-        self.manual_sam_preview_updates_per_sec = 10
+        self.manual_sam_preview_updates_per_sec = 5
         self.last_sam_preview_time_stamp = time.time_ns()
         self.bbox_tracker = None
         self.sam2 = False
@@ -243,9 +244,13 @@ class App:
 
     def propagate_good_masks(self):
         if (
-            not self.annotator.sam.predictor.is_image_set
-            and self.annotator.annotation is None
-        ) or not self.annotator.annotation.good_masks:
+            (
+                not self.annotator.sam.predictor.is_image_set
+                and self.annotator.annotation is None
+            )
+            or not self.annotator.annotation.good_masks
+            or self.annotator.next_annotation is None
+        ):
             return
         if self.sam2:
 
@@ -254,7 +259,6 @@ class App:
         else:
             if self.bbox_tracker is None:
                 self.bbox_tracker = PanoImageAligner()
-                #self.bbox_tracker = MultiObjectTracker()
             self.bbox_tracker.add_annotation(self.annotator.annotation)
 
         if self.sam2:
@@ -451,7 +455,7 @@ class App:
         self.update_ui_imgs()
         duration = time.time() - now
         print(f"update ui {duration}")
-        if self.sam2:
+        if self.sam2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
 
     def _ui_config_changed(self, fields: list[str]):
@@ -461,26 +465,31 @@ class App:
         self.fields = fields
         self.update_ui_imgs()
 
-    def update_ui_imgs(self):
+    def update_ui_imgs(self, center: tuple | None | str = None):
         mviss = self.annotator.annotation.mask_visualizations
         for idx, field in enumerate(self.fields):
             self.ui.update_main_pix_map(idx=idx, img=getattr(mviss, field))
 
+        if type(center) == tuple:
+            self.ui.center_all_annotation_visualizers(center)
+
     def add_good_mask(self):
-        if self.sam2:
+        if self.sam2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:
             self.ui.create_message_box(False, "All masks are done")
-        # TODO: use center for centering large images
-        self.update_ui_imgs()
+        else:
+            # TODO: use center for centering large images
+            self.update_ui_imgs(center=new_center)
 
     def add_bad_mask(self):
         new_center = self.annotator.bad_mask()
         if new_center is None:
             self.ui.create_message_box(False, "All masks are done")
-        # TODO: use center for centering large images
-        self.update_ui_imgs()
+        else:
+            # TODO: use center for centering large images
+            self.update_ui_imgs(center=new_center)
 
     def last_mask(self):
         # done = self.annotator.update_mask_idx(self.annotator.mask_idx - 1)
@@ -494,6 +503,9 @@ class App:
     def draw_polygon(self):
         self.annotator.toggle_polygon_drawing()
 
+    def select_masks_to_delete(self):
+        self.annotator.toggle_mask_deletion()
+
     def mouse_move_on_img(self, point: tuple[int]):
         current_time = time.time_ns()
         delta = current_time - self.last_sam_preview_time_stamp
@@ -503,12 +515,18 @@ class App:
             self.last_sam_preview_time_stamp = current_time
             self.update_ui_imgs()
 
-    def add_sam_preview_annotation_point(self, label: int):
+    def manage_mouse_action(self, label: int):
         if (
-            not self.annotator.manual_annotation_enabled
-            and not self.annotator.polygon_drawing_enabled
+            self.annotator.manual_annotation_enabled
+            or self.annotator.polygon_drawing_enabled
         ):
+            self.add_sam_preview_annotation_point(label)
+        elif self.annotator.mask_deletion_enabled:
+            self.delete_mask_at_point(label)
+        else:
             return
+
+    def add_sam_preview_annotation_point(self, label: int):
         if label == -1:
             if self.annotator.manual_mask_points:
                 self.annotator.manual_mask_points.pop()
@@ -524,6 +542,12 @@ class App:
         elif self.annotator.polygon_drawing_enabled:
             self.annotator.mask_from_polygon()
 
+        self.update_ui_imgs()
+
+    def delete_mask_at_point(self, label: int):
+        mid = self.annotator.highlight_mask_at_point(self.mouse_pos)
+        if label == -1:
+            self.annotator.delete_mask(mid)
         self.update_ui_imgs()
 
 

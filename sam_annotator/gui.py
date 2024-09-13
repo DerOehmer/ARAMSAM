@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import time
 
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
@@ -74,6 +75,7 @@ class UserInterface(QMainWindow):
         self.menu_settings.addAction("Set SAM Model", self._open_sam_model_selection)
         self.zoom_level = 0
         self.zoom_factor = 1.25
+        self.current_viewport = None
 
         self.loading_window = None
 
@@ -87,7 +89,7 @@ class UserInterface(QMainWindow):
         for i in range(2):
             for j in range(2):
                 annotation_visualizer = InteractiveGraphicsView(
-                    self, width=vis_width, height=vis_height
+                    self, ann_viz_id=i * 2 + j, width=vis_width, height=vis_height
                 )
                 annotation_visualizer.setGeometry(
                     i * vis_width,
@@ -102,7 +104,12 @@ class UserInterface(QMainWindow):
                 annotation_visualizer.mousePressSignal.connect(
                     self.childMousePressEvent
                 )
+                annotation_visualizer.new_scene_initialized.connect(
+                    self.new_pixmap_displayed_in_annotation_vizualizers_callback
+                )
                 self.annotation_visualizers.append(annotation_visualizer)
+
+        self.fit_annotation_visualizers_to_view()
 
         self.good_mask_button = QPushButton(text="good mask (n)", parent=self)
         self.good_mask_button.move(self.buttons_spacing, int(self.height_offset / 2))
@@ -136,23 +143,47 @@ class UserInterface(QMainWindow):
         )
         self.draw_poly_button.setMinimumWidth(self.buttons_min_width)
 
+        self.delete_button = QPushButton(text="delete", parent=self)
+        self.delete_button.move(
+            6 * self.buttons_spacing + 5 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.delete_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #e35727;   /* Set the background color */
+                color: white;                /* Set the text color */
+                border-radius: 5px;          /* Rounded corners */
+                padding: 10px;               /* Padding inside the button */
+                font-size: 14px;             /* Font size of the text */
+            }
+            QPushButton:hover {
+                background-color: #2980b9;   /* Change background on hover */
+            }
+            QPushButton:pressed {
+                background-color: #1abc9c;   /* Change background on click */
+            }
+        """
+        )
+        self.delete_button.setMinimumWidth(self.buttons_min_width)
+
         self.next_img_button = QPushButton(text="next image", parent=self)
         self.next_img_button.move(
-            6 * self.buttons_spacing + 5 * self.buttons_min_width,
+            7 * self.buttons_spacing + 6 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
         self.next_img_button.setMinimumWidth(self.buttons_min_width)
 
         self.labelCoords = QLabel(self, text="Pixel Pos.")
         self.labelCoords.move(
-            7 * self.buttons_spacing + 6 * self.buttons_min_width,
+            8 * self.buttons_spacing + 7 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
         self.labelCoords.show()
 
         self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
         self.performing_embedding_label.move(
-            8 * self.buttons_spacing + 7 * self.buttons_min_width,
+            9 * self.buttons_spacing + 8 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
         self.performing_embedding_label.setMinimumWidth(
@@ -160,7 +191,10 @@ class UserInterface(QMainWindow):
         )
 
         self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
-        self.sam2_checkbox.move(1000, 20)
+        self.sam2_checkbox.move(
+            15 * self.buttons_spacing + 14 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
         self.sam2_checkbox.setChecked(True)
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
@@ -280,7 +314,7 @@ class UserInterface(QMainWindow):
             print("not on image")
             return
 
-        viewport = (
+        self.current_viewport = (
             self.annotation_visualizers[scene_idx_under_mouse]
             .mapToScene(
                 self.annotation_visualizers[scene_idx_under_mouse].viewport().geometry()
@@ -290,7 +324,7 @@ class UserInterface(QMainWindow):
         for idx, ann_viz in enumerate(self.annotation_visualizers):
             if idx == scene_idx_under_mouse:
                 continue
-            ann_viz.setSceneRect(viewport)
+            ann_viz.setSceneRect(self.current_viewport)
 
     def wheelEvent(self, event: QWheelEvent):
         scene_idx_under_mouse = self.get_annotation_visualizer_idx_under_mouse()
@@ -316,7 +350,7 @@ class UserInterface(QMainWindow):
 
         # scale and save viewport and transformation of scene under mouse
         self.annotation_visualizers[scene_idx_under_mouse].scale(factor, factor)
-        viewport = (
+        self.current_viewport = (
             self.annotation_visualizers[scene_idx_under_mouse]
             .mapToScene(
                 self.annotation_visualizers[scene_idx_under_mouse].viewport().geometry()
@@ -328,7 +362,19 @@ class UserInterface(QMainWindow):
             if idx == scene_idx_under_mouse:
                 continue
             ann_viz.scale(factor, factor)
-            ann_viz.setSceneRect(viewport)
+            ann_viz.setSceneRect(self.current_viewport)
+
+    def new_pixmap_displayed_in_annotation_vizualizers_callback(self, ann_viz_id: int):
+        if self.zoom_level == 0:
+            self.fit_annotation_visualizers_to_view()
+        else:
+            self.annotation_visualizers[ann_viz_id].scale(
+                self.zoom_factor**self.zoom_level, self.zoom_factor**self.zoom_level
+            )
+            if self.current_viewport is not None:
+                self.annotation_visualizers[ann_viz_id].setSceneRect(
+                    self.current_viewport
+                )
 
     def get_annotation_visualizer_idx_under_mouse(self) -> int:
         scene_idx_under_mouse = None
@@ -341,6 +387,21 @@ class UserInterface(QMainWindow):
     def fit_annotation_visualizers_to_view(self):
         for ann_viz in self.annotation_visualizers:
             ann_viz.fitInView()
+
+    def center_all_annotation_visualizers(self, center_p):
+        self.fit_annotation_visualizers_to_view()
+        for ann_viz in self.annotation_visualizers:
+            ann_viz.scale(
+                self.zoom_factor**self.zoom_level, self.zoom_factor**self.zoom_level
+            )
+        self.annotation_visualizers[0].centerOn(*center_p)
+        self.current_viewport = (
+            self.annotation_visualizers[0]
+            .mapToScene(self.annotation_visualizers[0].viewport().geometry())
+            .boundingRect()
+        )
+        for ann_viz in self.annotation_visualizers:
+            ann_viz.setSceneRect(self.current_viewport)
 
     def create_message_box(self, crticial: bool = False, text: str = ""):
         self.msg_box = QMessageBox(self)
@@ -430,17 +491,21 @@ class InteractiveGraphicsView(QGraphicsView):
     mouseMove: pyqtSignal = pyqtSignal(QMouseEvent)
     clicked: pyqtSignal = pyqtSignal(bool)
     mousePressSignal: pyqtSignal = pyqtSignal(QMouseEvent)
+    new_scene_initialized: pyqtSignal = pyqtSignal(int)
 
-    def __init__(self, parent, width: int = 1024, height: int = 1024) -> None:
+    def __init__(
+        self, parent, ann_viz_id: int, width: int = 1024, height: int = 1024
+    ) -> None:
         super().__init__(parent=parent)
 
         self.width = width
         self.height = height
-        self.zoom_val = 0
+        self.id = ann_viz_id
         self.mouse_down = False
         self.graphics_scene = QGraphicsScene(self)
         self.pixmap_item = QGraphicsPixmapItem()
         self.pixmap_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
+        self.pixmap_item_is_set = False
 
         self.init_scene()
 
@@ -455,6 +520,9 @@ class InteractiveGraphicsView(QGraphicsView):
         self.setBackgroundBrush(QBrush(QColor(30, 30, 30)))
         self.setFrameShape(QFrame.Shape.NoFrame)
 
+        self.pixmap_item_is_set = False
+        self.new_scene_initialized.emit(self.id)
+
     def reset_scene(self):
         self.graphics_scene.removeItem(self.pixmap_item)
         self.pixmap_item = QGraphicsPixmapItem()
@@ -463,10 +531,15 @@ class InteractiveGraphicsView(QGraphicsView):
 
     def set_pixmap(self, pixmap: QPixmap | None):
         if pixmap is None:
-            self.reset_scene()
+            if self.pixmap_item_is_set:
+                self.reset_scene()
         else:
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             self.pixmap_item.setPixmap(pixmap)
+            if not self.pixmap_item_is_set:
+                self.fitInView()
+                self.new_scene_initialized.emit(self.id)
+            self.pixmap_item_is_set = True
 
     def wheelEvent(self, event: QWheelEvent):
         # and overwrite superclass method to avoid scrolling on mouse wheel
@@ -481,10 +554,10 @@ class InteractiveGraphicsView(QGraphicsView):
         super().leaveEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
+        super().mouseMoveEvent(event)
         self.updateCoordinates(event.position().toPoint())
         if self.mouse_down:
             self.mouseMove.emit(event)
-        super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
         self.mouse_down = True
@@ -517,7 +590,6 @@ class InteractiveGraphicsView(QGraphicsView):
                 viewrect.height() / scenerect.height(),
             )
             self.scale(factor, factor)
-            self.zoom_val = 0
 
 
 class OptionsWindow(QMainWindow):
