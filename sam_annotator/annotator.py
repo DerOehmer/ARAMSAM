@@ -317,6 +317,9 @@ class Annotator:
 
         else:
             return None
+        if mask_to_store.mask is None:
+            print("No mask to store")
+            return (0,0)
 
         annot.good_masks.append(mask_to_store)
         self.mask_idx += 1
