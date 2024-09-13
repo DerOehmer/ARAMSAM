@@ -42,7 +42,7 @@ class App:
 
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
-        self.ui.back_button.clicked.connect(self.last_mask)
+        self.ui.back_button.clicked.connect(self.previous_mask)
         self.ui.manual_annotation_button.clicked.connect(self.manual_annotation)
         self.ui.draw_poly_button.clicked.connect(self.draw_polygon)
         self.ui.next_img_button.clicked.connect(self.select_next_img)
@@ -452,7 +452,8 @@ class App:
         print(f"SAM inference {duration}")
 
         now = time.time()
-        self.update_ui_imgs()
+        first_mask_center = self.annotator.annotation.masks[0].center
+        self.update_ui_imgs(center=first_mask_center)
         duration = time.time() - now
         print(f"update ui {duration}")
         if self.sam2 and self.annotator.next_annotation is not None:
@@ -491,11 +492,9 @@ class App:
             # TODO: use center for centering large images
             self.update_ui_imgs(center=new_center)
 
-    def last_mask(self):
-        # done = self.annotator.update_mask_idx(self.annotator.mask_idx - 1)
-        self.annotator.step_back()
-        # TODO: error handling if mask idx is out of bounds
-        self.update_ui_imgs()
+    def previous_mask(self):
+        new_center = self.annotator.step_back()
+        self.update_ui_imgs(center=new_center)
 
     def manual_annotation(self):
         self.annotator.toggle_manual_annotation()

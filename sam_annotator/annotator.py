@@ -395,6 +395,7 @@ class Annotator:
 
             self.mask_idx -= 1
             self.update_collections(annot)
+            return annot.masks[self.mask_idx].center
 
     def update_collections(self, annot: AnnotationObject, quick_update: bool = False):
 
