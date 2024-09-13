@@ -244,9 +244,13 @@ class App:
 
     def propagate_good_masks(self):
         if (
-            not self.annotator.sam.predictor.is_image_set
-            and self.annotator.annotation is None
-        ) or not self.annotator.annotation.good_masks:
+            (
+                not self.annotator.sam.predictor.is_image_set
+                and self.annotator.annotation is None
+            )
+            or not self.annotator.annotation.good_masks
+            or self.annotator.next_annotation is None
+        ):
             return
         if self.sam2:
 
@@ -255,7 +259,6 @@ class App:
         else:
             if self.bbox_tracker is None:
                 self.bbox_tracker = PanoImageAligner()
-                # self.bbox_tracker = MultiObjectTracker()
             self.bbox_tracker.add_annotation(self.annotator.annotation)
 
         if self.sam2:
@@ -452,7 +455,7 @@ class App:
         self.update_ui_imgs()
         duration = time.time() - now
         print(f"update ui {duration}")
-        if self.sam2:
+        if self.sam2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
 
     def _ui_config_changed(self, fields: list[str]):
@@ -471,7 +474,7 @@ class App:
             self.ui.center_all_annotation_visualizers(center)
 
     def add_good_mask(self):
-        if self.sam2:
+        if self.sam2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:
