@@ -48,15 +48,13 @@ class App:
         self.ui.next_img_button.clicked.connect(self.select_next_img)
         self.ui.delete_button.clicked.connect(self.select_masks_to_delete)
 
-        self.ui.mouse_position.connect(self.mouse_move_on_img)
+        self.ui.mouse_position.connect(self.manage_mouse_move)
         self.ui.load_img_signal.connect(self.load_img)
         self.ui.load_img_folder_signal.connect(self.load_img_folder)
         self.ui.output_dir_signal.connect(self.change_output_dir)
         self.ui.sam_path_signal.connect(self.changed_sam_model)
         self.ui.save_signal.connect(self.save_output)
-        self.ui.preview_annotation_point_signal.connect(
-            self.add_sam_preview_annotation_point
-        )
+        self.ui.preview_annotation_point_signal.connect(self.manage_mouse_action)
 
         self.ui.layout_options_signal.connect(self._ui_config_changed)
 
@@ -505,13 +503,19 @@ class App:
     def select_masks_to_delete(self):
         self.annotator.toggle_mask_deletion()
 
-    def mouse_move_on_img(self, point: tuple[int]):
+    def manage_mouse_move(self, point: tuple[int]):
         current_time = time.time_ns()
         delta = current_time - self.last_sam_preview_time_stamp
         if delta * 1e-9 > 1 / self.manual_sam_preview_updates_per_sec:
             self.mouse_pos = point
-            self.annotator.predict_sam_manually(point)
             self.last_sam_preview_time_stamp = current_time
+            if self.annotator.manual_annotation_enabled:
+                self.annotator.predict_sam_manually(point)
+            elif self.annotator.mask_deletion_enabled:
+                self.annotator.highlight_mask_at_point(self.mouse_pos)
+            else:
+                return
+
             self.update_ui_imgs()
 
     def manage_mouse_action(self, label: int):
@@ -545,7 +549,9 @@ class App:
 
     def delete_mask_at_point(self, label: int):
         mid = self.annotator.highlight_mask_at_point(self.mouse_pos)
-        if label == -1:
+        if mid is None:
+            return
+        elif label == 1:
             self.annotator.delete_mask(mid)
         self.update_ui_imgs()
 

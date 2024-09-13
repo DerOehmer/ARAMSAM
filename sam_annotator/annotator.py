@@ -137,7 +137,7 @@ class Annotator:
                     [1, *self.manual_mask_point_labels], dtype=np.int32
                 ),
             )
-            self.update_collections(self.annotation, quick_update=False)
+            self.update_collections(self.annotation)
 
     def mask_from_polygon(self):
         if self.polygon_drawing_enabled:
@@ -319,7 +319,7 @@ class Annotator:
             return None
         if mask_to_store.mask is None:
             print("No mask to store")
-            return (0,0)
+            return (0, 0)
 
         annot.good_masks.append(mask_to_store)
         self.mask_idx += 1
@@ -377,6 +377,16 @@ class Annotator:
             mcenter = self.good_mask()
         return mcenter
 
+    def _recycle_mask_meta_data(self, popped_mobj: MaskData):
+        for i, mobj in enumerate(self.annotation.masks):
+            if mobj.mid == popped_mobj.mid:
+                if mobj.center is None:
+                    mobj.center = popped_mobj.center
+                if mobj.contour is None:
+                    mobj.contour = popped_mobj.contour
+                if mobj.color_idx is None:
+                    mobj.color_idx = popped_mobj.color_idx
+
     def step_back(self):
         annot = self.annotation
 
@@ -384,15 +394,7 @@ class Annotator:
 
             if annot.mask_decisions[self.mask_idx - 1] and len(annot.good_masks) > 0:
                 popped_mobj = annot.good_masks.pop()
-                # Recycle created mask meta data
-                for i, mobj in enumerate(annot.masks):
-                    if mobj.mid == popped_mobj.mid:
-                        if mobj.center is None:
-                            mobj.center = popped_mobj.center
-                        if mobj.contour is None:
-                            mobj.contour = popped_mobj.contour
-                        if mobj.color_idx is None:
-                            mobj.color_idx = popped_mobj.color_idx
+                self._recycle_mask_meta_data(popped_mobj)
 
             annot.mask_decisions[self.mask_idx - 1] = False
 
@@ -400,25 +402,54 @@ class Annotator:
             self.update_collections(annot)
             return annot.masks[self.mask_idx].center
 
-    def update_collections(self, annot: AnnotationObject, quick_update: bool = False):
+    def highlight_mask_at_point(self, position: tuple[int]):
+        xindx, yindx = position
+        if (
+            xindx >= self.annotation.img.shape[1]
+            or yindx >= self.annotation.img.shape[0]
+        ):
+            return None
+        for mobj in self.annotation.good_masks:
+            if mobj.mask[yindx, xindx] > 0:
+                self.annotation.preview_mask = mobj.mask
+                break
+        self.update_collections(self.annotation)
+        return mobj.mid
+
+    def delete_mask(self, midtopop: int):
+        startdeltime = time.time()
+        annot = self.annotation
+        for i, mobj in enumerate(annot.good_masks):
+            if mobj.mid == midtopop:
+                popped_mobj = annot.good_masks.pop(i)
+                self._recycle_mask_meta_data(popped_mobj)
+                mask_dec_idx = [
+                    i for i, m in enumerate(annot.masks) if m.mid == midtopop
+                ]
+                assert len(mask_dec_idx) == 1
+                self.annotation.mask_decisions[mask_dec_idx[0]] = False
+                break
+        print(f"Delete mask time: {time.time() - startdeltime}")
+
+    def update_collections(self, annot: AnnotationObject):
 
         mask_vis = self.annotation.mask_visualizer
         mask_vis.set_annotation(annotation=annot)
 
         mvis_data: MaskVisualizationData = self.annotation.mask_visualizations
-        if quick_update:
-            if self.manual_annotation_enabled:
-                img_sam_preview = mask_vis.get_sam_preview(
-                    self.manual_mask_points, self.manual_mask_point_labels
-                )
-                mvis_data.img_sam_preview = img_sam_preview
-            return
-        else:
-            if self.manual_annotation_enabled:
-                img_sam_preview = mask_vis.get_sam_preview(
-                    self.manual_mask_points, self.manual_mask_point_labels
-                )
-                mvis_data.img_sam_preview = img_sam_preview
+
+        if self.manual_annotation_enabled:
+            img_sam_preview = mask_vis.get_sam_preview(
+                self.manual_mask_points, self.manual_mask_point_labels
+            )
+            mvis_data.img_sam_preview = img_sam_preview
+        elif self.polygon_drawing_enabled:
+            img_sam_preview = mask_vis.get_polygon_preview(self.manual_mask_points)
+            mvis_data.img_sam_preview = img_sam_preview
+        elif self.mask_deletion_enabled:
+            img_sam_preview = mask_vis.get_mask_deletion_preview()
+            mvis_data.img_sam_preview = img_sam_preview
+
         masked_img = mask_vis.get_masked_img()
         mask_collection = mask_vis.get_mask_collection()
         if len(annot.masks) > self.mask_idx:
@@ -433,9 +464,6 @@ class Annotator:
             masked_img_cnt = masked_img
             mask_collection_cnt = mask_collection
 
-        if self.polygon_drawing_enabled:
-            img_sam_preview = mask_vis.get_polygon_preview(self.manual_mask_points)
-            mvis_data.img_sam_preview = img_sam_preview
         if len(annot.masks) > self.mask_idx:
             self.annotation.set_current_mask(self.mask_idx)
         mvis_data.maskinrgb = maskinrgb

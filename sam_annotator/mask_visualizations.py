@@ -241,7 +241,7 @@ class MaskVisualization:
             lineType=cv2.LINE_8,
         )
         if self.preview_mask is not None:
-            self.masked_img_cnt[self.preview_mask == 255] = 255, 150, 100
+            self.masked_img_cnt[self.preview_mask == 255] = 255, 255, 255
         return self.masked_img_cnt
 
     def get_mask_collection(self) -> np.ndarray:
@@ -282,7 +282,7 @@ class MaskVisualization:
             lineType=cv2.LINE_8,
         )
         if self.preview_mask is not None:
-            self.mask_collection_cnt[self.preview_mask == 255] = 255, 150, 100
+            self.mask_collection_cnt[self.preview_mask == 255] = 191, 196, 45
 
         return self.mask_collection_cnt
 
@@ -389,4 +389,18 @@ class MaskVisualization:
                 color=(255, 255, 255),
                 thickness=-1,
             )
+        return self.img_man_preview
+
+    def get_mask_deletion_preview(self) -> np.ndarray:
+        if self.preview_mask is None:
+            return None
+        img = self.img.copy()
+        extended_mask = cv2.dilate(self.preview_mask, np.ones((5, 5), np.uint8), iterations=5)
+        result_img = cv2.bitwise_and(img, img, mask=extended_mask)
+        cnts = cv2.findContours(
+            self.preview_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+        )[0]
+        for cnt in cnts:
+            cv2.drawContours(result_img, [cnt], -1, (0, 0, 255), 1)
+        self.img_man_preview = result_img
         return self.img_man_preview
