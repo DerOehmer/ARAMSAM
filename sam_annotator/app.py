@@ -491,7 +491,10 @@ class App:
             self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:
-            self.ui.create_message_box(False, "All masks are done")
+            # self.ui.create_message_box(False, "All masks are done")
+            print("All proposed masks are done")
+            self.update_ui_imgs(center=(0, 0))
+
         else:
             # TODO: use center for centering large images
             self.update_ui_imgs(center=new_center)
@@ -499,7 +502,9 @@ class App:
     def add_bad_mask(self):
         new_center = self.annotator.bad_mask()
         if new_center is None:
-            self.ui.create_message_box(False, "All masks are done")
+            # self.ui.create_message_box(False, "All masks are done")
+            print("All proposed masks are done")
+            self.update_ui_imgs(center=(0, 0))
         else:
             # TODO: use center for centering large images
             self.update_ui_imgs(center=new_center)
