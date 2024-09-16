@@ -556,6 +556,11 @@ class App:
         else:
             self.annotator.manual_mask_points.append(self.mouse_pos)
             self.annotator.manual_mask_point_labels.append(label)
+            if (
+                len(self.annotator.manual_mask_points) == 1
+                and self.experiment_mode == "polygon"
+            ):
+                self.annotator.init_time_stamp()
 
         if self.annotator.manual_annotation_enabled:
             if self.mutex.tryLock(100):
