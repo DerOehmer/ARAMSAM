@@ -411,6 +411,10 @@ class Annotator:
             or yindx >= self.annotation.img.shape[0]
         ):
             return None
+        elif len(self.annotation.good_masks) == 0:
+            self.update_collections(self.annotation)
+            return None
+
         for mobj in self.annotation.good_masks:
             if mobj.mask[yindx, xindx] > 0:
                 self.annotation.preview_mask = mobj.mask
@@ -428,7 +432,9 @@ class Annotator:
                 mask_dec_idx = [
                     i for i, m in enumerate(annot.masks) if m.mid == midtopop
                 ]
-                assert len(mask_dec_idx) == 1
+                assert len(mask_dec_idx) <= 1
+                if len(mask_dec_idx) == 0:
+                    return
                 self.annotation.mask_decisions[mask_dec_idx[0]] = False
                 break
         print(f"Delete mask time: {time.time() - startdeltime}")
