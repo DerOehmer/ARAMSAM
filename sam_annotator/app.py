@@ -63,7 +63,8 @@ class App:
         self.manual_sam_preview_updates_per_sec = 5
         self.last_sam_preview_time_stamp = time.time_ns()
         self.bbox_tracker = None
-        self.sam2 = False
+        self.sam_gen = None
+        self.experiment_mode = None
 
         self.mask_track_batch_size: int = 10
         self.propagated_mids: set[int] = set()
@@ -74,8 +75,11 @@ class App:
         sys.exit(self.application.exec())
 
     def set_sam(self):
-        self.sam2 = self.ui.sam2_checkbox.isChecked()
-        self.annotator.set_sam_version(sam2=self.sam2)
+        if self.ui.sam2_checkbox.isChecked():
+            self.sam_gen = 2
+        else:
+            self.sam_gen = 1
+        self.annotator.set_sam_version(sam_gen=self.sam_gen)
 
     def save_output(self, _=None):
         if self.output_dir is None:
@@ -186,9 +190,9 @@ class App:
             filepath=img_name, next_filepath=next_img_name
         )
 
-        if self.sam2:
+        if self.sam_gen == 2:
             self.embed_img_pair()
-        else:
+        elif self.sam_gen == 1:
             if embed_current or (
                 current_img_done and not next_img_done
             ):  # if previous annotations wer just loaded from disk, embedding is still required
@@ -247,7 +251,7 @@ class App:
         self.annotator.annotation.load_masks_from_dir(
             Path(annot_masks_path), self.annotator.mask_id_handler
         )
-        if self.sam2:
+        if self.sam_gen == 2:
             self.embed_img_pair(do_amg=False)
 
     def propagate_good_masks(self):
@@ -260,16 +264,16 @@ class App:
             or self.annotator.next_annotation is None
         ):
             return
-        if self.sam2:
+        if self.sam_gen == 2:
 
             self.start_mask_batch_thread(track_remaining=True)
 
-        else:
+        elif self.sam_gen == 1:
             if self.bbox_tracker is None:
                 self.bbox_tracker = PanoImageAligner()
             self.bbox_tracker.add_annotation(self.annotator.annotation)
 
-        if self.sam2:
+        if self.sam_gen == 2:
             self.annotator.convey_color_to_next_annot(
                 self.annotator.next_annotation.masks
             )
@@ -464,7 +468,7 @@ class App:
         self.update_ui_imgs(center=first_mask_center)
         duration = time.time() - now
         print(f"update ui {duration}")
-        if self.sam2 and self.annotator.next_annotation is not None:
+        if self.sam_gen == 2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
 
     def _ui_config_changed(self, fields: list[str]):
@@ -483,7 +487,7 @@ class App:
             self.ui.center_all_annotation_visualizers(center)
 
     def add_good_mask(self):
-        if self.sam2 and self.annotator.next_annotation is not None:
+        if self.sam_gen == 2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:

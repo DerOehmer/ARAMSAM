@@ -51,9 +51,9 @@ class Annotator:
         }
         self.time_stamp = None  # in deciseconds (1/10th of a second)
 
-    def set_sam_version(self, sam2=False):
+    def set_sam_version(self, sam_gen: int = 1):
 
-        if sam2:
+        if sam_gen == 2:
             if self.sam_ckpt is None:
                 sam2_ckpt = "sam2_hiera_small.pt"
             else:
@@ -67,7 +67,7 @@ class Annotator:
                 sam2_checkpoint=sam2_ckpt,
                 cfg_path=sam2_model_type,
             )
-        else:
+        elif sam_gen == 1:
             if self.sam_ckpt is None:
                 sam1_ckpt = "sam_vit_b_01ec64.pth"
             else:
@@ -82,6 +82,8 @@ class Annotator:
                 model_type=sam1_model_type,
                 device=self.device,
             )
+        else:
+            raise NotImplementedError("This generation of Sam is not implemented.")
 
     def init_time_stamp(self):
         self.time_stamp = round(time.time() * 10)
