@@ -22,7 +22,7 @@ from sam_annotator.run_sam import CustomSamPredictor, Sam2Inference
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
 from sam_annotator.mask_visualizations import MaskData, AnnotationObject
-from sam_annotator.tracker import PanoImageAligner, MultiObjectTracker
+from sam_annotator.tracker import PanoImageAligner
 
 
 class App:
