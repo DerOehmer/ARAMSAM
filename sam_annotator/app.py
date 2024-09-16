@@ -198,7 +198,17 @@ class App:
                 self.segment_anything()
             if embed_next:
                 self.embed_img(basename(next_img_name))
-        self.annotator.init_time_stamp()
+        user_ready = self.ui.create_message_box(
+            False,
+            "Experiment is about to start. Click Yes once you are ready",
+            wait_for_user=True,
+        )
+        if user_ready:
+            self.annotator.init_time_stamp()
+
+        else:
+            self.ui.close()
+            raise KeyboardInterrupt("User is not ready")
 
     def check_annotations_done(
         self, img_name: str, next_img_name: str
