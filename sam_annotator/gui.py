@@ -130,20 +130,57 @@ class UserInterface(QMainWindow):
         self.back_button.setMinimumWidth(self.buttons_min_width)
 
         self.manual_annotation_button = QPushButton(text="manual (q)", parent=self)
+        self.manual_annotation_button.setCheckable(True)
         self.manual_annotation_button.move(
             4 * self.buttons_spacing + 3 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
+        self.manual_annotation_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #455364;   /* Set the background color */
+                color: white;                /* Set the text color */
+            }
+            QPushButton:checked {
+                background-color: #0c6af7;  /* Checked state */
+                color: white;
+            
+            }
+            QPushButton:hover {
+                background-color: #54687A;   /* Change background on hover */
+            }
+
+            """
+        )
         self.manual_annotation_button.setMinimumWidth(self.buttons_min_width)
 
         self.draw_poly_button = QPushButton(text="draw polygon", parent=self)
+        self.draw_poly_button.setCheckable(True)
         self.draw_poly_button.move(
             5 * self.buttons_spacing + 4 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
+        self.draw_poly_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #455364;   /* Set the background color */
+                color: white;                /* Set the text color */
+            }
+            QPushButton:checked {
+                background-color: #0c6af7;  /* Checked state */
+                color: white;
+            
+            }
+            QPushButton:hover {
+                background-color: #54687A;   /* Change background on hover */
+            }
+
+            """
+        )
         self.draw_poly_button.setMinimumWidth(self.buttons_min_width)
 
         self.delete_button = QPushButton(text="delete", parent=self)
+        self.delete_button.setCheckable(True)
         self.delete_button.move(
             6 * self.buttons_spacing + 5 * self.buttons_min_width,
             int(self.height_offset / 2),
@@ -151,18 +188,18 @@ class UserInterface(QMainWindow):
         self.delete_button.setStyleSheet(
             """
             QPushButton {
-                background-color: #e35727;   /* Set the background color */
+                background-color: #455364;   /* Set the background color */
                 color: white;                /* Set the text color */
-                border-radius: 5px;          /* Rounded corners */
-                padding: 10px;               /* Padding inside the button */
-                font-size: 14px;             /* Font size of the text */
+            }
+            QPushButton:checked {
+                background-color: #e35727;  /* Checked state */
+                color: white;
+            
             }
             QPushButton:hover {
-                background-color: #2980b9;   /* Change background on hover */
+                background-color: #54687A;   /* Change background on hover */
             }
-            QPushButton:pressed {
-                background-color: #1abc9c;   /* Change background on click */
-            }
+
         """
         )
         self.delete_button.setMinimumWidth(self.buttons_min_width)

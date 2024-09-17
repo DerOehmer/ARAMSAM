@@ -515,12 +515,18 @@ class App:
 
     def manual_annotation(self):
         self.annotator.toggle_manual_annotation()
+        self.ui.draw_poly_button.setChecked(False)
+        self.ui.delete_button.setChecked(False)
 
     def draw_polygon(self):
         self.annotator.toggle_polygon_drawing()
+        self.ui.manual_annotation_button.setChecked(False)
+        self.ui.delete_button.setChecked(False)
 
     def select_masks_to_delete(self):
         self.annotator.toggle_mask_deletion()
+        self.ui.manual_annotation_button.setChecked(False)
+        self.ui.draw_poly_button.setChecked(False)
 
     def manage_mouse_move(self, point: tuple[int]):
         current_time = time.time_ns()
