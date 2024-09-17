@@ -403,12 +403,29 @@ class UserInterface(QMainWindow):
         for ann_viz in self.annotation_visualizers:
             ann_viz.setSceneRect(self.current_viewport)
 
-    def create_message_box(self, crticial: bool = False, text: str = ""):
+    def create_message_box(
+        self, crticial: bool = False, text: str = "", wait_for_user: bool = False
+    ):
         self.msg_box = QMessageBox(self)
         icon = QMessageBox.Icon.Critical if crticial else QMessageBox.Icon.Information
         self.msg_box.setIcon(icon)
         self.msg_box.setText(text)
-        self.msg_box.show()
+        if wait_for_user:
+            self.msg_box.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            self.msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+            result = self.msg_box.exec()
+            if result == QMessageBox.StandardButton.Yes:
+                return True
+            elif (
+                result == QMessageBox.StandardButton.No
+                or result == QMessageBox.StandardButton.NoButton
+            ):
+                print("No button clicked")
+                return False
+        else:
+            self.msg_box.show()
 
     def create_loading_window(
         self, label_text: str, max_val: int = 100, initial_val: int = 0
