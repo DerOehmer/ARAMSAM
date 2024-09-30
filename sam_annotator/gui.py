@@ -6,7 +6,7 @@ from PyQt6 import QtWidgets
 from PyQt6 import QtGui
 from screeninfo import get_monitors
 
-from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QCoreApplication
+from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -16,6 +16,7 @@ from PyQt6.QtGui import (
     QBrush,
     QColor,
     QCursor,
+    QFont,
 )
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -233,6 +234,26 @@ class UserInterface(QMainWindow):
             int(self.height_offset / 2),
         )
         self.sam2_checkbox.setChecked(True)
+
+        self.next_method_button = QPushButton("Next", self)
+        self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.next_method_button.move(
+            13 * self.buttons_spacing + 12 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.next_method_button.setMinimumWidth(160)
+        self.next_method_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: green;  /* Set background color */
+                color: white;             /* Set text color */
+                border-radius: 10px;      /* Rounded corners */
+            }
+            QPushButton:hover {
+                background-color: darkgreen;  /* Change color on hover */
+            }
+            """
+        )
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int(self.width() / 2)
