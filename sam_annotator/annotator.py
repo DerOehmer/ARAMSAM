@@ -47,7 +47,6 @@ class Annotator:
             "Polygon_drawing": "plg",
             "Sam2_tracking": "s2t",
             "Panorama_tracking": "pat",
-            "Kalman_tracking": "kat",
         }
         self.time_stamp = None  # in deciseconds (1/10th of a second)
 
@@ -290,6 +289,8 @@ class Annotator:
             self.reset_manual_annotation()
 
         elif self.polygon_drawing_enabled:
+            if annot.preview_mask is None:
+                return "No polygon provided"
             mask_to_store = MaskData(
                 mid=self.mask_id_handler.set_id(),
                 mask=annot.preview_mask,
@@ -412,6 +413,7 @@ class Annotator:
         ):
             return None
         elif len(self.annotation.good_masks) == 0:
+            self.annotation.preview_mask = None
             self.update_collections(self.annotation)
             return None
 
