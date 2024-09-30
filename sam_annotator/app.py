@@ -60,11 +60,11 @@ class App:
 
         self.fields = ui_options["layout_settings_options"]["default"]
 
-        self.manual_sam_preview_updates_per_sec = 5
-        self.last_sam_preview_time_stamp = time.time_ns()
-        self.bbox_tracker = None
-        self.sam_gen = None
-        self.experiment_mode = None
+        self.manual_sam_preview_updates_per_sec: int = 5
+        self.last_sam_preview_time_stamp: int = time.time_ns()
+        self.bbox_tracker: object = None
+        self.sam_gen: int = None
+        self.experiment_mode: str = None
 
         self.mask_track_batch_size: int = 10
         self.propagated_mids: set[int] = set()
@@ -202,6 +202,7 @@ class App:
                 self.segment_anything()
             if embed_next:
                 self.embed_img(basename(next_img_name))
+        self.threadpool.waitForDone(-1)
         user_ready = self.ui.create_message_box(
             False,
             "Experiment is about to start. Click Yes once you are ready",
@@ -491,22 +492,22 @@ class App:
             self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:
-            # self.ui.create_message_box(False, "All masks are done")
+            if self.experiment_mode == "structured":
+                self.ui.create_message_box(False, "All proposed masks are done")
             print("All proposed masks are done")
-            self.update_ui_imgs(center=(0, 0))
+            self.update_ui_imgs()
 
         else:
-            # TODO: use center for centering large images
             self.update_ui_imgs(center=new_center)
 
     def add_bad_mask(self):
         new_center = self.annotator.bad_mask()
         if new_center is None:
-            # self.ui.create_message_box(False, "All masks are done")
+            if self.experiment_mode == "structured":
+                self.ui.create_message_box(False, "All proposed masks are done")
             print("All proposed masks are done")
-            self.update_ui_imgs(center=(0, 0))
+            self.update_ui_imgs()
         else:
-            # TODO: use center for centering large images
             self.update_ui_imgs(center=new_center)
 
     def previous_mask(self):
@@ -515,12 +516,18 @@ class App:
 
     def manual_annotation(self):
         self.annotator.toggle_manual_annotation()
+        self.ui.draw_poly_button.setChecked(False)
+        self.ui.delete_button.setChecked(False)
 
     def draw_polygon(self):
         self.annotator.toggle_polygon_drawing()
+        self.ui.manual_annotation_button.setChecked(False)
+        self.ui.delete_button.setChecked(False)
 
     def select_masks_to_delete(self):
         self.annotator.toggle_mask_deletion()
+        self.ui.manual_annotation_button.setChecked(False)
+        self.ui.draw_poly_button.setChecked(False)
 
     def manage_mouse_move(self, point: tuple[int]):
         current_time = time.time_ns()
