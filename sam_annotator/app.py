@@ -79,10 +79,13 @@ class App:
         sys.exit(self.application.exec())
 
     def set_sam(self):
-        if self.ui.sam2_checkbox.isChecked():
-            self.sam_gen = 2
-        else:
-            self.sam_gen = 1
+        if self.experiment_mode != "structured":
+            if self.ui.sam2_checkbox.isChecked():
+                self.sam_gen = 2
+            else:
+                self.sam_gen = 1
+        if self.sam_gen is None:
+            raise ValueError("SAM generation has not been set")
         self.annotator.set_sam_version(sam_gen=self.sam_gen)
 
     def save_output(self, _=None):
