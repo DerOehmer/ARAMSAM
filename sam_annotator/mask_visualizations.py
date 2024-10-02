@@ -232,14 +232,15 @@ class MaskVisualization:
         if self.masked_img is None:
             self.get_masked_img()
         self.masked_img_cnt = self.masked_img.copy()
-        self.masked_img_cnt = cv2.drawContours(
-            self.masked_img_cnt,
-            cnt,
-            -1,
-            self.cnt_color,
-            thickness=2,
-            lineType=cv2.LINE_8,
-        )
+        if cnt is not None:
+            self.masked_img_cnt = cv2.drawContours(
+                self.masked_img_cnt,
+                cnt,
+                -1,
+                self.cnt_color,
+                thickness=2,
+                lineType=cv2.LINE_8,
+            )
         if self.preview_mask is not None:
             self.masked_img_cnt[self.preview_mask == 255] = 255, 255, 255
         return self.masked_img_cnt
@@ -273,14 +274,15 @@ class MaskVisualization:
         if self.mask_collection is None:
             self.get_mask_collection()
         self.mask_collection_cnt = self.mask_collection.copy()
-        self.mask_collection_cnt = cv2.drawContours(
-            self.mask_collection_cnt,
-            cnt,
-            -1,
-            self.cnt_color,
-            thickness=2,
-            lineType=cv2.LINE_8,
-        )
+        if cnt is not None:
+            self.mask_collection_cnt = cv2.drawContours(
+                self.mask_collection_cnt,
+                cnt,
+                -1,
+                self.cnt_color,
+                thickness=2,
+                lineType=cv2.LINE_8,
+            )
         if self.preview_mask is not None:
             self.mask_collection_cnt[self.preview_mask == 255] = 191, 196, 45
 
@@ -395,7 +397,9 @@ class MaskVisualization:
         if self.preview_mask is None:
             return None
         img = self.img.copy()
-        extended_mask = cv2.dilate(self.preview_mask, np.ones((5, 5), np.uint8), iterations=5)
+        extended_mask = cv2.dilate(
+            self.preview_mask, np.ones((5, 5), np.uint8), iterations=5
+        )
         result_img = cv2.bitwise_and(img, img, mask=extended_mask)
         cnts = cv2.findContours(
             self.preview_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
