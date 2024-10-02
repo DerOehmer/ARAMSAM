@@ -568,8 +568,8 @@ class App:
     def manage_mouse_move(self, point: tuple[int]):
         current_time = time.time_ns()
         delta = current_time - self.last_sam_preview_time_stamp
+        self.mouse_pos = point
         if delta * 1e-9 > 1 / self.manual_sam_preview_updates_per_sec:
-            self.mouse_pos = point
             self.last_sam_preview_time_stamp = current_time
             if self.annotator.manual_annotation_enabled:
                 self.annotator.predict_sam_manually(point)
