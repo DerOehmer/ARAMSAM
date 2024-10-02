@@ -339,6 +339,8 @@ class Annotator:
         self.update_collections(annot)
         if self.mask_idx >= len(annot.masks):
             next_mask_center = None  # all masks have been labeled
+        elif self.manual_annotation_enabled or self.polygon_drawing_enabled:
+            next_mask_center = ""
         else:
             self.annotation.set_current_mask(self.mask_idx)
             if self.preselect_mask() is None:
