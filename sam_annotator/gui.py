@@ -43,10 +43,11 @@ class UserInterface(QMainWindow):
     sam_path_signal: pyqtSignal = pyqtSignal(str)
     save_signal: pyqtSignal = pyqtSignal(int)
 
-    def __init__(self, ui_options: dict = None) -> None:
+    def __init__(self, ui_options: dict = None, experiment_mode: str = None) -> None:
         super().__init__(parent=None)
 
         self.ui_options = ui_options
+        self.experiment_mode = experiment_mode
 
         monitors = get_monitors()
         width = 1920
@@ -205,12 +206,13 @@ class UserInterface(QMainWindow):
         )
         self.delete_button.setMinimumWidth(self.buttons_min_width)
 
-        self.next_img_button = QPushButton(text="next image", parent=self)
-        self.next_img_button.move(
-            7 * self.buttons_spacing + 6 * self.buttons_min_width,
-            int(self.height_offset / 2),
-        )
-        self.next_img_button.setMinimumWidth(self.buttons_min_width)
+        if not self.experiment_mode == "structured":
+            self.next_img_button = QPushButton(text="next image", parent=self)
+            self.next_img_button.move(
+                7 * self.buttons_spacing + 6 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.next_img_button.setMinimumWidth(self.buttons_min_width)
 
         self.labelCoords = QLabel(self, text="Pixel Pos.")
         self.labelCoords.move(
@@ -227,33 +229,34 @@ class UserInterface(QMainWindow):
         self.performing_embedding_label.setMinimumWidth(
             self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
         )
+        if self.experiment_mode != "structured":
+            self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
+            self.sam2_checkbox.move(
+                15 * self.buttons_spacing + 14 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.sam2_checkbox.setChecked(True)
 
-        self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
-        self.sam2_checkbox.move(
-            15 * self.buttons_spacing + 14 * self.buttons_min_width,
-            int(self.height_offset / 2),
-        )
-        self.sam2_checkbox.setChecked(True)
-
-        self.next_method_button = QPushButton("Next", self)
-        self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        self.next_method_button.move(
-            13 * self.buttons_spacing + 12 * self.buttons_min_width,
-            int(self.height_offset / 2),
-        )
-        self.next_method_button.setMinimumWidth(160)
-        self.next_method_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: green;  /* Set background color */
-                color: white;             /* Set text color */
-                border-radius: 10px;      /* Rounded corners */
-            }
-            QPushButton:hover {
-                background-color: darkgreen;  /* Change color on hover */
-            }
-            """
-        )
+        if self.experiment_mode == "structured":
+            self.next_method_button = QPushButton("Next", self)
+            self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+            self.next_method_button.move(
+                14 * self.buttons_spacing + 13 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.next_method_button.setMinimumWidth(160)
+            self.next_method_button.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: green;  /* Set background color */
+                    color: white;             /* Set text color */
+                    border-radius: 10px;      /* Rounded corners */
+                }
+                QPushButton:hover {
+                    background-color: darkgreen;  /* Change color on hover */
+                }
+                """
+            )
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int(self.width() / 2)

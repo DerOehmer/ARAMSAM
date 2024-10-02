@@ -23,7 +23,7 @@ def mock_main():
             "current": current_options,
         }
     }
-    app = App(ui_options=ui_options)
+    app = App(ui_options=ui_options, experiment_mode="structured")
     app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/raw_output"
     ui = app.ui
     ui.open_img_load_file_dialog = mock_open_img_load_file_dialog
@@ -33,10 +33,19 @@ def mock_main():
     QTest.qWait(50)
 
     ui.sam2_checkbox.setChecked(True)
+    ui.sam2_checkbox.setDisabled(True)
 
     # set path
     load_folder_action = ui.menu_open.actions()[1]
     load_folder_action.trigger()
+
+    ui.menu.setDisabled(True)
+    ui.menu_open.setDisabled(True)
+    ui.menu_settings.setDisabled(True)
+    ui.manual_annotation_button.setDisabled(True)
+    ui.draw_poly_button.setDisabled(True)
+
+    ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
 
     sys.exit(app.application.exec())
     # app.exit()

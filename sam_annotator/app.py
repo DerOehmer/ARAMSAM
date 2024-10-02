@@ -30,23 +30,28 @@ class App:
     Contains the UI with main thread and subprocesses for the annotation
     """
 
-    def __init__(self, ui_options: dict = None) -> None:
+    def __init__(self, ui_options: dict = None, experiment_mode: str = None) -> None:
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
-        self.ui = UserInterface(ui_options=ui_options)
+        self.ui = UserInterface(ui_options=ui_options, experiment_mode=experiment_mode)
         self.annotator = Annotator()
         self.threadpool = QThreadPool.globalInstance()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
         self.output_dir = None
+        self.experiment_mode = experiment_mode
 
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
         self.ui.back_button.clicked.connect(self.previous_mask)
         self.ui.manual_annotation_button.clicked.connect(self.manual_annotation)
         self.ui.draw_poly_button.clicked.connect(self.draw_polygon)
-        self.ui.next_img_button.clicked.connect(self.select_next_img)
         self.ui.delete_button.clicked.connect(self.select_masks_to_delete)
+
+        if self.experiment_mode == "structured":
+            self.ui.next_method_button.clicked.connect(self.next_method)
+        else:
+            self.ui.next_img_button.clicked.connect(self.select_next_img)
 
         self.ui.mouse_position.connect(self.manage_mouse_move)
         self.ui.load_img_signal.connect(self.load_img)
@@ -64,7 +69,6 @@ class App:
         self.last_sam_preview_time_stamp: int = time.time_ns()
         self.bbox_tracker: object = None
         self.sam_gen: int = None
-        self.experiment_mode: str = None
 
         self.mask_track_batch_size: int = 10
         self.propagated_mids: set[int] = set()
@@ -295,7 +299,10 @@ class App:
         )
         img_embed_worker.signals.finished.connect(self.embedding_done)
         img_embed_worker.signals.error.connect(self.print_thread_error)
-        self.ui.performing_embedding_label.setText(f"Embedding {len(img_pair)} images")
+        if self.experiment_mode != "structured":
+            self.ui.performing_embedding_label.setText(
+                f"Embedding {len(img_pair)} images"
+            )
         self.threadpool.start(img_embed_worker)
         self.threadpool.waitForDone(-1)
         if do_amg:
@@ -333,9 +340,10 @@ class App:
         self.threadpool.start(worker)
 
         embedding_threads = self.threadpool.activeThreadCount()
-        self.ui.performing_embedding_label.setText(
-            f"Embedding {embedding_threads} images"
-        )
+        if self.experiment_mode != "structured":
+            self.ui.performing_embedding_label.setText(
+                f"Embedding {embedding_threads} images"
+            )
 
     def start_mask_batch_thread(self, track_remaining: bool = False):
 
@@ -368,9 +376,10 @@ class App:
                     track_remaining=track_remaining,
                     mutex=self.mutex,
                 )
-                self.ui.performing_embedding_label.setText(
-                    f"Propagating {len(unpropagated_masks)} masks"
-                )
+                if self.experiment_mode != "structured":
+                    self.ui.performing_embedding_label.setText(
+                        f"Propagating {len(unpropagated_masks)} masks"
+                    )
                 s2p_worker.signals.finished.connect(self.propagation_done)
                 s2p_worker.signals.error.connect(self.print_thread_error)
                 self.threadpool.start(s2p_worker)
@@ -414,6 +423,8 @@ class App:
         print(f"{len(bad_mask_ids)} falsely propagated masks have been purged")
 
     def embedding_done(self, img_name: str | int):
+        if self.experiment_mode == "structured":
+            return
         if isinstance(img_name, int):
             self.ui.performing_embedding_label.setText(
                 f"{img_name} images successfully embedded"
@@ -429,7 +440,8 @@ class App:
                 self.ui.performing_embedding_label.setText(f"Embeddings done!")
 
     def propagation_done(self, maskn):
-        self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
+        if self.experiment_mode != "structured":
+            self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
         features, original_size, input_size, img_name = result
@@ -492,8 +504,15 @@ class App:
             self.start_mask_batch_thread()
         new_center = self.annotator.good_mask()
         if new_center is None:
-            if self.experiment_mode == "structured":
-                self.ui.create_message_box(False, "All proposed masks are done")
+            if (
+                self.experiment_mode == "structured"
+                and self.annotator.polygon_drawing_enabled == False
+                and self.annotator.manual_annotation_enabled == False
+            ):
+                self.ui.create_message_box(
+                    False,
+                    "All proposed masks are done. Press the Next button if you want to continue with selecting masks interactively.",
+                )
             print("All proposed masks are done")
             self.update_ui_imgs()
 
@@ -503,8 +522,15 @@ class App:
     def add_bad_mask(self):
         new_center = self.annotator.bad_mask()
         if new_center is None:
-            if self.experiment_mode == "structured":
-                self.ui.create_message_box(False, "All proposed masks are done")
+            if (
+                self.experiment_mode == "structured"
+                and self.annotator.polygon_drawing_enabled == False
+                and self.annotator.manual_annotation_enabled == False
+            ):
+                self.ui.create_message_box(
+                    False,
+                    "All proposed masks are done. Press the Next button if you want to continue with selecting masks interactively.",
+                )
             print("All proposed masks are done")
             self.update_ui_imgs()
         else:
@@ -518,16 +544,26 @@ class App:
         self.annotator.toggle_manual_annotation()
         self.ui.draw_poly_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
+        self.update_ui_imgs()
 
     def draw_polygon(self):
         self.annotator.toggle_polygon_drawing()
         self.ui.manual_annotation_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
+        self.update_ui_imgs()
 
     def select_masks_to_delete(self):
+
+        # restoring previous state after mask deletion
+        if self.annotator.previoius_toggle_state is not None:
+            man_state = self.annotator.previoius_toggle_state["manual"]
+            poly_state = self.annotator.previoius_toggle_state["polygon"]
+        else:
+            man_state, poly_state = False, False
+        self.ui.manual_annotation_button.setChecked(man_state)
+        self.ui.draw_poly_button.setChecked(poly_state)
         self.annotator.toggle_mask_deletion()
-        self.ui.manual_annotation_button.setChecked(False)
-        self.ui.draw_poly_button.setChecked(False)
+        self.update_ui_imgs()
 
     def manage_mouse_move(self, point: tuple[int]):
         current_time = time.time_ns()
@@ -585,6 +621,37 @@ class App:
         elif label == 1:
             self.annotator.delete_mask(mid)
         self.update_ui_imgs()
+
+    def next_method(self):
+        print("Next method")
+        if (
+            not self.annotator.manual_annotation_enabled
+            and not self.annotator.polygon_drawing_enabled
+        ):
+            self.ui.performing_embedding_label.setText(
+                f"Step 2/3: Annotate masks interactively with SAM{self.sam_gen}"
+            )
+            self.ui.manual_annotation_button.setDisabled(False)
+            self.ui.manual_annotation_button.click()
+            self.ui.manual_annotation_button.setDisabled(True)
+        elif (
+            self.annotator.manual_annotation_enabled
+            and not self.annotator.polygon_drawing_enabled
+        ):
+            self.ui.performing_embedding_label.setText(
+                f"Step 3/3: Draw polygon masks for remaining objects"
+            )
+            self.ui.draw_poly_button.setDisabled(False)
+            self.ui.draw_poly_button.click()
+            self.ui.draw_poly_button.setDisabled(True)
+        elif (
+            not self.annotator.manual_annotation_enabled
+            and self.annotator.polygon_drawing_enabled
+        ):
+            self.select_next_img()
+            self.ui.performing_embedding_label.setText(
+                f"Step 0/3: Check whether all masks have been propagated correctly"
+            )
 
 
 # https://www.pythonguis.com/tutorials/multithreading-pyqt6-applications-qthreadpool/

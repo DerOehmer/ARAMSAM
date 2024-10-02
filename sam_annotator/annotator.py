@@ -38,6 +38,7 @@ class Annotator:
         self.mask_deletion_enabled = False
         self.manual_mask_points = []
         self.manual_mask_point_labels = []
+        self.previoius_toggle_state: dict[str, bool] | None = None
 
         self.origin_codes = {
             "Sam1_proposed": "s1p",
@@ -117,8 +118,16 @@ class Annotator:
         self.reset_manual_annotation()
         self.mask_deletion_enabled = not self.mask_deletion_enabled
         if self.mask_deletion_enabled:
+            self.previoius_toggle_state = {
+                "manual": self.manual_annotation_enabled,
+                "polygon": self.polygon_drawing_enabled,
+            }
             self.manual_annotation_enabled = False
             self.polygon_drawing_enabled = False
+        else:
+            self.manual_annotation_enabled = self.previoius_toggle_state["manual"]
+            self.polygon_drawing_enabled = self.previoius_toggle_state["polygon"]
+            self.previoius_toggle_state = None
 
     def reset_manual_annotation(self):
         self.annotation.preview_mask = None
@@ -360,7 +369,7 @@ class Annotator:
         mask_obj: MaskData = annot.masks[self.mask_idx]
         mask = mask_obj.mask
         maskorigin = mask_obj.origin
-        mcenter = (0, 0)
+        mcenter = ""
 
         mask_coll_bin = (
             np.any(
@@ -393,7 +402,17 @@ class Annotator:
     def step_back(self):
         annot = self.annotation
 
-        if self.mask_idx > 0:
+        if (
+            self.mask_idx > 0
+            and not (
+                self.manual_annotation_enabled
+                and not "interactive" in annot.good_masks[-1].origin
+            )
+            and not (
+                self.polygon_drawing_enabled
+                and not "Polygon" in annot.good_masks[-1].origin
+            )
+        ):
 
             if annot.mask_decisions[self.mask_idx - 1] and len(annot.good_masks) > 0:
                 popped_mobj = annot.good_masks.pop()
@@ -414,7 +433,6 @@ class Annotator:
             return None
         elif len(self.annotation.good_masks) == 0:
             self.annotation.preview_mask = None
-            self.update_collections(self.annotation)
             return None
 
         for mobj in self.annotation.good_masks:
@@ -438,6 +456,7 @@ class Annotator:
                 if len(mask_dec_idx) == 0:
                     return
                 self.annotation.mask_decisions[mask_dec_idx[0]] = False
+                self.annotation.preview_mask = None
                 break
         print(f"Delete mask time: {time.time() - startdeltime}")
 
@@ -462,17 +481,24 @@ class Annotator:
 
         masked_img = mask_vis.get_masked_img()
         mask_collection = mask_vis.get_mask_collection()
-        if len(annot.masks) > self.mask_idx:
+
+        if (
+            len(annot.masks) > self.mask_idx
+            and not self.manual_annotation_enabled
+            and not self.polygon_drawing_enabled
+            and not self.mask_deletion_enabled
+        ):
             mask_obj = annot.masks[self.mask_idx]
             cnt = mask_obj.contour
             maskinrgb = mask_vis.get_maskinrgb(mask_obj)
-            masked_img_cnt = mask_vis.get_masked_img_cnt(cnt)
-            mask_collection_cnt = mask_vis.get_mask_collection_cnt(cnt)
+
         else:
             # after all proposed masks have been labeled
             maskinrgb = mvis_data.img
-            masked_img_cnt = masked_img
-            mask_collection_cnt = mask_collection
+            cnt = None
+
+        masked_img_cnt = mask_vis.get_masked_img_cnt(cnt)
+        mask_collection_cnt = mask_vis.get_mask_collection_cnt(cnt)
 
         if len(annot.masks) > self.mask_idx:
             self.annotation.set_current_mask(self.mask_idx)
