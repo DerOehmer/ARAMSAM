@@ -25,16 +25,13 @@ def mock_main():
     }
     app = App(ui_options=ui_options, experiment_mode="structured")
     app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/raw_output"
+    app.sam_gen = 2
     ui = app.ui
     ui.open_img_load_file_dialog = mock_open_img_load_file_dialog
     ui.open_load_folder_dialog = mock_open_load_folder_dialog
     # ui.manual_annotation_button.setDisabled(True)
     ui.run()
     QTest.qWait(50)
-
-    ui.sam2_checkbox.setChecked(True)
-    ui.sam2_checkbox.setDisabled(True)
-
     # set path
     load_folder_action = ui.menu_open.actions()[1]
     load_folder_action.trigger()
