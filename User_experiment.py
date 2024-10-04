@@ -2,16 +2,16 @@ from sam_annotator.main import create_vis_options
 from sam_annotator.app import App
 from PyQt6.QtTest import QTest
 import sys
-
-
-def mock_open_img_load_file_dialog():
-    return "/home/geink81/pythonstuff/CobScanws/earframes/0.jpg"
+import glob
 
 
 def mock_open_load_folder_dialog():
-    # return "/home/geink81/pythonstuff/SequenceSAM-Annotator/ear_centers"
-    # return "/home/geink81/pythonstuff/CobScanws/earframes/"
-    return "/home/geink81/pythonstuff/CobScanws/earframesjonas/"
+    return img_pair_folder_p
+
+
+def update_mock_path(new_path):
+    global img_pair_folder_p  # Use global to modify the img_pair_folder_p variable
+    img_pair_folder_p = new_path
 
 
 def mock_main():
@@ -24,12 +24,10 @@ def mock_main():
         }
     }
     app = App(ui_options=ui_options, experiment_mode="structured")
-    app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/raw_output"
+    app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/output"
     app.sam_gen = 2
     ui = app.ui
-    ui.open_img_load_file_dialog = mock_open_img_load_file_dialog
     ui.open_load_folder_dialog = mock_open_load_folder_dialog
-    # ui.manual_annotation_button.setDisabled(True)
     ui.run()
     QTest.qWait(50)
     # set path
@@ -43,10 +41,13 @@ def mock_main():
     ui.draw_poly_button.setDisabled(True)
 
     ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
-
-    sys.exit(app.application.exec())
-    # app.exit()
+    app.application.exec()
+    
 
 
 if __name__ == "__main__":
-    mock_main()
+    root_p = "/home/geink81/pythonstuff/SequenceSAM-Annotator/TestEarImgPairs"
+    for img_pair_folder_p in glob.glob(f"{root_p}/*"):
+        update_mock_path(img_pair_folder_p)
+        mock_main()
+    sys.exit()

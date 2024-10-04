@@ -151,6 +151,9 @@ class UserInterface(QMainWindow):
             QPushButton:hover {
                 background-color: #54687A;   /* Change background on hover */
             }
+            QPushButton:disabled {
+                color: #788D9C;   /* Disabled state */
+            }
 
             """
         )
@@ -176,6 +179,9 @@ class UserInterface(QMainWindow):
             QPushButton:hover {
                 background-color: #54687A;   /* Change background on hover */
             }
+            QPushButton:disabled {
+                color: #788D9C;   /* Disabled state */
+            }
 
             """
         )
@@ -200,6 +206,9 @@ class UserInterface(QMainWindow):
             }
             QPushButton:hover {
                 background-color: #54687A;   /* Change background on hover */
+            }
+            QPushButton:disabled {
+                color: #788D9C;   /* Disabled state */
             }
 
         """

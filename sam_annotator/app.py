@@ -50,6 +50,7 @@ class App:
 
         if self.experiment_mode == "structured":
             self.ui.next_method_button.clicked.connect(self.next_method)
+            self.experiment_step: int = 1
         else:
             self.ui.next_img_button.clicked.connect(self.select_next_img)
 
@@ -165,6 +166,10 @@ class App:
     def select_next_img(self):
         if not self.img_fnames:
             print("No image left in the queue")
+            if self.experiment_mode == "structured":
+                self.ui.create_message_box(False, "No image left in the queue")
+                self.ui.save()
+                self.ui.close()
             return
         if self.threadpool.activeThreadCount() > 0:
             print(
@@ -178,10 +183,14 @@ class App:
             img_name, next_img_name
         )
         if current_img_done and next_img_done:
+            if self.experiment_mode == "structured":
+                raise ValueError("This directory is already occupied with annotations")
             print(f"Both {img_name} and {next_img_name} are already annotated")
             return self.select_next_img()
 
         elif current_img_done and not next_img_done:
+            if self.experiment_mode == "structured":
+                raise ValueError("This directory is already occupied with annotations")
             print(
                 f"{img_name} is already annotated but {next_img_name} is not. Loading previous annotations"
             )
@@ -189,8 +198,10 @@ class App:
             img_name, next_img_name = self._pop_img_fnames()
 
         elif self.annotator.annotation is not None:
-            self.ui.open_save_annots_box()
-
+            if self.experiment_mode != "structured":
+                self.ui.open_save_annots_box()
+            else:
+                self.ui.save()
         self.propagate_good_masks()
 
         embed_current, embed_next = self.annotator.create_new_annotation(
@@ -630,7 +641,28 @@ class App:
         if (
             not self.annotator.manual_annotation_enabled
             and not self.annotator.polygon_drawing_enabled
+            and self.experiment_step == 0
         ):
+            self.experiment_step = 1
+            self.ui.performing_embedding_label.setText(
+                f"Step 1/3: Select the good proposed masks"
+            )
+            # reset
+            self.ui.manual_annotation_button.setDisabled(False)
+            self.ui.manual_annotation_button.click()
+            self.ui.manual_annotation_button.click()
+            self.ui.manual_annotation_button.setDisabled(True)
+            self.ui.good_mask_button.setDisabled(False)
+            self.ui.bad_mask_button.setDisabled(False)
+            self.ui.back_button.setDisabled(False)
+            self.ui.delete_button.setDisabled(False)
+
+        elif (
+            not self.annotator.manual_annotation_enabled
+            and not self.annotator.polygon_drawing_enabled
+            and self.experiment_step == 1
+        ):
+            self.experiment_step = 2
             self.ui.performing_embedding_label.setText(
                 f"Step 2/3: Annotate masks interactively with SAM{self.sam_gen}"
             )
@@ -640,7 +672,9 @@ class App:
         elif (
             self.annotator.manual_annotation_enabled
             and not self.annotator.polygon_drawing_enabled
+            and self.experiment_step == 2
         ):
+            self.experiment_step = 3
             self.ui.performing_embedding_label.setText(
                 f"Step 3/3: Draw polygon masks for remaining objects"
             )
@@ -650,11 +684,18 @@ class App:
         elif (
             not self.annotator.manual_annotation_enabled
             and self.annotator.polygon_drawing_enabled
+            and self.experiment_step == 3
         ):
+            self.experiment_step = 0
             self.select_next_img()
             self.ui.performing_embedding_label.setText(
                 f"Step 0/3: Check whether all masks have been propagated correctly"
             )
+            self.ui.good_mask_button.setDisabled(True)
+            self.ui.bad_mask_button.setDisabled(True)
+            self.ui.back_button.setDisabled(True)
+            self.ui.delete_button.click()
+            self.ui.delete_button.setDisabled(True)
 
 
 # https://www.pythonguis.com/tutorials/multithreading-pyqt6-applications-qthreadpool/
