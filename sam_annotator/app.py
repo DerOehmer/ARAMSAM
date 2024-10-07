@@ -580,6 +580,12 @@ class App:
         self.update_ui_imgs()
 
     def manage_mouse_move(self, point: tuple[int]):
+        height, width = self.annotator.annotation.img.shape[:2]
+        if point[0] < 0 or point[0] >= width:
+            return
+        if point[1] < 0 or point[1] >= height:
+            return
+
         current_time = time.time_ns()
         delta = current_time - self.last_sam_preview_time_stamp
         self.mouse_pos = point
@@ -588,7 +594,7 @@ class App:
             if self.annotator.manual_annotation_enabled:
                 self.annotator.predict_sam_manually(point)
             elif self.annotator.mask_deletion_enabled:
-                self.annotator.highlight_mask_at_point(self.mouse_pos)
+                self.annotator.highlight_mask_at_point(point)
             else:
                 return
 
