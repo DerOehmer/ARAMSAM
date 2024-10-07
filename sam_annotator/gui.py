@@ -85,13 +85,18 @@ class UserInterface(QMainWindow):
         self.showMaximized()
 
     def construct_ui(self):
-        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
+        vis_width, vis_height = (
+            self.calcluate_size_of_annotation_visualizers()
+        )
 
         self.annotation_visualizers: list[InteractiveGraphicsView] = []
         for i in range(2):
             for j in range(2):
                 annotation_visualizer = InteractiveGraphicsView(
-                    self, ann_viz_id=i * 2 + j, width=vis_width, height=vis_height
+                    self,
+                    ann_viz_id=i * 2 + j,
+                    width=vis_width,
+                    height=vis_height,
                 )
                 annotation_visualizer.setGeometry(
                     i * vis_width,
@@ -344,11 +349,13 @@ class UserInterface(QMainWindow):
         self.layout_options_signal.emit(layout_options)
 
     def handleCoords(self, point: QPoint):
-        if not point.isNull():
-            self.labelCoords.setText(f"{point.x()}, {point.y()}")
-            self.mouse_position.emit((point.x(), point.y()))
-        else:
+        if point.isNull():
             self.labelCoords.clear()
+            return
+        
+        self.labelCoords.setText(f"{point.x()}, {point.y()}")
+        self.mouse_position.emit((point.x(), point.y()))
+            
 
     def keyPressEvent(self, event: QKeyEvent):
         if isinstance(event, QKeyEvent):
@@ -557,7 +564,9 @@ class UserInterface(QMainWindow):
             self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
-        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
+        vis_width, vis_height = (
+            self.calcluate_size_of_annotation_visualizers()
+        )
 
         idx = 0
         for i in range(2):
