@@ -51,29 +51,31 @@ class Annotator:
         }
         self.time_stamp = None  # in deciseconds (1/10th of a second)
 
-    def set_sam_version(self, sam_gen: int = 1):
+    def set_sam_version(self, sam_gen: int = 1, background_embedding: bool = True):
 
         if sam_gen == 2:
             if self.sam_ckpt is None:
-                sam2_ckpt = "sam2_hiera_small.pt"
+                sam2_ckpt = "sam2_hiera_large.pt"
             else:
                 sam2_ckpt = self.sam_ckpt
             if self.sam_model_type is None:
-                sam2_model_type = "sam2_hiera_s.yaml"
+                sam2_model_type = "sam2_hiera_l.yaml"
             else:
                 sam2_model_type = self.sam_model_type
             self.sam = Sam2Inference(
                 self.mask_id_handler,
                 sam2_checkpoint=sam2_ckpt,
                 cfg_path=sam2_model_type,
+                background_embedding=background_embedding,
             )
         elif sam_gen == 1:
             if self.sam_ckpt is None:
-                sam1_ckpt = "sam_vit_b_01ec64.pth"
+                sam1_ckpt = "/home/geink81/pythonstuff/CobScanws/sam_vit_h_4b8939.pth"
+                # sam1_ckpt = "sam_vit_b_01ec64.pth"
             else:
                 sam1_ckpt = self.sam_ckpt
             if self.sam_model_type is None:
-                sam1_model_type = "vit_b"
+                sam1_model_type = "vit_h"
             else:
                 sam1_model_type = self.sam_model_type
             self.sam = SamInference(
@@ -81,6 +83,7 @@ class Annotator:
                 sam_checkpoint=sam1_ckpt,
                 model_type=sam1_model_type,
                 device=self.device,
+                background_embedding=background_embedding,
             )
         else:
             raise NotImplementedError("This generation of Sam is not implemented.")
@@ -213,7 +216,7 @@ class Annotator:
             raise ValueError("No annotation object found.")
 
         start_mask_idx = 0
-        self.sam.custom_amg.set_visualization_img(self.annotation.img)
+        self.sam.amg.set_visualization_img(self.annotation.img)
 
         if bbox_tracker is not None:
             tracked_bboxes = bbox_tracker.track(self.annotation)
@@ -249,7 +252,7 @@ class Annotator:
                     )
         print(f"Setting masks time: {time.time() - start_setting_masks}")
         start_custom_amg = time.time()
-        mask_objs, annotated_image = self.sam.custom_amg(roi_pts=False, n_points=100)
+        mask_objs, annotated_image = self.sam.amg(roi_pts=False, n_points=100)
         print(f"Custom AMG time: {time.time() - start_custom_amg}")
         assert (
             isinstance(mask_objs, list)

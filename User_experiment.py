@@ -42,11 +42,10 @@ def mock_main():
 
     ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
     app.application.exec()
-    
 
 
 if __name__ == "__main__":
-    root_p = "/home/geink81/pythonstuff/SequenceSAM-Annotator/TestEarImgPairs"
+    root_p = "/home/geink81/pythonstuff/SequenceSAM-Annotator/EarImgPairs"
     for img_pair_folder_p in glob.glob(f"{root_p}/*"):
         update_mock_path(img_pair_folder_p)
         mock_main()
