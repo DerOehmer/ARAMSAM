@@ -18,7 +18,7 @@ from PyQt6.QtCore import (
 )
 from natsort import natsorted
 
-from sam_annotator.run_sam import CustomSamPredictor, Sam2Inference
+from sam_annotator.run_sam import BackgroundThreadSamPredictor, Sam2Inference
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
 from sam_annotator.mask_visualizations import MaskData, AnnotationObject
@@ -81,13 +81,19 @@ class App:
 
     def set_sam(self):
         if self.experiment_mode != "structured":
+            background_embedding = True
             if self.ui.sam2_checkbox.isChecked():
                 self.sam_gen = 2
             else:
                 self.sam_gen = 1
+        elif self.experiment_mode == "structured":
+            background_embedding = False
+
         if self.sam_gen is None:
             raise ValueError("SAM generation has not been set")
-        self.annotator.set_sam_version(sam_gen=self.sam_gen)
+        self.annotator.set_sam_version(
+            sam_gen=self.sam_gen, background_embedding=background_embedding
+        )
 
     def save_output(self, _=None):
         if self.output_dir is None:
@@ -211,14 +217,19 @@ class App:
         if self.sam_gen == 2:
             self.embed_img_pair()
         elif self.sam_gen == 1:
-            if embed_current or (
-                current_img_done and not next_img_done
-            ):  # if previous annotations wer just loaded from disk, embedding is still required
+            if (
+                embed_current
+                or (
+                    current_img_done
+                    and not next_img_done  # if previous annotations wer just loaded from disk, embedding is still required
+                )
+                or self.experiment_mode == "structured"
+            ):
                 self.embed_img(basename(img_name))
             else:
                 self.annotator.update_sam_features_to_current_annotation()
                 self.segment_anything()
-            if embed_next:
+            if embed_next and self.experiment_mode != "structured":
                 self.embed_img(basename(next_img_name))
         self.threadpool.waitForDone(-1)
         user_ready = self.ui.create_message_box(
@@ -328,25 +339,30 @@ class App:
 
         img_to_embed = None
 
-        if current_ann_name:
-            if current_ann_name == img_name:
-                img_to_embed = self.annotator.annotation.img
-                delay = 0.0
+        if self.experiment_mode == "structured":
+            img_to_embed = self.annotator.annotation.img
+            delay = 0.0
+        else:
+            if current_ann_name:
+                if current_ann_name == img_name:
+                    img_to_embed = self.annotator.annotation.img
+                    delay = 0.0
 
-        if next_ann_name:
-            if next_ann_name == img_name:
-                img_to_embed = self.annotator.next_annotation.img
-                delay = 1.5
+            if next_ann_name:
+                if next_ann_name == img_name:
+                    img_to_embed = self.annotator.next_annotation.img
+                    delay = 1.5
 
         if img_to_embed is None:
             print(f"Could not find img name ({img_name}) in annotations")
             print(f"Found {current_ann_name} and {next_ann_name}")
             raise ValueError("Embedding could not be matched to images")
 
-        worker = PyQtWorker(
+        worker = Sam1EmbeddingWorker(
             sam_predictor=self.annotator.sam.predictor,
             img=img_to_embed,
             img_name=img_name,
+            mutex=self.mutex,
             delay=delay,
         )
         worker.signals.result.connect(self.receive_embedding_from_thread)
@@ -458,6 +474,9 @@ class App:
             self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
+        if result[0] is None:
+            self.segment_anything()
+            return
         features, original_size, input_size, img_name = result
         current_ann_name = self.annotator.get_annotation_img_name()
         if current_ann_name:
@@ -705,16 +724,17 @@ class App:
 
 
 # https://www.pythonguis.com/tutorials/multithreading-pyqt6-applications-qthreadpool/
-class PyQtWorker(QRunnable):
+class Sam1EmbeddingWorker(QRunnable):
     finished: pyqtSignal = pyqtSignal(str)
     error: pyqtSignal = pyqtSignal(tuple)
     result: pyqtSignal = pyqtSignal(tuple)
 
     def __init__(
         self,
-        sam_predictor: CustomSamPredictor,
+        sam_predictor: BackgroundThreadSamPredictor,
         img: np.ndarray,
         img_name: str,
+        mutex: QMutex,
         delay: float = 0.0,
     ):
         super().__init__()
@@ -723,19 +743,22 @@ class PyQtWorker(QRunnable):
         self.img = img
         self.img_name = img_name
         self.delay = delay
+        self.mutex = mutex
 
     @pyqtSlot()
     def run(self):
         try:
+            self.mutex.lock()
             now = time.time()
-            features, original_size, input_size = (
-                self.sam_predictor.get_img_ebedding_without_overiding_current_embedding(
-                    self.img
-                )
-            )
+            embedding_result = self.sam_predictor.embed_img(self.img)
+            if embedding_result is not None:
+                features, original_size, input_size = embedding_result
+                result = (features, original_size, input_size, self.img_name)
+            else:
+                result = (None, None, None, self.img_name)
             duration = time.time() - now
             print(f"embedding took {duration}")
-            result = (features, original_size, input_size, self.img_name)
+            self.mutex.unlock()
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
@@ -747,9 +770,6 @@ class PyQtWorker(QRunnable):
 
 
 class Sam2PropagationWorker(QRunnable):
-    # finished: pyqtSignal = pyqtSignal(str)
-    # error: pyqtSignal = pyqtSignal(tuple)
-    # result: pyqtSignal = pyqtSignal(tuple)
 
     def __init__(
         self,
@@ -805,9 +825,6 @@ class Sam2PropagationWorker(QRunnable):
 
 
 class Sam2ImgPairEmbeddingWorker(QRunnable):
-    # finished: pyqtSignal = pyqtSignal(str)
-    # error: pyqtSignal = pyqtSignal(tuple)
-    # result: pyqtSignal = pyqtSignal(tuple)
 
     def __init__(
         self,

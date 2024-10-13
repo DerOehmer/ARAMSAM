@@ -10,6 +10,11 @@ from segment_anything.modeling import Sam
 from sam_annotator.mask_visualizations import MaskVisualization, MaskData, MaskIdHandler
 
 
+class SAM2AutomaticMaskGenerator:
+    # Placeholder for Typing
+    pass
+
+
 class SamInference:
     def __init__(
         self,
@@ -17,6 +22,7 @@ class SamInference:
         sam_checkpoint="sam_vit_b_01ec64.pth",
         model_type="vit_b",
         device="cpu",
+        background_embedding=True,
     ):
         self.mask_id_handler = mask_id_handler
         self.sam_checkpoint = sam_checkpoint
@@ -24,7 +30,9 @@ class SamInference:
 
         self.device = device
 
-        checkpoint = torch.load(sam_checkpoint, map_location=torch.device(device))
+        checkpoint = torch.load(
+            sam_checkpoint, map_location=torch.device(device), weights_only=True
+        )
 
         # Initialize the model from the registry without loading the checkpoint
         self.sam = sam_model_registry[model_type]()
@@ -34,49 +42,13 @@ class SamInference:
 
         # Move the model to the appropriate device
         self.sam.to(device=self.device)
-
-        self.predictor = CustomSamPredictor(self.sam)
-        self.custom_amg = CustomAMG(self)
+        if background_embedding:
+            self.predictor = BackgroundThreadSamPredictor(self.sam)
+        else:
+            self.predictor = MainThreadSamPredictor(self.sam)
+        # self.custom_amg = CustomAMG(self)
+        self.amg = DefaultAMG(self, SamAutomaticMaskGenerator(self.sam))
         self.img = None
-
-    def amg(self, img, msize_thresh=10000, pt_grid=None):
-
-        sam_amg = SamAutomaticMaskGenerator(
-            self.sam,
-            points_per_side=40,
-            points_per_batch=64,
-            pred_iou_thresh=0.88,
-            box_nms_thresh=0.4,
-            point_grids=pt_grid,
-        )
-        result = sam_amg.generate(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        masks = []
-        xmins = []
-        ymins = []
-        annotated_image = img.copy()
-        for mask in result:
-            if mask["area"] < msize_thresh:
-                b, g, r = (
-                    np.random.randint(0, 255),
-                    np.random.randint(0, 255),
-                    np.random.randint(0, 255),
-                )
-                kernelmask = np.array(mask["segmentation"], dtype=np.uint8) * 255
-                masks.append(kernelmask)
-                ycords, xcords = np.where(kernelmask == 255)
-                annotated_image[ycords, xcords] = b, g, r
-                ymin, xmin = np.amin(ycords), np.amin(xcords)
-
-                ymins.append(ymin)
-                xmins.append(xmin)
-
-        cord_dict = {"ymins": ymins, "xmins": xmins}
-
-        cord_df = pd.DataFrame(cord_dict)
-        cord_df = cord_df.sort_values(by=["ymins", "xmins"])
-        order = cord_df.index.to_list()
-        masks = np.array(masks, dtype=np.uint8)[order]
-        return masks, annotated_image
 
     def predict_batch(
         self,
@@ -164,18 +136,46 @@ class SamInference:
         return mask_lst
 
 
-class CustomSamPredictor(SamPredictor):
+class MainThreadSamPredictor(SamPredictor):
     def __init__(
         self,
         sam_model: Sam,
     ) -> None:
+        self.is_image_set = False
         super().__init__(sam_model=sam_model)
 
-    def get_img_ebedding_without_overiding_current_embedding(
+    def embed_img(
         self,
         image: np.ndarray,
         image_format: str = "RGB",
     ):
+        # Get img embedding without overiding the current embedding
+        assert image_format in [
+            "RGB",
+            "BGR",
+        ], f"image_format must be in ['RGB', 'BGR'], is {image_format}."
+        if image_format != self.model.image_format:
+            image = image[..., ::-1]
+
+        self.set_image(image)
+        self.is_image_set = True
+        return None
+
+
+class BackgroundThreadSamPredictor(SamPredictor):
+    def __init__(
+        self,
+        sam_model: Sam,
+    ) -> None:
+        self.is_image_set = False
+        super().__init__(sam_model=sam_model)
+
+    def embed_img(
+        self,
+        image: np.ndarray,
+        image_format: str = "RGB",
+    ):
+        # Get img embedding without overiding the current embedding
         assert image_format in [
             "RGB",
             "BGR",
@@ -189,6 +189,7 @@ class CustomSamPredictor(SamPredictor):
         input_image_torch = input_image_torch.permute(2, 0, 1).contiguous()[
             None, :, :, :
         ]
+        print_tensor_gpu_usage(input_image_torch, "input_image_torch")
 
         features, original_size, input_size = self.to_torch_img(
             input_image_torch, image.shape[:2]
@@ -227,10 +228,12 @@ class Sam2Inference:
         mask_id_handler: MaskIdHandler,
         sam2_checkpoint: str = "sam2_hiera_small.pt",
         cfg_path: str = "sam2_hiera_s.yaml",
+        background_embedding: bool = True,
     ):
         from sam2.build_sam import build_sam2_video_predictor
         from sam2.sam2_video_predictor import SAM2VideoPredictor
         from sam2.sam2_image_predictor import SAM2ImagePredictor
+        from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
         if not torch.cuda.is_available():
             raise RuntimeError(
@@ -245,7 +248,8 @@ class Sam2Inference:
         self.predictor: SAM2VideoPredictor = build_sam2_video_predictor(
             cfg_path, sam2_checkpoint, device="cuda"
         )
-        self.custom_amg = CustomAMG(self)
+        # self.custom_amg = CustomAMG(self)
+        self.amg = DefaultAMG(self, SAM2AutomaticMaskGenerator(self.predictor))
         self.img_predictor = SAM2ImagePredictor(self.predictor)
         self.imgs: list[np.ndarray] = None
         self.inference_state: dict = None
@@ -522,6 +526,79 @@ class CustomAMG:
         self.imgbgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
 
+class DefaultAMG:
+    def __init__(
+        self,
+        sam_cls: SamInference | Sam2Inference,
+        amg: SamAutomaticMaskGenerator | SAM2AutomaticMaskGenerator,
+    ) -> None:
+        self.sam_cls: SamInference | Sam2Inference = sam_cls
+        self.amg = amg
+
+    def __call__(self, roi_pts=False, n_points=100, msize_thresh=10000):
+
+        startpredtimer = time.time()
+        masks = self.amg.generate(cv2.cvtColor(self.imgbgr, cv2.COLOR_BGR2RGB))
+        print(f"Time taken for only the default amg: {time.time() - startpredtimer}")
+
+        xmins = []
+        ymins = []
+        mask_lst = []
+        mask_objs = []
+
+        annotated_image = self.imgbgr.copy()
+        maskpostpocessingtimer = time.time()
+        for mask in masks:
+            if isinstance(mask, dict):
+                mask = mask["segmentation"]
+            elif not isinstance(mask, np.ndarray):
+                mask = mask.cpu().numpy()
+            if np.count_nonzero(mask) < msize_thresh and np.any(mask):
+                kernelmask = np.array(mask, dtype=np.uint8) * 255
+                if len(kernelmask.shape) > 2:
+                    kernelmask = np.squeeze(kernelmask, axis=0)
+                if np.amax(kernelmask) != 255:
+                    continue
+                mask_lst.append(kernelmask)
+                origin = (
+                    "Sam1_proposed"
+                    if isinstance(self.sam_cls, SamInference)
+                    else "Sam2_proposed"
+                )
+                mask_objs.append(
+                    MaskData(self.sam_cls.mask_id_handler.set_id(), kernelmask, origin)
+                )
+
+                ycords, xcords = np.where(kernelmask == 255)
+                ymin, xmin = np.amin(ycords), np.amin(xcords)
+
+                ymins.append(ymin)
+                xmins.append(xmin)
+        print(
+            f"Time taken for only the mask post processing: {time.time() - maskpostpocessingtimer}"
+        )
+        startmvistimer = time.time()
+        mvis = MaskVisualization()
+        mvis.set_annotation(img=annotated_image, mask_objs=mask_objs)
+        annotated_image = mvis.get_masked_img()
+        mvis_mask_objs = mvis.mask_objs
+        print(f"Time taken for only the visualization: {time.time() - startmvistimer}")
+
+        start_sorting_pts = time.time()
+        cord_dict = {"ymins": ymins, "xmins": xmins}
+        cord_df = pd.DataFrame(cord_dict)
+        cord_df = cord_df.sort_values(by=["ymins", "xmins"])
+        order = cord_df.index.to_list()
+        ordered_mask_objs = [mvis_mask_objs[i] for i in order]
+        print(
+            f"Time taken for only sorting the points: {time.time() - start_sorting_pts}"
+        )
+        return ordered_mask_objs, annotated_image
+
+    def set_visualization_img(self, img):
+        self.imgbgr = img
+
+
 def print_gpu_usage():
     if torch.cuda.is_available():
 
@@ -536,3 +613,9 @@ def print_gpu_usage():
         )
     else:
         print("CUDA is not available. No GPU memory stats to show.")
+
+
+def print_tensor_gpu_usage(tensor, name=""):
+    memory_in_bytes = tensor.element_size() * tensor.nelement()
+    memory_in_megabytes = memory_in_bytes / (1024**2)
+    print(f"Memory usage of {name}: {memory_in_megabytes} MB")
