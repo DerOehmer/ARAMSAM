@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import time
 
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
@@ -15,6 +16,7 @@ from PyQt6.QtGui import (
     QBrush,
     QColor,
     QCursor,
+    QFont,
 )
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -26,6 +28,8 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
     QFrame,
+    QCheckBox,
+    QProgressDialog,
 )
 
 
@@ -35,11 +39,15 @@ class UserInterface(QMainWindow):
     mouse_position: pyqtSignal = pyqtSignal(tuple)
     preview_annotation_point_signal: pyqtSignal = pyqtSignal(int)
     layout_options_signal: pyqtSignal = pyqtSignal(list)
+    output_dir_signal: pyqtSignal = pyqtSignal(str)
+    sam_path_signal: pyqtSignal = pyqtSignal(str)
+    save_signal: pyqtSignal = pyqtSignal(int)
 
-    def __init__(self, ui_options: dict = None) -> None:
+    def __init__(self, ui_options: dict = None, experiment_mode: str = None) -> None:
         super().__init__(parent=None)
 
         self.ui_options = ui_options
+        self.experiment_mode = experiment_mode
 
         monitors = get_monitors()
         width = 1920
@@ -50,37 +58,49 @@ class UserInterface(QMainWindow):
             if m.height < height:
                 height = m.height
 
-        self.offset = 50
+        self.height_offset = 70
+        self.buttons_min_width = 100
+        self.buttons_spacing = 10
         self.resize(width, height)
         self.menu = self.menuBar().addMenu("Menu")
         self.menu_open = self.menuBar().addMenu("Open")
         self.menu_settings = self.menuBar().addMenu("Settings")
-        self.menu.addAction("Exit", self.close)
+        self.menu.addAction("Save", self.save)
+        self.menu.addAction("Save As", self.save_as)
+        self.menu.addAction("Exit", self.exit)
         self.menu_open.addAction("Load Image", self.load_img)
         self.menu_open.addAction("Load Folder", self.load_img_folder)
         self.menu_settings.addAction("Change Layout", self.open_layout_settings_box)
+        self.menu_settings.addAction(
+            "Set Ouput Directory", self.open_ouput_dir_selection
+        )
+        self.menu_settings.addAction("Set SAM Model", self._open_sam_model_selection)
         self.zoom_level = 0
         self.zoom_factor = 1.25
+        self.current_viewport = None
+
+        self.loading_window = None
 
         self.construct_ui()
         self.showMaximized()
 
     def construct_ui(self):
-        self.labelCoords = QLabel(self, text="Pixel Pos.")
-        self.labelCoords.move(400, 20)
-        self.labelCoords.show()
-
-        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
+        vis_width, vis_height = (
+            self.calcluate_size_of_annotation_visualizers()
+        )
 
         self.annotation_visualizers: list[InteractiveGraphicsView] = []
         for i in range(2):
             for j in range(2):
                 annotation_visualizer = InteractiveGraphicsView(
-                    self, width=vis_width, height=vis_height
+                    self,
+                    ann_viz_id=i * 2 + j,
+                    width=vis_width,
+                    height=vis_height,
                 )
                 annotation_visualizer.setGeometry(
-                    self.offset + i * vis_width,
-                    self.offset + j * vis_height,
+                    i * vis_width,
+                    self.height_offset + j * vis_height,
                     vis_width,
                     vis_height,
                 )
@@ -91,45 +111,218 @@ class UserInterface(QMainWindow):
                 annotation_visualizer.mousePressSignal.connect(
                     self.childMousePressEvent
                 )
+                annotation_visualizer.new_scene_initialized.connect(
+                    self.new_pixmap_displayed_in_annotation_vizualizers_callback
+                )
                 self.annotation_visualizers.append(annotation_visualizer)
 
-        self.test_button = QPushButton(text="segment anything!", parent=self)
-        self.test_button.move(20, 20)
+        self.fit_annotation_visualizers_to_view()
 
-        self.good_mask_button = QPushButton(text="good mask", parent=self)
-        self.good_mask_button.move(120, 20)
+        self.good_mask_button = QPushButton(text="good mask (n)", parent=self)
+        self.good_mask_button.move(self.buttons_spacing, int(self.height_offset / 2))
+        self.good_mask_button.setMinimumWidth(self.buttons_min_width)
 
-        self.bad_mask_button = QPushButton(text="bad mask", parent=self)
-        self.bad_mask_button.move(220, 20)
-
-        self.back_button = QPushButton(text="undo OR back", parent=self)
-        self.back_button.move(320, 20)
-
-        self.manual_annotation_button = QPushButton(
-            text="add mask manually", parent=self
+        self.bad_mask_button = QPushButton(text="bad mask (m)", parent=self)
+        self.bad_mask_button.move(
+            2 * self.buttons_spacing + 1 * self.buttons_min_width,
+            int(self.height_offset / 2),
         )
-        self.manual_annotation_button.move(420, 20)
+        self.bad_mask_button.setMinimumWidth(self.buttons_min_width)
+
+        self.back_button = QPushButton(text="back (b)", parent=self)
+        self.back_button.move(
+            3 * self.buttons_spacing + 2 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.back_button.setMinimumWidth(self.buttons_min_width)
+
+        self.manual_annotation_button = QPushButton(text="manual (q)", parent=self)
+        self.manual_annotation_button.setCheckable(True)
+        self.manual_annotation_button.move(
+            4 * self.buttons_spacing + 3 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.manual_annotation_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #455364;   /* Set the background color */
+                color: white;                /* Set the text color */
+            }
+            QPushButton:checked {
+                background-color: #0c6af7;  /* Checked state */
+                color: white;
+            
+            }
+            QPushButton:hover {
+                background-color: #54687A;   /* Change background on hover */
+            }
+            QPushButton:disabled {
+                color: #788D9C;   /* Disabled state */
+            }
+
+            """
+        )
+        self.manual_annotation_button.setMinimumWidth(self.buttons_min_width)
 
         self.draw_poly_button = QPushButton(text="draw polygon", parent=self)
-        self.draw_poly_button.move(520, 20)
+        self.draw_poly_button.setCheckable(True)
+        self.draw_poly_button.move(
+            5 * self.buttons_spacing + 4 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.draw_poly_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #455364;   /* Set the background color */
+                color: white;                /* Set the text color */
+            }
+            QPushButton:checked {
+                background-color: #0c6af7;  /* Checked state */
+                color: white;
+            
+            }
+            QPushButton:hover {
+                background-color: #54687A;   /* Change background on hover */
+            }
+            QPushButton:disabled {
+                color: #788D9C;   /* Disabled state */
+            }
 
-        self.next_img_button = QPushButton(text="next image", parent=self)
-        self.next_img_button.move(620, 20)
+            """
+        )
+        self.draw_poly_button.setMinimumWidth(self.buttons_min_width)
+
+        self.delete_button = QPushButton(text="delete", parent=self)
+        self.delete_button.setCheckable(True)
+        self.delete_button.move(
+            6 * self.buttons_spacing + 5 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.delete_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #455364;   /* Set the background color */
+                color: white;                /* Set the text color */
+            }
+            QPushButton:checked {
+                background-color: #e35727;  /* Checked state */
+                color: white;
+            
+            }
+            QPushButton:hover {
+                background-color: #54687A;   /* Change background on hover */
+            }
+            QPushButton:disabled {
+                color: #788D9C;   /* Disabled state */
+            }
+
+        """
+        )
+        self.delete_button.setMinimumWidth(self.buttons_min_width)
+
+        if not self.experiment_mode == "structured":
+            self.next_img_button = QPushButton(text="next image", parent=self)
+            self.next_img_button.move(
+                7 * self.buttons_spacing + 6 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.next_img_button.setMinimumWidth(self.buttons_min_width)
+
+        self.labelCoords = QLabel(self, text="Pixel Pos.")
+        self.labelCoords.move(
+            8 * self.buttons_spacing + 7 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.labelCoords.show()
 
         self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
-        self.performing_embedding_label.move(750, 20)
-        self.performing_embedding_label.setMinimumWidth(self.width() - 750)
+        self.performing_embedding_label.move(
+            9 * self.buttons_spacing + 8 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.performing_embedding_label.setMinimumWidth(
+            self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
+        )
+        if self.experiment_mode != "structured":
+            self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
+            self.sam2_checkbox.move(
+                15 * self.buttons_spacing + 14 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.sam2_checkbox.setChecked(True)
+
+        if self.experiment_mode == "structured":
+            self.next_method_button = QPushButton("Next", self)
+            self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+            self.next_method_button.move(
+                14 * self.buttons_spacing + 13 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.next_method_button.setMinimumWidth(160)
+            self.next_method_button.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: green;  /* Set background color */
+                    color: white;             /* Set text color */
+                    border-radius: 10px;      /* Rounded corners */
+                }
+                QPushButton:hover {
+                    background-color: darkgreen;  /* Change color on hover */
+                }
+                """
+            )
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
-        vis_width = int((self.width() - self.offset) / 2)
-        vis_height = int((self.height() - self.offset) / 2)
+        vis_width = int(self.width() / 2)
+        vis_height = int((self.height() - self.height_offset) / 2)
         return vis_width, vis_height
+
+    def exit(self):
+        ret = QMessageBox.question(self, "Exit", "Are you sure you want to exit?")
+        if ret == QMessageBox.StandardButton.Yes:
+            self.close()
+
+    def save(self):
+        self.save_signal.emit(1)
+
+    def save_as(self):
+        user_selected_dir = self.open_ouput_dir_selection()
+        if user_selected_dir:
+            self.save()
 
     def load_img(self):
         self.load_img_signal.emit(1)
 
     def load_img_folder(self):
         self.load_img_folder_signal.emit(1)
+
+    def open_ouput_dir_selection(self) -> bool:
+        filepath = QFileDialog.getExistingDirectory(
+            parent=self,
+            caption="Select Output Folder",
+            directory="${HOME}/output",
+        )
+        if filepath is not None:
+            self.output_dir_signal.emit(filepath)
+            return True
+        else:
+            return False
+
+    def _open_sam_model_selection(self):
+        ret = QMessageBox.question(
+            self,
+            "SAM Model Selection",
+            "Are you sure you want to discard everything and load a different SAM model?",
+        )
+        if ret == QMessageBox.StandardButton.Yes:
+            sam_path = QFileDialog.getOpenFileName(
+                parent=self,
+                caption="Select SAM Model",
+                directory="${HOME}",
+                filter="*.pth",
+            )
+            if sam_path is not None:
+                self.sam_path_signal.emit(sam_path[0])
 
     def open_layout_settings_box(self):
         self.options_window = OptionsWindow(
@@ -140,16 +333,29 @@ class UserInterface(QMainWindow):
             self._recv_layout_options_changes
         )
 
+    def open_save_annots_box(self):
+        ret = QMessageBox.question(
+            self,
+            "Save Annotations",
+            "Do you want to save the annotations before moving on to the next image?",
+        )
+        if ret == QMessageBox.StandardButton.Yes:
+            self.save()
+        elif ret == QMessageBox.StandardButton.No:
+            return
+
     def _recv_layout_options_changes(self, layout_options: list[str]):
         self.ui_options["layout_settings_options"]["current"] = layout_options
         self.layout_options_signal.emit(layout_options)
 
     def handleCoords(self, point: QPoint):
-        if not point.isNull():
-            self.labelCoords.setText(f"{point.x()}, {point.y()}")
-            self.mouse_position.emit((point.x(), point.y()))
-        else:
+        if point.isNull():
             self.labelCoords.clear()
+            return
+        
+        self.labelCoords.setText(f"{point.x()}, {point.y()}")
+        self.mouse_position.emit((point.x(), point.y()))
+            
 
     def keyPressEvent(self, event: QKeyEvent):
         if isinstance(event, QKeyEvent):
@@ -185,7 +391,7 @@ class UserInterface(QMainWindow):
             print("not on image")
             return
 
-        viewport = (
+        self.current_viewport = (
             self.annotation_visualizers[scene_idx_under_mouse]
             .mapToScene(
                 self.annotation_visualizers[scene_idx_under_mouse].viewport().geometry()
@@ -195,7 +401,7 @@ class UserInterface(QMainWindow):
         for idx, ann_viz in enumerate(self.annotation_visualizers):
             if idx == scene_idx_under_mouse:
                 continue
-            ann_viz.setSceneRect(viewport)
+            ann_viz.setSceneRect(self.current_viewport)
 
     def wheelEvent(self, event: QWheelEvent):
         scene_idx_under_mouse = self.get_annotation_visualizer_idx_under_mouse()
@@ -221,7 +427,7 @@ class UserInterface(QMainWindow):
 
         # scale and save viewport and transformation of scene under mouse
         self.annotation_visualizers[scene_idx_under_mouse].scale(factor, factor)
-        viewport = (
+        self.current_viewport = (
             self.annotation_visualizers[scene_idx_under_mouse]
             .mapToScene(
                 self.annotation_visualizers[scene_idx_under_mouse].viewport().geometry()
@@ -233,7 +439,19 @@ class UserInterface(QMainWindow):
             if idx == scene_idx_under_mouse:
                 continue
             ann_viz.scale(factor, factor)
-            ann_viz.setSceneRect(viewport)
+            ann_viz.setSceneRect(self.current_viewport)
+
+    def new_pixmap_displayed_in_annotation_vizualizers_callback(self, ann_viz_id: int):
+        if self.zoom_level == 0:
+            self.fit_annotation_visualizers_to_view()
+        else:
+            self.annotation_visualizers[ann_viz_id].scale(
+                self.zoom_factor**self.zoom_level, self.zoom_factor**self.zoom_level
+            )
+            if self.current_viewport is not None:
+                self.annotation_visualizers[ann_viz_id].setSceneRect(
+                    self.current_viewport
+                )
 
     def get_annotation_visualizer_idx_under_mouse(self) -> int:
         scene_idx_under_mouse = None
@@ -247,12 +465,63 @@ class UserInterface(QMainWindow):
         for ann_viz in self.annotation_visualizers:
             ann_viz.fitInView()
 
-    def create_message_box(self, crticial: bool = False, text: str = ""):
+    def center_all_annotation_visualizers(self, center_p):
+        self.fit_annotation_visualizers_to_view()
+        for ann_viz in self.annotation_visualizers:
+            ann_viz.scale(
+                self.zoom_factor**self.zoom_level, self.zoom_factor**self.zoom_level
+            )
+        self.annotation_visualizers[0].centerOn(*center_p)
+        self.current_viewport = (
+            self.annotation_visualizers[0]
+            .mapToScene(self.annotation_visualizers[0].viewport().geometry())
+            .boundingRect()
+        )
+        for ann_viz in self.annotation_visualizers:
+            ann_viz.setSceneRect(self.current_viewport)
+
+    def create_message_box(
+        self, crticial: bool = False, text: str = "", wait_for_user: bool = False
+    ):
         self.msg_box = QMessageBox(self)
         icon = QMessageBox.Icon.Critical if crticial else QMessageBox.Icon.Information
         self.msg_box.setIcon(icon)
         self.msg_box.setText(text)
-        self.msg_box.show()
+        if wait_for_user:
+            self.msg_box.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            self.msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+            result = self.msg_box.exec()
+            if result == QMessageBox.StandardButton.Yes:
+                return True
+            elif (
+                result == QMessageBox.StandardButton.No
+                or result == QMessageBox.StandardButton.NoButton
+            ):
+                print("No button clicked")
+                return False
+        else:
+            self.msg_box.show()
+
+    def create_loading_window(
+        self, label_text: str, max_val: int = 100, initial_val: int = 0
+    ):
+        self.loading_window = QProgressDialog(self)
+        self.loading_window.setWindowTitle("Loading...")
+        self.loading_window.setLabelText(label_text)
+        self.loading_window.setCancelButtonText(None)  # Hide the cancel button
+        self.loading_window.setRange(initial_val, max_val)
+        self.loading_window.setWindowModality(Qt.WindowModality.WindowModal)
+
+    def update_loading_window(self, val: int):
+        if isinstance(val, tuple):
+            val = int(val[0] / val[1] * 100)
+
+        if self.loading_window is not None:
+            self.loading_window.setValue(val)
+            if val >= self.loading_window.maximum():
+                self.loading_window.close()
 
     def open_img_load_file_dialog(self):
         filepath = QFileDialog.getOpenFileName(
@@ -286,20 +555,25 @@ class UserInterface(QMainWindow):
             QImage.Format.Format_RGB888,
         )
 
-    def update_main_pix_map(self, idx: int, img: np.ndarray):
-        q_img = self.convert_ndarray_to_qimage(img=img)
-        pixmap = QPixmap.fromImage(q_img)
-        self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
+    def update_main_pix_map(self, idx: int, img: np.ndarray | None):
+        if img is None:
+            self.annotation_visualizers[idx].set_pixmap(pixmap=None)
+        else:
+            q_img = self.convert_ndarray_to_qimage(img=img)
+            pixmap = QPixmap.fromImage(q_img)
+            self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
-        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
+        vis_width, vis_height = (
+            self.calcluate_size_of_annotation_visualizers()
+        )
 
         idx = 0
         for i in range(2):
             for j in range(2):
                 self.annotation_visualizers[idx].setGeometry(
-                    self.offset + i * vis_width,
-                    self.offset + j * vis_height,
+                    i * vis_width,
+                    self.height_offset + j * vis_height,
                     vis_width,
                     vis_height,
                 )
@@ -313,18 +587,25 @@ class InteractiveGraphicsView(QGraphicsView):
     mouseMove: pyqtSignal = pyqtSignal(QMouseEvent)
     clicked: pyqtSignal = pyqtSignal(bool)
     mousePressSignal: pyqtSignal = pyqtSignal(QMouseEvent)
+    new_scene_initialized: pyqtSignal = pyqtSignal(int)
 
-    def __init__(self, parent, width: int = 1024, height: int = 1024) -> None:
+    def __init__(
+        self, parent, ann_viz_id: int, width: int = 1024, height: int = 1024
+    ) -> None:
         super().__init__(parent=parent)
 
         self.width = width
         self.height = height
-        self.zoom_val = 0
+        self.id = ann_viz_id
         self.mouse_down = False
         self.graphics_scene = QGraphicsScene(self)
         self.pixmap_item = QGraphicsPixmapItem()
         self.pixmap_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
+        self.pixmap_item_is_set = False
 
+        self.init_scene()
+
+    def init_scene(self):
         self.graphics_scene.addItem(self.pixmap_item)
         self.setScene(self.graphics_scene)
 
@@ -335,9 +616,26 @@ class InteractiveGraphicsView(QGraphicsView):
         self.setBackgroundBrush(QBrush(QColor(30, 30, 30)))
         self.setFrameShape(QFrame.Shape.NoFrame)
 
-    def set_pixmap(self, pixmap: QPixmap):
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.pixmap_item.setPixmap(pixmap)
+        self.pixmap_item_is_set = False
+        self.new_scene_initialized.emit(self.id)
+
+    def reset_scene(self):
+        self.graphics_scene.removeItem(self.pixmap_item)
+        self.pixmap_item = QGraphicsPixmapItem()
+        self.pixmap_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
+        self.init_scene()
+
+    def set_pixmap(self, pixmap: QPixmap | None):
+        if pixmap is None:
+            if self.pixmap_item_is_set:
+                self.reset_scene()
+        else:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            self.pixmap_item.setPixmap(pixmap)
+            if not self.pixmap_item_is_set:
+                self.fitInView()
+                self.new_scene_initialized.emit(self.id)
+            self.pixmap_item_is_set = True
 
     def wheelEvent(self, event: QWheelEvent):
         # and overwrite superclass method to avoid scrolling on mouse wheel
@@ -352,10 +650,10 @@ class InteractiveGraphicsView(QGraphicsView):
         super().leaveEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
+        super().mouseMoveEvent(event)
         self.updateCoordinates(event.position().toPoint())
         if self.mouse_down:
             self.mouseMove.emit(event)
-        super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
         self.mouse_down = True
@@ -388,7 +686,6 @@ class InteractiveGraphicsView(QGraphicsView):
                 viewrect.height() / scenerect.height(),
             )
             self.scale(factor, factor)
-            self.zoom_val = 0
 
 
 class OptionsWindow(QMainWindow):

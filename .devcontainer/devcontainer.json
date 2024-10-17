@@ -38,9 +38,9 @@
             ]
         }
     },
-    "mounts": ["source=c/development/kinera_sam_annotation/datasets/soil010623_1_images,target=/workspaces/SequenceSAM-Annotator/data,type=bind,consistency=cached"]
+    "mounts": ["source=c/development/kinera_sam_annotation/datasets/soil010623_1_images,target=/workspaces/SequenceSAM-Annotator/data,type=bind,consistency=cached"],
     // Use 'forwardPorts' to make a list of ports inside the container available locally.
     // "forwardPorts": [],
     // Use 'postCreateCommand' to run commands after the container is created.
-    // "postCreateCommand": ""
+    "postCreateCommand": "pip install -e ./segment-anything-2"
 }

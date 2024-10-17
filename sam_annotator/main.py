@@ -6,7 +6,12 @@ from sam_annotator.mask_visualizations import MaskVisualizationData
 
 def create_vis_options() -> tuple[list[str]]:
     vis_options = [field.name for field in dataclasses.fields(MaskVisualizationData)]
-    default_vis_options = ["img", "img_sam_preview", "mask", "maskinrgb"]
+    default_vis_options = [
+        "img",
+        "img_sam_preview",
+        "masked_img_cnt",
+        "mask_collection_cnt",
+    ]
 
     for default_vis_option in default_vis_options:
         if default_vis_option not in vis_options:
