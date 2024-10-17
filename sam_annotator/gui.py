@@ -1,6 +1,5 @@
 import numpy as np
 import cv2
-import time
 
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
@@ -78,6 +77,7 @@ class UserInterface(QMainWindow):
         self.zoom_level = 0
         self.zoom_factor = 1.25
         self.current_viewport = None
+        self.last_panned_img = None
 
         self.loading_window = None
 
@@ -85,9 +85,7 @@ class UserInterface(QMainWindow):
         self.showMaximized()
 
     def construct_ui(self):
-        vis_width, vis_height = (
-            self.calcluate_size_of_annotation_visualizers()
-        )
+        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         self.annotation_visualizers: list[InteractiveGraphicsView] = []
         for i in range(2):
@@ -352,10 +350,9 @@ class UserInterface(QMainWindow):
         if point.isNull():
             self.labelCoords.clear()
             return
-        
+
         self.labelCoords.setText(f"{point.x()}, {point.y()}")
         self.mouse_position.emit((point.x(), point.y()))
-            
 
     def keyPressEvent(self, event: QKeyEvent):
         if isinstance(event, QKeyEvent):
@@ -386,10 +383,21 @@ class UserInterface(QMainWindow):
                 self.preview_annotation_point_signal.emit(0)
 
     def childMouseMoveEvent(self, event: QMouseEvent):
+        if self.zoom_level == 0:
+            print("no pan when fully zoomed out")
+            return
+
         scene_idx_under_mouse = self.get_annotation_visualizer_idx_under_mouse()
         if scene_idx_under_mouse is None:
             print("not on image")
             return
+
+        if self.last_panned_img != scene_idx_under_mouse:
+            for idx, ann_viz in enumerate(self.annotation_visualizers):
+                ann_viz.fitInView()
+                zoom = self.zoom_factor**self.zoom_level
+                ann_viz.scale(zoom, zoom)
+            self.last_panned_img = scene_idx_under_mouse
 
         self.current_viewport = (
             self.annotation_visualizers[scene_idx_under_mouse]
@@ -418,8 +426,8 @@ class UserInterface(QMainWindow):
                 self.fit_annotation_visualizers_to_view()
                 return
             else:
-                self.zoom_level -= 1
                 factor = 1 / self.zoom_factor
+                self.zoom_level -= 1
 
         if event.angleDelta().y() > 0:
             self.zoom_level += 1
@@ -564,9 +572,7 @@ class UserInterface(QMainWindow):
             self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
-        vis_width, vis_height = (
-            self.calcluate_size_of_annotation_visualizers()
-        )
+        vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         idx = 0
         for i in range(2):
