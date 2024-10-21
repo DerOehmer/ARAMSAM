@@ -1,4 +1,4 @@
-from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
+from segment_anything import sam_model_registry, SamPredictor
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 import torch
@@ -13,8 +13,10 @@ from monai.metrics import (
     GeneralizedDiceScore,
     ConfusionMatrixMetric,
 )
-from torchmetrics import segmentation
+
+# from torchmetrics import segmentation
 import torch.nn.functional as F
+import pandas as pd
 
 
 class TestImages:
@@ -74,141 +76,196 @@ class TestImages:
             yield self.masks[i], np.array([[cx, cy]])
 
 
-def init_sam_model(sam_gen: int, weights_path: str, config: str, device: str = "cuda"):
-    if sam_gen == 1:
-        checkpoint = torch.load(
-            weights_path, map_location=torch.device(device), weights_only=True
+class SamTestInference:
+    def __init__(
+        self, sam_gen: int, weights_path: str, config: str, device: str = "cuda"
+    ):
+        self.device = device
+        if sam_gen == 1:
+            checkpoint = torch.load(
+                weights_path, map_location=torch.device(device), weights_only=True
+            )
+            sam_model = sam_model_registry[config]()
+            sam_model.load_state_dict(checkpoint)
+            self.sam_predictor = SamPredictor(sam_model)
+        elif sam_gen == 2:
+            self._init_mixed_precision()
+            sam_model = build_sam2(config, ckpt_path=weights_path, device=device)
+            self.sam_predictor = SAM2ImagePredictor(sam_model)
+
+        else:
+            raise ValueError("Invalid SAM generation")
+
+    def _init_mixed_precision(self):
+        torch.autocast(device_type=self.device, dtype=torch.bfloat16).__enter__()
+
+        if torch.cuda.get_device_properties(0).major >= 8:
+            # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+
+    def _one_hot_tensor(self, mask: np.ndarray, num_classes: int = 2, dtype=torch.long):
+        cold_tensor = torch.tensor(mask // 255).to(dtype)
+
+        one_hot_mask = F.one_hot(cold_tensor, num_classes=num_classes).permute(2, 0, 1)
+        return one_hot_mask
+
+    def _preprocess_masks(self, masks):
+        return [self._one_hot_tensor(mask) for mask in masks]
+
+    def compute_torch_metrics(self, pred_masks, gt_masks):
+
+        pred_masks = self._preprocess_masks(pred_masks)
+        pred_masks = torch.stack(pred_masks)
+        gt_masks = self._preprocess_masks(gt_masks)
+        gt_masks = torch.stack(gt_masks)
+
+        iou_metric = segmentation.MeanIoU(
+            num_classes=2, input_format="one-hot", include_background=True
         )
-        sam_model = sam_model_registry[config]()
-        sam_model.load_state_dict(checkpoint)
-        sam_predictor = SamPredictor(sam_model)
-    elif sam_gen == 2:
-        sam_model = build_sam2(config, ckpt_path=weights_path, device=device)
-        sam_predictor = SAM2ImagePredictor(sam_model)
+        print(iou_metric(pred_masks, gt_masks))
 
-    else:
-        raise ValueError("Invalid SAM generation")
-    return sam_predictor
+    def compute_metrics(self, pred_masks, gt_masks):
 
+        pred_masks = self._preprocess_masks(pred_masks)
+        gt_masks = self._preprocess_masks(gt_masks)
 
-def one_hot_tensor(mask: np.ndarray, num_classes: int = 2, dtype=torch.long):
-    cold_tensor = torch.tensor(mask // 255).to(dtype)
-
-    one_hot_mask = F.one_hot(cold_tensor, num_classes=num_classes).permute(2, 0, 1)
-    return one_hot_mask
-
-
-def preprocess_masks(masks):
-    return [one_hot_tensor(mask) for mask in masks]
-
-
-def compute_torch_metrics(pred_masks, gt_masks):
-
-    pred_masks = preprocess_masks(pred_masks)
-    pred_masks = torch.stack(pred_masks)  # .unsqueeze(1)
-    gt_masks = preprocess_masks(gt_masks)
-    gt_masks = torch.stack(gt_masks)  # .unsqueeze(1)
-
-    iou_metric = segmentation.MeanIoU(
-        num_classes=2, input_format="one-hot", include_background=True
-    )
-    print(iou_metric(pred_masks, gt_masks))
-
-
-def compute_metrics(pred_masks, gt_masks):
-
-    pred_masks = preprocess_masks(pred_masks)
-    gt_masks = preprocess_masks(gt_masks)
-
-    # Dice Metric
-    dice_metric = DiceMetric(
-        include_background=True, reduction="mean", get_not_nans=False
-    )
-    dice_metric(y_pred=pred_masks, y=gt_masks)
-    dice_value = dice_metric.aggregate().item()
-
-    gdice_metric = GeneralizedDiceScore(include_background=True, reduction="mean")
-    gdice_metric(pred_masks, gt_masks)
-    gdice_value = gdice_metric.aggregate().item()
-
-    # IoU Metric (Jaccard Index)
-    iou_metric = MeanIoU(include_background=True, reduction="mean", get_not_nans=False)
-    iou_metric(pred_masks, gt_masks)
-    iou_value = iou_metric.aggregate().item()
-
-    cm_metric = ConfusionMatrixMetric(include_background=True, metric_name="precision")
-    cm_metric(pred_masks, gt_masks)
-    cm_value = cm_metric.aggregate()
-    print("CM", cm_value)
-
-    iou_metric.reset()
-    gdice_metric.reset()
-    dice_metric.reset()
-
-    return {
-        "Mean Dice": dice_value,
-        "Generalized Dice": gdice_value,
-        "Mean IoU": iou_value,
-    }
-
-
-def get_sam_inference(
-    sam_predictor: SamPredictor | SAM2ImagePredictor, test_img_obj: TestImages
-):
-    sam_predictor.set_image(test_img_obj.rgb)
-    gt_masks = []
-    pred_masks = []
-
-    for gt_mask, center in test_img_obj:
-        masks, scores, logits = sam_predictor.predict(
-            point_coords=center, point_labels=np.array([1]), multimask_output=False
+        # Dice Metric
+        dice_metric = DiceMetric(
+            include_background=True, reduction="mean", get_not_nans=False
         )
-        pred_mask = masks[0].astype(np.uint8) * 255
-        pred_masks.append(pred_mask)
-        gt_masks.append(gt_mask)
-        # draw_mask(test_img_obj.bgr, gt_mask, pred_mask, center)
+        dice_metric(y_pred=pred_masks, y=gt_masks)
+        dice_value = dice_metric.aggregate().item()
 
-    metrics = compute_metrics(pred_masks, gt_masks)
-    compute_torch_metrics(pred_masks, test_img_obj.masks)
-    print(metrics)
+        gdice_metric = GeneralizedDiceScore(include_background=True, reduction="mean")
+        gdice_metric(pred_masks, gt_masks)
+        gdice_value = gdice_metric.aggregate().item()
+
+        # IoU Metric (Jaccard Index)
+        iou_metric = MeanIoU(
+            include_background=True, reduction="mean", get_not_nans=False
+        )
+        iou_metric(pred_masks, gt_masks)
+        iou_value = iou_metric.aggregate().item()
+
+        cm_metric = ConfusionMatrixMetric(
+            include_background=False, metric_name="precision"
+        )
+        cm_metric(pred_masks, gt_masks)
+        cm_value = cm_metric.aggregate()
+        print("Precision", cm_value)
+
+        iou_metric.reset()
+        gdice_metric.reset()
+        dice_metric.reset()
+
+        return {
+            "Mean Dice": dice_value,
+            "Generalized Dice": gdice_value,
+            "Mean IoU": iou_value,
+        }
+
+    def get_sam_inference(self, test_img_objs: list[TestImages]):
+
+        gt_masks = []
+        pred_masks = []
+
+        for test_img_obj in test_img_objs:
+            self.sam_predictor.set_image(test_img_obj.rgb)
+            for gt_mask, center in test_img_obj:
+                masks, scores, logits = self.sam_predictor.predict(
+                    point_coords=center,
+                    point_labels=np.array([1]),
+                    multimask_output=False,
+                )
+                pred_mask = masks[0].astype(np.uint8) * 255
+                pred_masks.append(pred_mask)
+                gt_masks.append(gt_mask)
+                # draw_mask(test_img_obj.bgr, gt_mask, pred_mask, center)
+        metrics = self.compute_metrics(pred_masks, gt_masks)
+        print("N masks", len(pred_masks), len(gt_masks))
+        # self.compute_torch_metrics(pred_masks, gt_masks)
+        return metrics
+
+    def draw_mask(img, gtmask, predmask, center):
+        show_img = img.copy()
+        contours, _ = cv2.findContours(
+            gtmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        cv2.drawContours(show_img, contours, -1, (0, 255, 0), 1)
+        contours, _ = cv2.findContours(
+            predmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        cv2.drawContours(show_img, contours, -1, (255, 0, 0), 1)
+        cv2.circle(show_img, tuple(center[0]), 3, (0, 0, 255), -1)
+        show_img = cv2.resize(show_img, (0, 0), fx=0.5, fy=0.5)
+        cv2.imshow("img", show_img)
+        cv2.waitKey(0)
 
 
-def draw_mask(img, gtmask, predmask, center):
-    show_img = img.copy()
-    contours, _ = cv2.findContours(gtmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.drawContours(show_img, contours, -1, (0, 255, 0), 1)
-    contours, _ = cv2.findContours(predmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.drawContours(show_img, contours, -1, (255, 0, 0), 1)
-    cv2.circle(show_img, tuple(center[0]), 3, (0, 0, 255), -1)
-    show_img = cv2.resize(show_img, (0, 0), fx=0.5, fy=0.5)
-    cv2.imshow("img", show_img)
-    cv2.waitKey(0)
+class SamFlavors:
+    def __init__(self):
+        pass
+
+    @property
+    def _all_sams(self):
+        return {
+            1: {
+                "weights": [
+                    "sam_vit_b_01ec64.pth",
+                    "sam_vit_l_0b3195.pth",
+                    "sam_vit_h_4b8939.pth",
+                ],
+                "config": ["vit_b", "vit_l", "vit_h"],
+            },
+            2: {
+                "weights": [
+                    "sam2_hiera_tiny.pt",
+                    "sam2_hiera_small.pt",
+                    "sam2_hiera_base_plus.pt",
+                    "sam2_hiera_large.pt",
+                ],
+                "config": [
+                    "sam2_hiera_t.yaml",
+                    "sam2_hiera_s.yaml",
+                    "sam2_hiera_b+.yaml",
+                    "sam2_hiera_l.yaml",
+                ],
+            },
+        }
+
+    def __iter__(self):
+        for sam_gen, sam_params in self._all_sams.items():
+            for weights, config in zip(sam_params["weights"], sam_params["config"]):
+                yield sam_gen, weights, config
 
 
 def main():
-    # test_img_dirs = glob.glob("BackboneExperimentData/MaizeUAV/*")
-    test_img_dirs = glob.glob(
-        "/media/geink81/hddE/3DMais/Ears/LabelData/EarsBreeders/20MP/done/39320223017022_done/*"
-    )
-    for test_img_dir in test_img_dirs:
-        test_img = TestImages(test_img_dir)
-        sam = init_sam_model(
-            sam_gen=1,
-            # weights_path="/home/geink81/pythonstuff/CobScanws/sam_vit_h_4b8939.pth",
-            weights_path="sam_vit_b_01ec64.pth",
-            config="vit_b",
+    datasets = ["BackboneExperimentData/MaizeUAV/"]
+    sam_flavors = SamFlavors()
+    metric_results = []
+    for sam_gen, weights_path, config in sam_flavors:
+        sam = SamTestInference(
+            sam_gen=sam_gen,
+            weights_path=weights_path,
+            config=config,
         )
-        get_sam_inference(sam, test_img)
+        for dataset in datasets:
+            test_imgs = []
+            for test_img_dir in glob.glob(dataset + "/*"):
+                test_img = TestImages(test_img_dir)
+                test_imgs.append(test_img)
 
-        """img_show = test_img.bgr.copy()
-        contours, _ = cv2.findContours(
-            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        cv2.drawContours(img_show, contours, -1, (0, 255, 0), 1)
-        cv2.circle(img_show, center, 5, (0, 0, 255), -1)
-        img_show = cv2.resize(img_show, (0, 0), fx=0.5, fy=0.5)
-        cv2.imshow("img", img_show)
-        cv2.waitKey(0)"""
+            metrics = sam.get_sam_inference(test_imgs)
+            metrics["Sam generation"] = sam_gen
+            metrics["Weights path"] = weights_path
+            metrics["Dataset"] = dataset
+            print(metrics)
+            metric_results.append(metrics)
+        del sam
+
+    df = pd.DataFrame(metric_results)
+    df.to_csv("BackboneExperimentData/MaizeUAV_results.csv", index=False)
 
 
 if __name__ == "__main__":
