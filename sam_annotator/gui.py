@@ -218,21 +218,6 @@ class UserInterface(QMainWindow):
         )
         self.delete_button.setMinimumWidth(self.buttons_min_width)
 
-        if not self.experiment_mode == "structured":
-            self.next_img_button = QPushButton(text="next image", parent=self)
-            self.next_img_button.move(
-                7 * self.buttons_spacing + 6 * self.buttons_min_width,
-                int(self.height_offset / 2),
-            )
-            self.next_img_button.setMinimumWidth(self.buttons_min_width)
-
-        self.labelCoords = QLabel(self, text="Pixel Pos.")
-        self.labelCoords.move(
-            8 * self.buttons_spacing + 7 * self.buttons_min_width,
-            int(self.height_offset / 2),
-        )
-        self.labelCoords.show()
-
         self.performing_embedding_label = QLabel(text="No image loaded", parent=self)
         self.performing_embedding_label.move(
             9 * self.buttons_spacing + 8 * self.buttons_min_width,
@@ -242,6 +227,21 @@ class UserInterface(QMainWindow):
             self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
         )
         if self.experiment_mode != "structured":
+
+            self.next_img_button = QPushButton(text="next image", parent=self)
+            self.next_img_button.move(
+                7 * self.buttons_spacing + 6 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.next_img_button.setMinimumWidth(self.buttons_min_width)
+
+            self.labelCoords = QLabel(self, text="Pixel Pos.")
+            self.labelCoords.move(
+                8 * self.buttons_spacing + 7 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.labelCoords.show()
+
             self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
             self.sam2_checkbox.move(
                 15 * self.buttons_spacing + 14 * self.buttons_min_width,
@@ -253,10 +253,10 @@ class UserInterface(QMainWindow):
             self.next_method_button = QPushButton("Next", self)
             self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
             self.next_method_button.move(
-                14 * self.buttons_spacing + 13 * self.buttons_min_width,
+                int(7.5 * self.buttons_spacing) + int(6.5 * self.buttons_min_width),
                 int(self.height_offset / 2),
             )
-            self.next_method_button.setMinimumWidth(160)
+            self.next_method_button.setMinimumWidth(100)
             self.next_method_button.setStyleSheet(
                 """
                 QPushButton {
@@ -268,6 +268,17 @@ class UserInterface(QMainWindow):
                     background-color: darkgreen;  /* Change color on hover */
                 }
                 """
+            )
+
+            self.experiment_instructions_label = QLabel(
+                text="Find instructions here", parent=self
+            )
+            self.experiment_instructions_label.move(
+                15 * self.buttons_spacing + 14 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.experiment_instructions_label.setMinimumWidth(
+                self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
             )
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
@@ -348,10 +359,11 @@ class UserInterface(QMainWindow):
 
     def handleCoords(self, point: QPoint):
         if point.isNull():
-            self.labelCoords.clear()
+            if self.experiment_mode != "structured":
+                self.labelCoords.clear()
             return
-
-        self.labelCoords.setText(f"{point.x()}, {point.y()}")
+        if self.experiment_mode != "structured":
+            self.labelCoords.setText(f"{point.x()}, {point.y()}")
         self.mouse_position.emit((point.x(), point.y()))
 
     def keyPressEvent(self, event: QKeyEvent):
