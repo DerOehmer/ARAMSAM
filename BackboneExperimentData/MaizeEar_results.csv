@@ -1,0 +1,8 @@
+Mean Dice,Generalized Dice,Mean IoU,Sam generation,Weights path,Dataset
+0.9691527485847473,0.9394307136535645,0.9421618580818176,1,sam_vit_b_01ec64.pth,BackboneExperimentData/MaizeEar/
+0.9707489013671875,0.9425707459449768,0.9449594616889954,1,sam_vit_l_0b3195.pth,BackboneExperimentData/MaizeEar/
+0.972545862197876,0.946097195148468,0.9481388926506042,1,sam_vit_h_4b8939.pth,BackboneExperimentData/MaizeEar/
+0.9230837821960449,0.8702310919761658,0.8825862407684326,2,sam2_hiera_tiny.pt,BackboneExperimentData/MaizeEar/
+0.9600770473480225,0.9215880632400513,0.9265578985214233,2,sam2_hiera_small.pt,BackboneExperimentData/MaizeEar/
+0.9590859413146973,0.9196453094482422,0.9250529408454895,2,sam2_hiera_base_plus.pt,BackboneExperimentData/MaizeEar/
+0.7727514505386353,0.6681948900222778,0.7259575128555298,2,sam2_hiera_large.pt,BackboneExperimentData/MaizeEar/
