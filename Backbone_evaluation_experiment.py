@@ -85,13 +85,13 @@ class SamTestInference:
             checkpoint = torch.load(
                 weights_path, map_location=torch.device(device), weights_only=True
             )
-            sam_model = sam_model_registry[config]()
-            sam_model.load_state_dict(checkpoint)
-            self.sam_predictor = SamPredictor(sam_model)
+            self.sam_model = sam_model_registry[config]()
+            self.sam_model.load_state_dict(checkpoint)
+            self.sam_predictor = SamPredictor(self.sam_model)
         elif sam_gen == 2:
             self._init_mixed_precision()
-            sam_model = build_sam2(config, ckpt_path=weights_path, device=device)
-            self.sam_predictor = SAM2ImagePredictor(sam_model)
+            self.sam_model = build_sam2(config, ckpt_path=weights_path, device=device)
+            self.sam_predictor = SAM2ImagePredictor(self.sam_model)
 
         else:
             raise ValueError("Invalid SAM generation")
