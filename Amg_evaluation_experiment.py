@@ -71,6 +71,10 @@ class AmgSamTestInference(SamTestInference):
         metrics["precision"] = precision
         metrics["predictions"] = len(pred_masks)
         metrics["ground_truth"] = len(gt_masks)
+        metrics["TP"] = tp
+        metrics["FP"] = fp
+        metrics["FN"] = fn
+
         return metrics
 
     def calculate_ious(
@@ -140,7 +144,7 @@ def main():
                 metrics = sam.get_sam_inference(test_img)
                 metrics["Dataset"] = dataset
                 metrics["img_dir"] = test_img_dir
-                amg_config["model"] = "sam_model"
+                amg_config["model"] = weights_path
                 metrics.update(amg_config)
                 print(metrics)
                 metric_results.append(metrics)
