@@ -14,7 +14,6 @@ from monai.metrics import (
     ConfusionMatrixMetric,
 )
 
-# from torchmetrics import segmentation
 import torch.nn.functional as F
 import pandas as pd
 
@@ -87,6 +86,7 @@ class SamTestInference:
             )
             self.sam_model = sam_model_registry[config]()
             self.sam_model.load_state_dict(checkpoint)
+            self.sam_model.to(device)
             self.sam_predictor = SamPredictor(self.sam_model)
         elif sam_gen == 2:
             self._init_mixed_precision()
@@ -112,18 +112,6 @@ class SamTestInference:
 
     def _preprocess_masks(self, masks):
         return [self._one_hot_tensor(mask) for mask in masks]
-
-    def compute_torch_metrics(self, pred_masks, gt_masks):
-
-        pred_masks = self._preprocess_masks(pred_masks)
-        pred_masks = torch.stack(pred_masks)
-        gt_masks = self._preprocess_masks(gt_masks)
-        gt_masks = torch.stack(gt_masks)
-
-        iou_metric = segmentation.MeanIoU(
-            num_classes=2, input_format="one-hot", include_background=True
-        )
-        print(iou_metric(pred_masks, gt_masks))
 
     def compute_metrics(self, pred_masks, gt_masks):
 
