@@ -8,8 +8,9 @@ import torchvision.ops.boxes as bops
 from segment_anything.automatic_mask_generator import SamAutomaticMaskGenerator
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from tqdm import tqdm
+from natsort import natsorted
 
-from Backbone_evaluation_experiment import TestImages, SamTestInference, SamFlavors
+from Backbone_evaluation_experiment import TestImages, SamTestInference
 
 
 class AmgSamTestInference(SamTestInference):
@@ -60,6 +61,13 @@ class AmgSamTestInference(SamTestInference):
             gt_masks=gt_masks,
             gt_idcs=best_pred_matches_for_gt_boxes.indices,
         )
+
+        mean_iou_of_tp = (
+            gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].mean().item()
+        )
+        std_iou_of_tp = (
+            gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].std().item()
+        )
         tp = gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].shape[0]
         fn = total_positives - tp
         fp = total_predictions - tp
@@ -74,6 +82,8 @@ class AmgSamTestInference(SamTestInference):
         metrics["TP"] = tp
         metrics["FP"] = fp
         metrics["FN"] = fn
+        metrics["mean_iou_of_tp"] = mean_iou_of_tp
+        metrics["std_iou_of_tp"] = std_iou_of_tp
 
         return metrics
 
@@ -125,15 +135,24 @@ def create_sam_amg_configs() -> list[dict]:
 
 def main():
     datasets = ["Exp32"]
-    iou_thresh = 0.5
+    start_img = 0
+    end_img_exclusive = 5
+
+    iou_thresh = 0.8
     metric_results = []
-    sam_flavors = SamFlavors()
-    sam_gen, weights_path, config = next(iter(sam_flavors))
+    sam_gen = 1
+    weights_path = "sam_vit_b_01ec64.pth"
+    config = "vit_b"
+    # sam_gen = 2
+    # weights_path = "sam2_hiera_small.pt"
+    # config = "sam2_hiera_s.yaml"
     sam_amg_configs = create_sam_amg_configs()
 
     for dataset in datasets:
 
-        for test_img_dir in glob.glob(dataset + "/*"):
+        test_img_dirs = natsorted(glob.glob(dataset + "/*"))
+        test_img_dirs = test_img_dirs[start_img:end_img_exclusive]
+        for test_img_dir in test_img_dirs:
             test_img = TestImages(test_img_dir)
 
             for amg_config in tqdm(sam_amg_configs):
