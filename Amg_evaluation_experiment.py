@@ -4,36 +4,59 @@ import itertools
 import torch
 import numpy as np
 import torchvision.ops.boxes as bops
-
+from torchvision.ops import masks_to_boxes
+from segment_anything import sam_model_registry
 from segment_anything.automatic_mask_generator import SamAutomaticMaskGenerator
+from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from tqdm import tqdm
 from natsort import natsorted
 
-from Backbone_evaluation_experiment import TestImages, SamTestInference
+from Backbone_evaluation_experiment import TestImages
 
 
-class AmgSamTestInference(SamTestInference):
+class AmgSamTestInference:
 
     def __init__(
-        self, sam_gen, weights_path, config, amg_config, device="cuda", iou_thresh=0.5
+        self,
+        sam_gen: int,
+        weights_path: str,
+        config: str,
+        amg_config,
+        device: str = "cuda",
+        iou_thresh: float = 0.5,
     ):
-        super().__init__(sam_gen, weights_path, config, device)
-
+        self.device = device
         self.iou_thresh = iou_thresh
-        amg_config["model"] = self.sam_model
         if sam_gen == 1:
-            self.amg_predictor = SamAutomaticMaskGenerator(**amg_config)
+            checkpoint = torch.load(
+                weights_path, map_location=torch.device(device), weights_only=True
+            )
+            self.sam_model = sam_model_registry[config]()
+            self.sam_model.load_state_dict(checkpoint)
+            self.sam_model.to(device)
+            self.amg_predictor = SamAutomaticMaskGenerator(self.sam_model, **amg_config)
         elif sam_gen == 2:
-            self.amg_predictor = SAM2AutomaticMaskGenerator(**amg_config)
+            self._init_mixed_precision()
+            self.sam_model = build_sam2(config, ckpt_path=weights_path, device=device)
+            self.amg_predictor = SAM2AutomaticMaskGenerator(
+                self.sam_model, **amg_config
+            )
+
         else:
             raise ValueError("Invalid SAM generation")
+
+    def _init_mixed_precision(self):
+        torch.autocast(device_type=self.device, dtype=torch.bfloat16).__enter__()
+
+        if torch.cuda.get_device_properties(0).major >= 8:
+            # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
 
     def get_sam_inference(self, test_img_obj: TestImages):
         gt_masks = []
         pred_masks = []
-        self.sam_predictor.set_image(test_img_obj.rgb)
-        self.sam_predictor
         masks = self.amg_predictor.generate(test_img_obj.rgb)
         pred_masks = [m["segmentation"].astype(np.uint8) * 255 for m in masks]
         gt_masks = test_img_obj.masks
@@ -45,9 +68,11 @@ class AmgSamTestInference(SamTestInference):
     def match_masks_and_evaluate(
         self, gt_masks: list[np.ndarray], pred_masks: list[np.ndarray]
     ):
-        # TODO: I think there is a faster torchvision implementation for this
-        gt_boxes, gt_masks = self.get_torch_bbox_of_masks(masks=gt_masks)
-        pred_boxes, pred_masks = self.get_torch_bbox_of_masks(masks=pred_masks)
+
+        gt_boxes = masks_to_boxes(torch.tensor(np.array(gt_masks)))
+        gt_masks = torch.tensor(np.array(gt_masks))
+        pred_boxes = masks_to_boxes(torch.tensor(np.array(pred_masks)))
+        pred_masks = torch.tensor(np.array(pred_masks))
 
         bbox_iou = bops.box_iou(pred_boxes, gt_boxes)
 
@@ -100,21 +125,6 @@ class AmgSamTestInference(SamTestInference):
         ious = intersections_sum / unions_sum
         return ious
 
-    def get_torch_bbox_of_masks(self, masks: list[np.ndarray]):
-        boxes = []
-        mask_color = 255
-        for mask in masks:
-            y_idcs, x_idcs = np.where(
-                np.all(mask.reshape(*mask.shape, 1) == mask_color, axis=-1)
-            )
-            bbox_x_min = int(x_idcs.min())
-            bbox_x_max = int(x_idcs.max())
-            bbox_y_min = int(y_idcs.min())
-            bbox_y_max = int(y_idcs.max())
-            boxes.append([bbox_x_min, bbox_y_min, bbox_x_max, bbox_y_max])
-
-        return (torch.tensor(boxes), torch.tensor(np.array(masks)))
-
 
 def create_sam_amg_configs() -> list[dict]:
 
@@ -135,8 +145,8 @@ def create_sam_amg_configs() -> list[dict]:
 
 def main():
     datasets = ["Exp32"]
-    start_img = 0
-    end_img_exclusive = 5
+    start_img = 5
+    end_img_exclusive = 10
 
     iou_thresh = 0.8
     metric_results = []
