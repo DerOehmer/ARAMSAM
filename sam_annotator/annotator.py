@@ -55,11 +55,11 @@ class Annotator:
 
         if sam_gen == 2:
             if self.sam_ckpt is None:
-                sam2_ckpt = "sam2_hiera_large.pt"
+                sam2_ckpt = "sam2.1_hiera_large.pt"
             else:
                 sam2_ckpt = self.sam_ckpt
             if self.sam_model_type is None:
-                sam2_model_type = "sam2_hiera_l.yaml"
+                sam2_model_type = "configs/sam2.1/sam2.1_hiera_l.yaml"  # Sam2.1 config files have to be starting with "configs/sam2.1/", others don't (e.g. "sam2_hiera_l.yaml")
             else:
                 sam2_model_type = self.sam_model_type
             self.sam = Sam2Inference(
