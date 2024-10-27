@@ -145,7 +145,7 @@ def create_sam_amg_configs() -> list[dict]:
 
 def main():
     datasets = ["Exp32"]
-    start_img = 5
+    start_img = 6
     end_img_exclusive = 10
 
     iou_thresh = 0.8
@@ -173,7 +173,7 @@ def main():
                 metrics = sam.get_sam_inference(test_img)
                 metrics["Dataset"] = dataset
                 metrics["img_dir"] = test_img_dir
-                amg_config["model"] = weights_path
+                metrics["model"] = weights_path
                 metrics.update(amg_config)
                 print(metrics)
                 metric_results.append(metrics)
