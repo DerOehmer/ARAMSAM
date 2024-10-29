@@ -145,8 +145,8 @@ def create_sam_amg_configs() -> list[dict]:
 
 def main():
     datasets = ["Exp32"]
-    start_img = 6
-    end_img_exclusive = 10
+    start_img = 2
+    end_img_exclusive = 5
 
     iou_thresh = 0.8
     metric_results = []

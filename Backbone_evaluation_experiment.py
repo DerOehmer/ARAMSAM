@@ -212,12 +212,20 @@ class SamFlavors:
                     "sam2_hiera_small.pt",
                     "sam2_hiera_base_plus.pt",
                     "sam2_hiera_large.pt",
+                    "sam2.1_hiera_tiny.pt",
+                    "sam2.1_hiera_small.pt",
+                    "sam2.1_hiera_base_plus.pt",
+                    "sam2.1_hiera_large.pt",
                 ],
                 "config": [
                     "sam2_hiera_t.yaml",
                     "sam2_hiera_s.yaml",
                     "sam2_hiera_b+.yaml",
                     "sam2_hiera_l.yaml",
+                    "configs/sam2.1/sam2.1_hiera_t.yaml",
+                    "configs/sam2.1/sam2.1_hiera_s.yaml",
+                    "configs/sam2.1/sam2.1_hiera_b+.yaml",
+                    "configs/sam2.1/sam2.1_hiera_l.yaml",
                 ],
             },
         }
@@ -229,7 +237,7 @@ class SamFlavors:
 
 
 def main():
-    datasets = ["BackboneExperimentData/MaizeUAV/"]
+    datasets = ["BackboneExperimentData/MaizeEar/"]
     sam_flavors = SamFlavors()
     metric_results = []
     for sam_gen, weights_path, config in sam_flavors:
@@ -253,7 +261,7 @@ def main():
         del sam
 
     df = pd.DataFrame(metric_results)
-    df.to_csv("BackboneExperimentData/MaizeUAV_results.csv", index=False)
+    df.to_csv("BackboneExperimentData/MaizeEar_results.csv", index=False)
 
 
 if __name__ == "__main__":

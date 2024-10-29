@@ -70,12 +70,11 @@ class Annotator:
             )
         elif sam_gen == 1:
             if self.sam_ckpt is None:
-                sam1_ckpt = "/home/geink81/pythonstuff/CobScanws/sam_vit_h_4b8939.pth"
-                # sam1_ckpt = "sam_vit_b_01ec64.pth"
+                sam1_ckpt = "sam_vit_b_01ec64.pth"
             else:
                 sam1_ckpt = self.sam_ckpt
             if self.sam_model_type is None:
-                sam1_model_type = "vit_h"
+                sam1_model_type = "vit_b"
             else:
                 sam1_model_type = self.sam_model_type
             self.sam = SamInference(
