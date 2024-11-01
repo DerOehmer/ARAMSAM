@@ -31,7 +31,7 @@ def set_vis(annotator: Annotator) -> tuple[bool]:
         * 255
     )
     self.annotation.add_masks(
-        [MaskData(mid=-1, mask=mock_mask, origin="Polygon")]  # mock mask
+        [MaskData(mid=-1, mask=mock_mask, origin="Polygon_drawing")]  # mock mask
     )
 
     self.update_mask_idx()

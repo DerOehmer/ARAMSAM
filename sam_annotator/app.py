@@ -176,7 +176,14 @@ class App:
             print("No image left in the queue")
             if self.experiment_mode == "structured":
                 self.ui.create_message_box(False, "No image left in the queue")
-                self.ui.save()
+                self.ui.save()  # TODO this is probably not used
+                self.ui.close()
+            elif self.experiment_mode == "polygon":
+                self.ui.create_message_box(
+                    False,
+                    "Congratulations! You are done with the current set of images",
+                    wait_for_user=True,
+                )  # TODO change box buttons
                 self.ui.close()
             return
         if self.threadpool.activeThreadCount() > 0:
@@ -675,7 +682,10 @@ class App:
             self.ui.create_message_box(False, "Please select exactly 2 masks")
             return
         self.select_next_img()
+        # reset
+        self.ui.draw_poly_button.setDisabled(False)
         self.ui.draw_poly_button.click()
+        self.ui.draw_poly_button.setDisabled(True)
 
     def next_method(self):
         print("Next method")
