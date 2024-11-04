@@ -525,6 +525,25 @@ class UserInterface(QMainWindow):
         else:
             self.msg_box.show()
 
+    def create_info_box(
+        self, crticial: bool = False, text: str = "", wait_for_user: bool = False
+    ):
+        self.msg_box = QMessageBox(self)
+        icon = QMessageBox.Icon.Critical if crticial else QMessageBox.Icon.Information
+        self.msg_box.setIcon(icon)
+        self.msg_box.setText(text)
+        if wait_for_user:
+            self.msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            self.msg_box.setDefaultButton(QMessageBox.StandardButton.Ok)
+            result = self.msg_box.exec()
+            if result == QMessageBox.StandardButton.Ok:
+                return True
+            elif result == QMessageBox.StandardButton.NoButton:
+                print("No button clicked")
+                return False
+        else:
+            self.msg_box.show()
+
     def create_loading_window(
         self, label_text: str, max_val: int = 100, initial_val: int = 0
     ):

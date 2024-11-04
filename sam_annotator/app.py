@@ -179,7 +179,7 @@ class App:
                 self.ui.save()  # TODO this is probably not used
                 self.ui.close()
             elif self.experiment_mode == "polygon":
-                self.ui.create_message_box(
+                self.ui.create_info_box(
                     False,
                     "Congratulations! You are done with the current set of images",
                     wait_for_user=True,
@@ -590,6 +590,7 @@ class App:
         self.ui.draw_poly_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.manual_annotation_enabled)
+        self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
     def draw_polygon(self):
@@ -597,6 +598,7 @@ class App:
         self.ui.manual_annotation_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.polygon_drawing_enabled)
+        self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
     def select_masks_to_delete(self):
