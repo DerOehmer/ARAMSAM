@@ -124,9 +124,10 @@ class SamTestInference:
         )
         dice_metric(y_pred=pred_masks, y=gt_masks)
         dice_value = dice_metric.aggregate().item()
+        dice_per_mask = np.array(dice_metric.aggregate("mean_channel")).tolist()
 
         gdice_metric = GeneralizedDiceScore(include_background=True, reduction="mean")
-        gdice_metric(pred_masks, gt_masks)
+        gdice_per_mask = np.array(gdice_metric(pred_masks, gt_masks)).flatten().tolist()
         gdice_value = gdice_metric.aggregate().item()
 
         # IoU Metric (Jaccard Index)
@@ -135,6 +136,7 @@ class SamTestInference:
         )
         iou_metric(pred_masks, gt_masks)
         iou_value = iou_metric.aggregate().item()
+        iou_per_mask = np.array(iou_metric.aggregate("mean_channel")).tolist()
 
         cm_metric = ConfusionMatrixMetric(
             include_background=False, metric_name="precision"
@@ -151,6 +153,10 @@ class SamTestInference:
             "Mean Dice": dice_value,
             "Generalized Dice": gdice_value,
             "Mean IoU": iou_value,
+        }, {
+            "Dice per mask": dice_per_mask,
+            "Gdice per mask": gdice_per_mask,
+            "IoU per mask": iou_per_mask,
         }
 
     def get_sam_inference(self, test_img_objs: list[TestImages]):
@@ -236,10 +242,21 @@ class SamFlavors:
                 yield sam_gen, weights, config
 
 
+def append_mask_metrics_dict(storage_dict: dict, mask_metrics_dict: dict):
+    for key, values in mask_metrics_dict.items():
+        if key in storage_dict:
+            storage_dict[key].extend(values)
+        else:
+            storage_dict[key] = values
+
+    return storage_dict
+
+
 def main():
     datasets = ["BackboneExperimentData/MaizeEar/"]
     sam_flavors = SamFlavors()
     metric_results = []
+    metrics_per_mask_results = {}
     for sam_gen, weights_path, config in sam_flavors:
         sam = SamTestInference(
             sam_gen=sam_gen,
@@ -252,16 +269,37 @@ def main():
                 test_img = TestImages(test_img_dir)
                 test_imgs.append(test_img)
 
-            metrics = sam.get_sam_inference(test_imgs)
+            metrics, metrics_per_mask = sam.get_sam_inference(test_imgs)
+            metrics_per_mask["Mask N"] = [
+                i for i in range(len(metrics_per_mask["Dice per mask"]))
+            ]
             metrics["Sam generation"] = sam_gen
+            metrics_per_mask["Sam generation"] = [
+                sam_gen for i in range(len(metrics_per_mask["Dice per mask"]))
+            ]
             metrics["Weights path"] = weights_path
+            metrics_per_mask["Weights path"] = [
+                weights_path for i in range(len(metrics_per_mask["Dice per mask"]))
+            ]
             metrics["Dataset"] = dataset
+            metrics_per_mask["Dataset"] = [
+                dataset for i in range(len(metrics_per_mask["Dice per mask"]))
+            ]
+
             print(metrics)
             metric_results.append(metrics)
+            metrics_per_mask_results = append_mask_metrics_dict(
+                metrics_per_mask_results, metrics_per_mask
+            )
         del sam
 
     df = pd.DataFrame(metric_results)
-    df.to_csv("BackboneExperimentData/MaizeEar_results.csv", index=False)
+    df_metrics_per_mask = pd.DataFrame(metrics_per_mask_results)
+    print(df_metrics_per_mask)
+    # df.to_csv("BackboneExperimentData/MaizeEar_results.csv", index=False)
+    df_metrics_per_mask.to_csv(
+        "BackboneExperimentData/MaizeEar_results_per_mask.csv", index=False
+    )
 
 
 if __name__ == "__main__":

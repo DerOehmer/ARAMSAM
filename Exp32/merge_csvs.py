@@ -15,14 +15,14 @@ def concat_csvs(df_list: list[pd.DataFrame]) -> pd.DataFrame:
 
 
 def main():
-    df1 = pd.read_csv("Exp32/Sam1_VitB_5-10.csv")
-    df2 = pd.read_csv("test0-2.csv")
+    df1 = pd.read_csv("Exp32/Sam1_VitB_0-2_5-10.csv")
+    df2 = pd.read_csv("test.csv")
 
     df_concat = concat_csvs([df1, df2])
 
     print(len(df1), len(df2), len(df_concat))
     print(len(df1) + len(df2))
-    df_concat.to_csv("Exp32/Sam1_VitB_0-2_5-10.csv", index=False)
+    df_concat.to_csv("Exp32/Sam1_VitB.csv", index=False)
 
 
 if __name__ == "__main__":
