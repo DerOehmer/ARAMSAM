@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QCheckBox,
     QProgressDialog,
+    QApplication,
 )
 
 
@@ -226,7 +227,7 @@ class UserInterface(QMainWindow):
         self.performing_embedding_label.setMinimumWidth(
             self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
         )
-        if self.experiment_mode != "structured":
+        if self.experiment_mode is None:
 
             self.next_img_button = QPushButton(text="next image", parent=self)
             self.next_img_button.move(
@@ -249,7 +250,7 @@ class UserInterface(QMainWindow):
             )
             self.sam2_checkbox.setChecked(True)
 
-        if self.experiment_mode == "structured":
+        if self.experiment_mode in ["structured", "polygon"]:
             self.next_method_button = QPushButton("Next", self)
             self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
             self.next_method_button.move(
@@ -359,10 +360,10 @@ class UserInterface(QMainWindow):
 
     def handleCoords(self, point: QPoint):
         if point.isNull():
-            if self.experiment_mode != "structured":
+            if self.experiment_mode is None:
                 self.labelCoords.clear()
             return
-        if self.experiment_mode != "structured":
+        if self.experiment_mode is None:
             self.labelCoords.setText(f"{point.x()}, {point.y()}")
         self.mouse_position.emit((point.x(), point.y()))
 
@@ -524,6 +525,25 @@ class UserInterface(QMainWindow):
         else:
             self.msg_box.show()
 
+    def create_info_box(
+        self, crticial: bool = False, text: str = "", wait_for_user: bool = False
+    ):
+        self.msg_box = QMessageBox(self)
+        icon = QMessageBox.Icon.Critical if crticial else QMessageBox.Icon.Information
+        self.msg_box.setIcon(icon)
+        self.msg_box.setText(text)
+        if wait_for_user:
+            self.msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            self.msg_box.setDefaultButton(QMessageBox.StandardButton.Ok)
+            result = self.msg_box.exec()
+            if result == QMessageBox.StandardButton.Ok:
+                return True
+            elif result == QMessageBox.StandardButton.NoButton:
+                print("No button clicked")
+                return False
+        else:
+            self.msg_box.show()
+
     def create_loading_window(
         self, label_text: str, max_val: int = 100, initial_val: int = 0
     ):
@@ -597,6 +617,12 @@ class UserInterface(QMainWindow):
                 )
                 self.annotation_visualizers[idx].fitInView()
                 idx += 1
+
+    def set_cursor(self, cross: bool = False):
+        if cross:
+            QApplication.setOverrideCursor(Qt.CursorShape.CrossCursor)
+        else:
+            QApplication.restoreOverrideCursor()
 
 
 class InteractiveGraphicsView(QGraphicsView):

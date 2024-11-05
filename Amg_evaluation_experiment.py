@@ -145,14 +145,14 @@ def create_sam_amg_configs() -> list[dict]:
 
 def main():
     datasets = ["Exp32"]
-    start_img = 2
+    start_img = 0
     end_img_exclusive = 5
 
     iou_thresh = 0.8
     metric_results = []
     sam_gen = 1
-    weights_path = "sam_vit_b_01ec64.pth"
-    config = "vit_b"
+    weights_path = "sam_vit_h_4b8939.pth"
+    config = "vit_h"
     # sam_gen = 2
     # weights_path = "sam2_hiera_small.pt"
     # config = "sam2_hiera_s.yaml"

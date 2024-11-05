@@ -51,6 +51,8 @@ class App:
         if self.experiment_mode == "structured":
             self.ui.next_method_button.clicked.connect(self.next_method)
             self.experiment_step: int = 1
+        elif self.experiment_mode == "polygon":
+            self.ui.next_method_button.clicked.connect(self.next_indicated_polygon_img)
         else:
             self.ui.next_img_button.clicked.connect(self.select_next_img)
 
@@ -80,7 +82,7 @@ class App:
         sys.exit(self.application.exec())
 
     def set_sam(self):
-        if self.experiment_mode != "structured":
+        if self.experiment_mode is None:
             background_embedding = True
             if self.ui.sam2_checkbox.isChecked():
                 self.sam_gen = 2
@@ -174,7 +176,14 @@ class App:
             print("No image left in the queue")
             if self.experiment_mode == "structured":
                 self.ui.create_message_box(False, "No image left in the queue")
-                self.ui.save()
+                self.ui.save()  # TODO this is probably not used
+                self.ui.close()
+            elif self.experiment_mode == "polygon":
+                self.ui.create_info_box(
+                    False,
+                    "Congratulations! You are done with the current set of images",
+                    wait_for_user=True,
+                )  # TODO change box buttons
                 self.ui.close()
             return
         if self.threadpool.activeThreadCount() > 0:
@@ -204,7 +213,7 @@ class App:
             img_name, next_img_name = self._pop_img_fnames()
 
         elif self.annotator.annotation is not None:
-            if self.experiment_mode != "structured":
+            if self.experiment_mode is None:
                 self.ui.open_save_annots_box()
             else:
                 self.ui.save()
@@ -229,7 +238,7 @@ class App:
             else:
                 self.annotator.update_sam_features_to_current_annotation()
                 self.segment_anything()
-            if embed_next and self.experiment_mode != "structured":
+            if embed_next and self.experiment_mode is None:
                 self.embed_img(basename(next_img_name))
         self.threadpool.waitForDone(-1)
         user_ready = self.ui.create_message_box(
@@ -239,6 +248,8 @@ class App:
         )
         if user_ready:
             self.annotator.init_time_stamp()
+            self.annotator.update_collections(self.annotator.annotation)
+            self.update_ui_imgs()
 
         else:
             self.ui.close()
@@ -324,7 +335,7 @@ class App:
         )
         img_embed_worker.signals.finished.connect(self.embedding_done)
         img_embed_worker.signals.error.connect(self.print_thread_error)
-        if self.experiment_mode != "structured":
+        if self.experiment_mode is None:
             self.ui.performing_embedding_label.setText(
                 f"Embedding {len(img_pair)} images"
             )
@@ -370,7 +381,7 @@ class App:
         self.threadpool.start(worker)
 
         embedding_threads = self.threadpool.activeThreadCount()
-        if self.experiment_mode != "structured":
+        if self.experiment_mode is None:
             self.ui.performing_embedding_label.setText(
                 f"Embedding {embedding_threads} images"
             )
@@ -406,7 +417,7 @@ class App:
                     track_remaining=track_remaining,
                     mutex=self.mutex,
                 )
-                if self.experiment_mode != "structured":
+                if self.experiment_mode is None:
                     self.ui.performing_embedding_label.setText(
                         f"Propagating {len(unpropagated_masks)} masks"
                     )
@@ -470,7 +481,7 @@ class App:
                 self.ui.performing_embedding_label.setText(f"Embeddings done!")
 
     def propagation_done(self, maskn):
-        if self.experiment_mode != "structured":
+        if self.experiment_mode is None:
             self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
@@ -571,18 +582,23 @@ class App:
 
     def previous_mask(self):
         new_center = self.annotator.step_back()
+        self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs(center=new_center)
 
     def manual_annotation(self):
         self.annotator.toggle_manual_annotation()
         self.ui.draw_poly_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
+        self.ui.set_cursor(self.annotator.manual_annotation_enabled)
+        self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
     def draw_polygon(self):
         self.annotator.toggle_polygon_drawing()
         self.ui.manual_annotation_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
+        self.ui.set_cursor(self.annotator.polygon_drawing_enabled)
+        self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
     def select_masks_to_delete(self):
@@ -659,7 +675,19 @@ class App:
             return
         elif label == 1:
             self.annotator.delete_mask(mid)
+            self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
+
+    def next_indicated_polygon_img(self):
+        print("Next polygon img")
+        if len(self.annotator.annotation.good_masks) != 2:
+            self.ui.create_message_box(False, "Please select exactly 2 masks")
+            return
+        self.select_next_img()
+        # reset
+        self.ui.draw_poly_button.setDisabled(False)
+        self.ui.draw_poly_button.click()
+        self.ui.draw_poly_button.setDisabled(True)
 
     def next_method(self):
         print("Next method")

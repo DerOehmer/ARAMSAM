@@ -403,19 +403,31 @@ class Annotator:
                 if mobj.color_idx is None:
                     mobj.color_idx = popped_mobj.color_idx
 
+    def _clear_unfinished_polygon(self):
+        self.manual_mask_points = []
+        self.manual_mask_point_labels = []
+        self.annotation.preview_mask = None
+        pass
+
     def step_back(self):
         annot = self.annotation
 
-        if (
-            self.mask_idx > 0
-            and not (
-                self.manual_annotation_enabled
-                and not "interactive" in annot.good_masks[-1].origin
-            )
-            and not (
-                self.polygon_drawing_enabled
-                and not "Polygon" in annot.good_masks[-1].origin
-            )
+        if self.polygon_drawing_enabled and len(self.manual_mask_points) > 0:
+            self._clear_unfinished_polygon()
+            return
+
+        if self.mask_idx == 0:
+            return
+
+        if len(annot.good_masks) == 0:
+            return
+
+        if not (
+            self.manual_annotation_enabled
+            and not "interactive" in annot.good_masks[-1].origin
+        ) and not (
+            self.polygon_drawing_enabled
+            and not "Polygon" in annot.good_masks[-1].origin
         ):
 
             if annot.mask_decisions[self.mask_idx - 1] and len(annot.good_masks) > 0:
@@ -423,9 +435,7 @@ class Annotator:
                 self._recycle_mask_meta_data(popped_mobj)
 
             annot.mask_decisions[self.mask_idx - 1] = False
-
             self.mask_idx -= 1
-            self.update_collections(annot)
             return annot.masks[self.mask_idx].center
 
     def highlight_mask_at_point(self, position: tuple[int]):
