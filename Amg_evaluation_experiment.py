@@ -145,8 +145,8 @@ def create_sam_amg_configs() -> list[dict]:
 
 def main():
     datasets = ["Exp32"]
-    start_img = 0
-    end_img_exclusive = 5
+    start_img = 5
+    end_img_exclusive = 8
 
     iou_thresh = 0.8
     metric_results = []
@@ -180,7 +180,7 @@ def main():
                 del sam
 
                 df = pd.DataFrame(metric_results)
-                df.to_csv("test.csv", index=False)
+                df.to_csv("Exp32/Sam1_VitH_5-8.csv", index=False)
 
 
 if __name__ == "__main__":

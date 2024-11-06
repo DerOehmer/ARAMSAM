@@ -53,6 +53,9 @@ class App:
             self.experiment_step: int = 1
         elif self.experiment_mode == "polygon":
             self.ui.next_method_button.clicked.connect(self.next_indicated_polygon_img)
+        elif self.experiment_mode == "tutorial":
+            self.ui.next_method_button.clicked.connect(self.next_tutorial_step)
+            self.experiment_step: int = 1
         else:
             self.ui.next_img_button.clicked.connect(self.select_next_img)
 
@@ -88,7 +91,7 @@ class App:
                 self.sam_gen = 2
             else:
                 self.sam_gen = 1
-        elif self.experiment_mode == "structured":
+        elif self.experiment_mode in ["structured", "tutorial"]:
             background_embedding = False
 
         if self.sam_gen is None:
@@ -98,6 +101,8 @@ class App:
         )
 
     def save_output(self, _=None):
+        if self.experiment_mode == "tutorial":
+            return
         if self.output_dir is None:
             print("Select output directory before saving")
             self.ui.open_ouput_dir_selection()
@@ -183,7 +188,7 @@ class App:
                     False,
                     "Congratulations! You are done with the current set of images",
                     wait_for_user=True,
-                )  # TODO change box buttons
+                )
                 self.ui.close()
             return
         if self.threadpool.activeThreadCount() > 0:
@@ -222,7 +227,6 @@ class App:
         embed_current, embed_next = self.annotator.create_new_annotation(
             filepath=img_name, next_filepath=next_img_name
         )
-
         if self.sam_gen == 2:
             self.embed_img_pair()
         elif self.sam_gen == 1:
@@ -232,7 +236,7 @@ class App:
                     current_img_done
                     and not next_img_done  # if previous annotations wer just loaded from disk, embedding is still required
                 )
-                or self.experiment_mode == "structured"
+                or self.experiment_mode in ["structured", "tutorial"]
             ):
                 self.embed_img(basename(img_name))
             else:
@@ -240,20 +244,32 @@ class App:
                 self.segment_anything()
             if embed_next and self.experiment_mode is None:
                 self.embed_img(basename(next_img_name))
+
         self.threadpool.waitForDone(-1)
-        user_ready = self.ui.create_message_box(
-            False,
-            "Experiment is about to start. Click Yes once you are ready",
-            wait_for_user=True,
-        )
-        if user_ready:
+        if self.experiment_mode == "tutorial":
+            self.ui.create_info_box(
+                False,
+                "Welcome to the ARAMSAM tutorial!\n\n Now you will be introduced to the software's features. Pay close attention to the instructions in the top right corner of the window.\n\n NOTE: Now in the tutorial you will be asked to only annotate selected maize kernels. Later you are asked to annotate all relevant kernels",
+                wait_for_user=True,
+            )
+            self.ui.info_box.close()
             self.annotator.init_time_stamp()
             self.annotator.update_collections(self.annotator.annotation)
             self.update_ui_imgs()
-
         else:
-            self.ui.close()
-            raise KeyboardInterrupt("User is not ready")
+            user_ready = self.ui.create_message_box(
+                False,
+                "Experiment is about to start. Click Yes once you are ready",
+                wait_for_user=True,
+            )
+            if user_ready:
+                self.annotator.init_time_stamp()
+                self.annotator.update_collections(self.annotator.annotation)
+                self.update_ui_imgs()
+
+            else:
+                self.ui.close()
+                raise KeyboardInterrupt("User is not ready")
 
     def check_annotations_done(
         self, img_name: str, next_img_name: str
@@ -350,7 +366,7 @@ class App:
 
         img_to_embed = None
 
-        if self.experiment_mode == "structured":
+        if self.experiment_mode in ["structured", "tutorial"]:
             img_to_embed = self.annotator.annotation.img
             delay = 0.0
         else:
@@ -464,7 +480,7 @@ class App:
         print(f"{len(bad_mask_ids)} falsely propagated masks have been purged")
 
     def embedding_done(self, img_name: str | int):
-        if self.experiment_mode == "structured":
+        if self.experiment_mode == ["structured", "tutorial"]:
             return
         if isinstance(img_name, int):
             self.ui.performing_embedding_label.setText(
@@ -678,6 +694,26 @@ class App:
             self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
+    def next_tutorial_step(self):
+        print("Next tutorial step")
+        # TODO: load predefined examples of good and bad proposed masks
+
+        if self.experiment_step == 0:
+            self.experiment_step = 1
+            self.ui.performing_embedding_label.setText(
+                f"Step 1/3: Select the good proposed masks"
+            )
+
+            # reset
+            self.ui.manual_annotation_button.setDisabled(False)
+            self.ui.manual_annotation_button.click()
+            self.ui.manual_annotation_button.click()
+            self.ui.manual_annotation_button.setDisabled(True)
+            self.ui.good_mask_button.setDisabled(False)
+            self.ui.bad_mask_button.setDisabled(False)
+            self.ui.back_button.setDisabled(False)
+            self.ui.delete_button.setDisabled(False)
+
     def next_indicated_polygon_img(self):
         print("Next polygon img")
         if len(self.annotator.annotation.good_masks) != 2:
@@ -691,6 +727,7 @@ class App:
 
     def next_method(self):
         print("Next method")
+        # TODO: Simplify condidtions. Self.experiment might be sufficient
         if (
             not self.annotator.manual_annotation_enabled
             and not self.annotator.polygon_drawing_enabled

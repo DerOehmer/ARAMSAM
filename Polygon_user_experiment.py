@@ -18,7 +18,7 @@ def mock_propagate_good_masks():
 
 
 def mock_open_load_folder_dialog():
-    return "UserExperiment\IndicatedPolygonPositionImages"
+    return "UserExperiment/IndicatedPolygonPositionImages"
 
 
 def set_vis(annotator: Annotator) -> tuple[bool]:
