@@ -642,7 +642,7 @@ class InteractiveGraphicsView(QGraphicsView):
         self.width = width
         self.height = height
         self.id = ann_viz_id
-        self.mouse_down = False
+        self.mouse_l_down = False
         self.graphics_scene = QGraphicsScene(self)
         self.pixmap_item = QGraphicsPixmapItem()
         self.pixmap_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
@@ -697,16 +697,18 @@ class InteractiveGraphicsView(QGraphicsView):
     def mouseMoveEvent(self, event: QMouseEvent):
         super().mouseMoveEvent(event)
         self.updateCoordinates(event.position().toPoint())
-        if self.mouse_down:
+        if self.mouse_l_down:
             self.mouseMove.emit(event)
 
     def mousePressEvent(self, event: QMouseEvent):
-        self.mouse_down = True
+        if event.button().name == "LeftButton":
+            self.mouse_l_down = True
         self.mousePressSignal.emit(event)
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        self.mouse_down = False
+        if event.button().name == "LeftButton":
+            self.mouse_l_down = False
         super().mouseReleaseEvent(event)
 
     def updateCoordinates(self, pos=None):
