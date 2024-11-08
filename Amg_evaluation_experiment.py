@@ -28,6 +28,7 @@ class AmgSamTestInference:
     ):
         self.device = device
         self.iou_thresh = iou_thresh
+        self.amg_config = amg_config
         if sam_gen == 1:
             checkpoint = torch.load(
                 weights_path, map_location=torch.device(device), weights_only=True
@@ -57,9 +58,14 @@ class AmgSamTestInference:
     def get_sam_inference(self, test_img_obj: TestImages):
         gt_masks = []
         pred_masks = []
-        masks = self.amg_predictor.generate(test_img_obj.rgb)
-        pred_masks = [m["segmentation"].astype(np.uint8) * 255 for m in masks]
-        gt_masks = test_img_obj.masks
+        try:
+            masks = self.amg_predictor.generate(test_img_obj.rgb)
+            pred_masks = [m["segmentation"].astype(np.uint8) * 255 for m in masks]
+            gt_masks = test_img_obj.masks
+        except IndexError:
+            print(f"Current amg config failed : {self.amg_config}")
+            pred_masks = None
+
         metrics = self.match_masks_and_evaluate(
             gt_masks=gt_masks, pred_masks=pred_masks
         )
@@ -68,41 +74,66 @@ class AmgSamTestInference:
     def match_masks_and_evaluate(
         self, gt_masks: list[np.ndarray], pred_masks: list[np.ndarray]
     ):
+        if pred_masks is None:
+            # SAM crashed due to current amg config
+            recall = None
+            precision = None
+            tp = None
+            fp = None
+            fn = len(gt_masks)
+            mean_iou_of_tp = None
+            std_iou_of_tp = None
+            n_pred_masks = None
 
-        gt_boxes = masks_to_boxes(torch.tensor(np.array(gt_masks)))
-        gt_masks = torch.tensor(np.array(gt_masks))
-        pred_boxes = masks_to_boxes(torch.tensor(np.array(pred_masks)))
-        pred_masks = torch.tensor(np.array(pred_masks))
+        elif len(pred_masks) == 0:
+            # SAM did not find any masks but did not crash
+            recall = 0
+            precision = 0
+            tp = 0
+            fp = 0
+            fn = len(gt_masks)
+            mean_iou_of_tp = 0
+            std_iou_of_tp = 0
+            n_pred_masks = 0
 
-        bbox_iou = bops.box_iou(pred_boxes, gt_boxes)
+        elif len(pred_masks) > 0:
+            # SAM found at least one mask
+            gt_boxes = masks_to_boxes(torch.tensor(np.array(gt_masks)))
+            gt_masks = torch.tensor(np.array(gt_masks))
+            pred_boxes = masks_to_boxes(torch.tensor(np.array(pred_masks)))
+            pred_masks = torch.tensor(np.array(pred_masks))
 
-        total_positives = gt_boxes.shape[0]
-        total_predictions = pred_boxes.shape[0]
+            bbox_iou = bops.box_iou(pred_boxes, gt_boxes)
 
-        best_pred_matches_for_gt_boxes = torch.max(bbox_iou, dim=0)
+            total_positives = gt_boxes.shape[0]
+            total_predictions = pred_boxes.shape[0]
 
-        gt_ious_with_pred = self.calculate_ious(
-            pred_masks=pred_masks,
-            gt_masks=gt_masks,
-            gt_idcs=best_pred_matches_for_gt_boxes.indices,
-        )
+            best_pred_matches_for_gt_boxes = torch.max(bbox_iou, dim=0)
 
-        mean_iou_of_tp = (
-            gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].mean().item()
-        )
-        std_iou_of_tp = (
-            gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].std().item()
-        )
-        tp = gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].shape[0]
-        fn = total_positives - tp
-        fp = total_predictions - tp
+            gt_ious_with_pred = self.calculate_ious(
+                pred_masks=pred_masks,
+                gt_masks=gt_masks,
+                gt_idcs=best_pred_matches_for_gt_boxes.indices,
+            )
 
-        recall = tp / (tp + fn)
-        precision = tp / (tp + fp)
+            mean_iou_of_tp = (
+                gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].mean().item()
+            )
+            std_iou_of_tp = (
+                gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].std().item()
+            )
+            tp = gt_ious_with_pred[gt_ious_with_pred > self.iou_thresh].shape[0]
+            fn = total_positives - tp
+            fp = total_predictions - tp
+
+            recall = tp / (tp + fn)
+            precision = tp / (tp + fp)
+            n_pred_masks = len(pred_masks)
+
         metrics = {}
         metrics["recall"] = recall
         metrics["precision"] = precision
-        metrics["predictions"] = len(pred_masks)
+        metrics["predictions"] = n_pred_masks
         metrics["ground_truth"] = len(gt_masks)
         metrics["TP"] = tp
         metrics["FP"] = fp
@@ -145,14 +176,14 @@ def create_sam_amg_configs() -> list[dict]:
 
 def main():
     datasets = ["Exp32"]
-    start_img = 8
-    end_img_exclusive = 10
+    start_img = 0
+    end_img_exclusive = 5
 
     iou_thresh = 0.8
     metric_results = []
-    sam_gen = 1
-    weights_path = "sam_vit_h_4b8939.pth"
-    config = "vit_h"
+    sam_gen = 2
+    weights_path = "sam2.1_hiera_small.pt"
+    config = "configs/sam2.1/sam2.1_hiera_s.yaml"
     # sam_gen = 2
     # weights_path = "sam2_hiera_small.pt"
     # config = "sam2_hiera_s.yaml"
@@ -167,7 +198,12 @@ def main():
 
             for amg_config in tqdm(sam_amg_configs):
                 sam = AmgSamTestInference(
-                    sam_gen, weights_path, config, amg_config, iou_thresh=iou_thresh
+                    sam_gen,
+                    weights_path,
+                    config,
+                    amg_config,
+                    iou_thresh=iou_thresh,
+                    device="cuda",
                 )
 
                 metrics = sam.get_sam_inference(test_img)
@@ -180,7 +216,7 @@ def main():
                 del sam
 
                 df = pd.DataFrame(metric_results)
-                df.to_csv("Exp32/Sam1_VitH_8-10.csv", index=False)
+                df.to_csv("Exp32/Sam2_hieraS2.1_0-5.csv", index=False)
 
 
 if __name__ == "__main__":
