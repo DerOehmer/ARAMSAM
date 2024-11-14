@@ -4,8 +4,9 @@ import cv2
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
 from screeninfo import get_monitors
+import math
 
-from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QRect, QPointF
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -16,6 +17,9 @@ from PyQt6.QtGui import (
     QColor,
     QCursor,
     QFont,
+    QPainter,
+    QPainterPath,
+    QPolygonF,
 )
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -30,6 +34,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QProgressDialog,
     QApplication,
+    QDialog,
 )
 
 
@@ -274,12 +279,13 @@ class UserInterface(QMainWindow):
             self.experiment_instructions_label = QLabel(
                 text="Find instructions here", parent=self
             )
+            instruction_x = 15 * self.buttons_spacing + 14 * self.buttons_min_width
             self.experiment_instructions_label.move(
-                15 * self.buttons_spacing + 14 * self.buttons_min_width,
+                instruction_x,
                 int(self.height_offset / 2),
             )
             self.experiment_instructions_label.setMinimumWidth(
-                self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
+                self.width() - instruction_x,
             )
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
@@ -545,6 +551,16 @@ class UserInterface(QMainWindow):
             self.info_box.setStandardButtons(QMessageBox.StandardButton.NoButton)
             self.info_box.show()
 
+    def create_basic_loading_window(self):
+        self.basic_loading_window = QMessageBox(self)
+        self.basic_loading_window.setIcon(QMessageBox.Icon.Information)
+        self.basic_loading_window.setText("Loading, please wait...")
+        self.basic_loading_window.show()
+
+    def close_basic_loading_window(self):
+        self.basic_loading_window.close()
+        self.basic_loading_window = None
+
     def create_loading_window(
         self, label_text: str, max_val: int = 100, initial_val: int = 0
     ):
@@ -624,6 +640,195 @@ class UserInterface(QMainWindow):
             QApplication.setOverrideCursor(Qt.CursorShape.CrossCursor)
         else:
             QApplication.restoreOverrideCursor()
+
+    def start_tutorial(self):
+        self.tutorial_overlay = TutorialOverlay(parent=self)
+        self.tutorial_overlay.exec()
+
+
+class TutorialOverlay(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.resize(parent.size())
+        self.steps = [
+            {
+                "widget": parent.good_mask_button,
+                "text": "This is the main label where important information is displayed.",
+                "arrow_position": "bottom",
+            },
+            {
+                "widget": parent.bad_mask_button,
+                "text": "Click this button to perform an action.",
+                "arrow_position": "bottom",
+            },
+            {
+                "widget": parent.next_method_button,
+                "text": "This is another button for additional actions.",
+                "arrow_position": "bottom",
+            },
+            {
+                "widget": parent.experiment_instructions_label,
+                "text": "This is another button for additional actions.",
+                "arrow_position": "bottom",
+            },
+        ]
+        self.current_step = 0
+
+        # Navigation buttons
+        self.button_width = 70
+        self.next_tutorial_button = QPushButton("Next", self)
+        self.next_tutorial_button.clicked.connect(self.next_step)
+        self.next_tutorial_button.move(700, 550)
+        self.next_tutorial_button.setMinimumWidth(self.button_width)
+
+        self.prev_tutorial_button = QPushButton("Previous", self)
+        self.prev_tutorial_button.clicked.connect(self.prev_step)
+        self.prev_tutorial_button.move(600, 550)
+        self.prev_tutorial_button.setMinimumWidth(self.button_width)
+
+        self.close_tutorial_button = QPushButton("Close", self)
+        self.close_tutorial_button.clicked.connect(self.close)
+        self.close_tutorial_button.move(750, 550)
+        self.close_tutorial_button.setMinimumWidth(self.button_width)
+
+        self.arrow_buffer_space = 20
+        self.arrow_length = 100
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if self.steps:
+            step = self.steps[self.current_step]
+            widget = step["widget"]
+            widget_rect = widget.geometry()
+
+            # Map widget rect to overlay coordinates
+            global_pos = widget.mapToGlobal(QPoint(0, 0))
+            overlay_pos = self.mapFromGlobal(global_pos)
+            widget_rect = QRect(overlay_pos, widget_rect.size())
+
+            # Create a transparent path over the widget
+            path = QPainterPath()
+            path.addRect(QRectF(self.rect()))
+            path.addRoundedRect(QRectF(widget_rect.adjusted(-10, -10, 10, 10)), 10, 10)
+
+            painter.fillPath(path, QColor(0, 0, 0, 180))
+
+            widget_center = widget_rect.center()
+            arrow_end = QPointF(
+                widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
+            )
+            arrow_start = QPointF(
+                widget_center.x(),
+                widget_rect.bottom() + self.arrow_buffer_space + self.arrow_length,
+            )
+            self.draw_arrow(painter, arrow_start, arrow_end)
+
+            # Draw the tutorial text
+            text = step["text"]
+            painter.setPen(QColor(255, 255, 255))
+            painter.setBrush(QColor(0, 0, 0, 200))
+            text_rect = self.move_instructions(widget_center, int(arrow_start.y()))
+            painter.drawRoundedRect(text_rect, 10, 10)
+            painter.drawText(
+                text_rect,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                text,
+            )
+
+    def move_instructions(
+        self,
+        widget_center: QPoint,
+        arrow_ymin: int,
+        text_box_width: int = 600,
+        text_box_height: int = 100,
+        edge_buffer: int = 10,
+    ):
+        min_cx = edge_buffer + int(0.5 * text_box_width)
+        max_cx = self.width() - edge_buffer - int(0.5 * text_box_width)
+
+        if widget_center.x() < min_cx:
+            text_aleft = edge_buffer
+
+        elif widget_center.x() > max_cx:
+            text_aleft = self.width() - edge_buffer - text_box_width
+        else:
+            text_aleft = widget_center.x() - int(0.5 * text_box_width)
+
+        text_atop = arrow_ymin + edge_buffer
+        box_center_x = text_aleft + int(0.5 * text_box_width)
+        button_y = text_atop + text_box_height + edge_buffer
+        button_x_base = box_center_x - int(0.5 * self.button_width)
+
+        self.prev_tutorial_button.move(button_x_base - 100, button_y)
+        self.next_tutorial_button.move(button_x_base, button_y)
+        self.close_tutorial_button.move(button_x_base + 100, button_y)
+
+        text_rect = QRect(text_aleft, text_atop, text_box_width, text_box_height)
+        return text_rect
+
+    def draw_arrow(self, painter: QPainter, start: QPointF, end: QPointF):
+        """
+        Draws an arrow from start to end points.
+
+        :param painter: QPainter object
+        :param start: QPointF, starting point of the arrow
+        :param end: QPointF, ending point of the arrow
+        """
+        pen_thickness = 4
+        # Draw the main line
+        pen = QtGui.QPen()
+        pen.setWidth(pen_thickness)
+        pen.setColor(QtGui.QColor("white"))
+        painter.setPen(pen)
+        line_end = QPointF(end.x(), end.y() + pen_thickness)
+        painter.drawLine(start, line_end)
+        # painter.setPen(QtGui.QPen())
+
+        # Calculate the arrowhead
+        arrow_size = 20
+        angle = 30  # degrees
+
+        # Calculate the direction of the line
+
+        line_angle = math.atan2(end.y() - start.y(), end.x() - start.x())
+
+        # Calculate the points for the arrowhead
+        angle_rad = math.radians(angle)
+        # First arrowhead point
+        arrow_p1 = QPointF(
+            end.x() - arrow_size * math.cos(line_angle - angle_rad),
+            end.y() - arrow_size * math.sin(line_angle - angle_rad),
+        )
+        # Second arrowhead point
+        arrow_p2 = QPointF(
+            end.x() - arrow_size * math.cos(line_angle + angle_rad),
+            end.y() - arrow_size * math.sin(line_angle + angle_rad),
+        )
+
+        # Create a polygon for the arrowhead
+        arrow_head = QPolygonF([end, arrow_p1, arrow_p2])
+
+        # Fill the arrowhead
+        painter.setBrush(QColor(255, 255, 255))
+        painter.drawPolygon(arrow_head)
+
+    def next_step(self):
+        if self.current_step < len(self.steps) - 1:
+            self.current_step += 1
+            self.update()
+
+    def prev_step(self):
+        if self.current_step > 0:
+            self.current_step -= 1
+            self.update()
 
 
 class InteractiveGraphicsView(QGraphicsView):

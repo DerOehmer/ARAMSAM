@@ -191,12 +191,16 @@ class App:
                 )
                 self.ui.close()
             return
+
         if self.threadpool.activeThreadCount() > 0:
             print(
                 "Wait for embedding calculation to be finished before skipping to next img"
             )
             self.threadpool.waitForDone(-1)
         img_name, next_img_name = self._pop_img_fnames()
+        if self.experiment_mode == "tutorial" and self.experiment_step == 1:
+            self.ui.close_basic_loading_window()
+            self.ui.start_tutorial()
 
         # check if img_name is already annotated in output_dir
         current_img_done, next_img_done = self.check_annotations_done(

@@ -11,6 +11,7 @@ from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from tqdm import tqdm
 from natsort import natsorted
+import multiprocessing as mp
 
 from Backbone_evaluation_experiment import TestImages
 
@@ -62,31 +63,22 @@ class AmgSamTestInference:
             masks = self.amg_predictor.generate(test_img_obj.rgb)
             pred_masks = [m["segmentation"].astype(np.uint8) * 255 for m in masks]
             gt_masks = test_img_obj.masks
-        except IndexError:
-            print(f"Current amg config failed : {self.amg_config}")
-            pred_masks = None
+            error = None
+        except Exception as e:
+            print(f"Current amg config failed: {e}")
+            pred_masks = []
+            error = type(e).__name__
 
         metrics = self.match_masks_and_evaluate(
-            gt_masks=gt_masks, pred_masks=pred_masks
+            gt_masks=gt_masks, pred_masks=pred_masks, error=error
         )
         return metrics
 
     def match_masks_and_evaluate(
-        self, gt_masks: list[np.ndarray], pred_masks: list[np.ndarray]
+        self, gt_masks: list[np.ndarray], pred_masks: list[np.ndarray], error=None
     ):
-        if pred_masks is None:
-            # SAM crashed due to current amg config
-            recall = None
-            precision = None
-            tp = None
-            fp = None
-            fn = len(gt_masks)
-            mean_iou_of_tp = None
-            std_iou_of_tp = None
-            n_pred_masks = None
-
-        elif len(pred_masks) == 0:
-            # SAM did not find any masks but did not crash
+        if len(pred_masks) == 0:
+            # SAM did not find any masks or crashed
             recall = 0
             precision = 0
             tp = 0
@@ -140,6 +132,7 @@ class AmgSamTestInference:
         metrics["FN"] = fn
         metrics["mean_iou_of_tp"] = mean_iou_of_tp
         metrics["std_iou_of_tp"] = std_iou_of_tp
+        metrics["error"] = error
 
         return metrics
 
@@ -174,10 +167,42 @@ def create_sam_amg_configs() -> list[dict]:
     return [dict(zip(keys, v)) for v in itertools.product(*values)]
 
 
+def sam_process(
+    sam_gen,
+    weights_path,
+    config,
+    amg_config,
+    test_img_dir,
+    dataset,
+    iou_thresh,
+    test_img,
+    queue,
+):
+    # https://github.com/facebookresearch/segment-anything/issues/743
+    sam = AmgSamTestInference(
+        sam_gen,
+        weights_path,
+        config,
+        amg_config,
+        iou_thresh=iou_thresh,
+        device="cuda:1",
+    )
+
+    metrics = sam.get_sam_inference(test_img)
+    metrics["Dataset"] = dataset
+    metrics["img_dir"] = test_img_dir
+    metrics["model"] = weights_path
+    metrics.update(amg_config)
+    queue.put(metrics)
+    print(metrics)
+    del sam
+    torch.cuda.empty_cache()
+
+
 def main():
     datasets = ["Exp32"]
-    start_img = 0
-    end_img_exclusive = 5
+    start_img = 5
+    end_img_exclusive = 6
 
     iou_thresh = 0.8
     metric_results = []
@@ -187,6 +212,8 @@ def main():
     # sam_gen = 2
     # weights_path = "sam2_hiera_small.pt"
     # config = "sam2_hiera_s.yaml"
+    mp.set_start_method("spawn")
+    queue = mp.Queue()
     sam_amg_configs = create_sam_amg_configs()
 
     for dataset in datasets:
@@ -197,26 +224,27 @@ def main():
             test_img = TestImages(test_img_dir)
 
             for amg_config in tqdm(sam_amg_configs):
-                sam = AmgSamTestInference(
-                    sam_gen,
-                    weights_path,
-                    config,
-                    amg_config,
-                    iou_thresh=iou_thresh,
-                    device="cuda",
+                sam_proc = mp.Process(
+                    target=sam_process,
+                    args=(
+                        sam_gen,
+                        weights_path,
+                        config,
+                        amg_config,
+                        test_img_dir,
+                        dataset,
+                        iou_thresh,
+                        test_img,
+                        queue,
+                    ),
                 )
+                sam_proc.start()
+                sam_proc.join()
 
-                metrics = sam.get_sam_inference(test_img)
-                metrics["Dataset"] = dataset
-                metrics["img_dir"] = test_img_dir
-                metrics["model"] = weights_path
-                metrics.update(amg_config)
-                print(metrics)
+                metrics = queue.get()
                 metric_results.append(metrics)
-                del sam
-
                 df = pd.DataFrame(metric_results)
-                df.to_csv("Exp32/Sam2_hieraS2.1_0-5.csv", index=False)
+                df.to_csv("Exp32/Sam2_hieraS2.1_5.csv", index=False)
 
 
 if __name__ == "__main__":

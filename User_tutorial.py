@@ -20,18 +20,9 @@ def mock_main():
     app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/output"
     app.sam_gen = 1
     ui = app.ui
-    """ui.create_info_box(
-        False,
-        "Loading, please wait...",
-        wait_for_user=False,
-    )"""
-    ui.open_load_folder_dialog = mock_open_load_folder_dialog
-    ui.run()
-    QTest.qWait(50)
-    # set path
-    load_folder_action = ui.menu_open.actions()[1]  # 0 is for loading image
-    load_folder_action.trigger()
+    ui.create_basic_loading_window()
 
+    ui.open_load_folder_dialog = mock_open_load_folder_dialog
     ui.menu.setDisabled(True)
     ui.menu_open.setDisabled(True)
     ui.menu_settings.setDisabled(True)
@@ -39,11 +30,15 @@ def mock_main():
     ui.draw_poly_button.setDisabled(True)
 
     ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
-    ui.create_info_box(
-        False,
-        "Welcome to the ARAMSAM tutorial!",
-        wait_for_user=True,
-    )
+
+    ui.run()
+
+    QTest.qWait(50)
+
+    # set path
+    load_folder_action = ui.menu_open.actions()[1]  # 1 is for loading folder
+    load_folder_action.trigger()
+
     app.application.exec()
 
 
