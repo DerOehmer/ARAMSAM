@@ -140,7 +140,7 @@ class UserInterface(QMainWindow):
         )
         self.back_button.setMinimumWidth(self.buttons_min_width)
 
-        self.manual_annotation_button = QPushButton(text="manual (q)", parent=self)
+        self.manual_annotation_button = QPushButton(text="manual", parent=self)
         self.manual_annotation_button.setCheckable(True)
         self.manual_annotation_button.move(
             4 * self.buttons_spacing + 3 * self.buttons_min_width,
@@ -230,7 +230,7 @@ class UserInterface(QMainWindow):
             int(self.height_offset / 2),
         )
         self.performing_embedding_label.setMinimumWidth(
-            self.width() - 2 * self.buttons_spacing + 1 * self.buttons_min_width,
+            self.buttons_min_width * 6,
         )
         if self.experiment_mode is None:
 
@@ -669,7 +669,22 @@ class TutorialOverlay(QDialog):
                 "arrow_position": "bottom",
             },
             {
+                "widget": parent.back_button,
+                "text": "Click this button to perform an action.",
+                "arrow_position": "bottom",
+            },
+            {
+                "widget": parent.delete_button,
+                "text": "This is another button for additional actions.",
+                "arrow_position": "bottom",
+            },
+            {
                 "widget": parent.next_method_button,
+                "text": "This is another button for additional actions.",
+                "arrow_position": "bottom",
+            },
+            {
+                "widget": parent.performing_embedding_label,
                 "text": "This is another button for additional actions.",
                 "arrow_position": "bottom",
             },
