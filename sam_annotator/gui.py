@@ -656,6 +656,7 @@ class TutorialOverlay(QDialog):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.move(0, 0)
 
         self.steps = [
             {
