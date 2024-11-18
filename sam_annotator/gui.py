@@ -650,12 +650,13 @@ class TutorialOverlay(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
+        self.resize(self.parent.size())
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(parent.size())
+
         self.steps = [
             {
                 "widget": parent.good_mask_button,
@@ -705,6 +706,7 @@ class TutorialOverlay(QDialog):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         if self.steps:
+            self.resize(self.parent.size())
             step = self.steps[self.current_step]
             widget = step["widget"]
             widget_rect = widget.geometry()
