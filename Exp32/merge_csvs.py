@@ -69,7 +69,8 @@ def save_df(df: pd.DataFrame, path: str) -> None:
 def main():
     input_paths = [
         "Exp32/Sam2_hieraS2.1_0-5.csv",
-        "Exp32/Sam2_hieraS2.1_5-8.csv",
+        "Exp32/Sam2_hieraS2.1_5.csv",
+        "Exp32/Sam2_hieraS2.1_6-8.csv",
         "Exp32/Sam2_hieraS2.1_8.csv",
         "Exp32/Sam2_hieraS2.1_9.csv",
     ]

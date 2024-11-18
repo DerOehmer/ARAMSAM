@@ -201,8 +201,8 @@ def sam_process(
 
 def main():
     datasets = ["Exp32"]
-    start_img = 5
-    end_img_exclusive = 6
+    start_img = 8
+    end_img_exclusive = 9
 
     iou_thresh = 0.8
     metric_results = []
@@ -244,7 +244,7 @@ def main():
                 metrics = queue.get()
                 metric_results.append(metrics)
                 df = pd.DataFrame(metric_results)
-                df.to_csv("Exp32/Sam2_hieraS2.1_5.csv", index=False)
+                df.to_csv("Exp32/Sam2_hieraS2.1_8.csv", index=False)
 
 
 if __name__ == "__main__":
