@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import json
 import time
+import glob
 
 from sam_annotator.run_sam import SamInference, Sam2Inference
 from sam_annotator.tracker import PanoImageAligner
@@ -475,7 +476,21 @@ class Annotator:
         print(f"Delete mask time: {time.time() - startdeltime}")
 
     def load_tutorial_masks(self):
-        img_path = ""
+        masks_paths = glob.glob(
+            "UserExperiment/TutorialImages/39320223511025_low_192_annots/masks/*"
+        )
+        mask_objs = [
+            MaskData(
+                self.mask_id_handler.set_id(),
+                cv2.imread(mask_p, cv2.IMREAD_GRAYSCALE),
+                "Sam2_tracking",
+            )
+            for mask_p in masks_paths
+        ]
+        self.annotation.masks = []
+        self.annotation.mask_decisions = []
+        self.annotation.add_masks(mask_objs, decision=True)
+        self.preselect_mask()
 
     def update_collections(self, annot: AnnotationObject):
 

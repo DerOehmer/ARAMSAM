@@ -256,10 +256,12 @@ class App:
             )
             self.ui.info_box.close()
             if self.experiment_step == 1:
-                self.annotator.load_example_masks()
+                self.annotator.init_time_stamp()
+                self.annotator.load_tutorial_masks()
+                self.annotator.update_collections(self.annotator.annotation)
+                self.update_ui_imgs()
                 self.ui.start_tutorial()
-            self.annotator.init_time_stamp()
-            self.annotator.update_collections(self.annotator.annotation)
+
             self.update_ui_imgs()
         else:
             user_ready = self.ui.create_message_box(
