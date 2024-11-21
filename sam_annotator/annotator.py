@@ -474,6 +474,9 @@ class Annotator:
                 break
         print(f"Delete mask time: {time.time() - startdeltime}")
 
+    def load_tutorial_masks(self):
+        img_path = ""
+
     def update_collections(self, annot: AnnotationObject):
 
         mask_vis = self.annotation.mask_visualizer

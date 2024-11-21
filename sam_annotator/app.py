@@ -198,9 +198,6 @@ class App:
             )
             self.threadpool.waitForDone(-1)
         img_name, next_img_name = self._pop_img_fnames()
-        if self.experiment_mode == "tutorial" and self.experiment_step == 1:
-            self.ui.close_basic_loading_window()
-            self.ui.start_tutorial()
 
         # check if img_name is already annotated in output_dir
         current_img_done, next_img_done = self.check_annotations_done(
@@ -251,12 +248,16 @@ class App:
 
         self.threadpool.waitForDone(-1)
         if self.experiment_mode == "tutorial":
+            self.ui.close_basic_loading_window()
             self.ui.create_info_box(
                 False,
                 "Welcome to the ARAMSAM tutorial!\n\n Now you will be introduced to the software's features. Pay close attention to the instructions in the top right corner of the window.\n\n NOTE: Now in the tutorial you will be asked to only annotate selected maize kernels. Later you are asked to annotate all relevant kernels",
                 wait_for_user=True,
             )
             self.ui.info_box.close()
+            if self.experiment_step == 1:
+                self.annotator.load_example_masks()
+                self.ui.start_tutorial()
             self.annotator.init_time_stamp()
             self.annotator.update_collections(self.annotator.annotation)
             self.update_ui_imgs()
