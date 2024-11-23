@@ -1,0 +1,68 @@
+[
+    {
+        "widget": "good_mask_button",
+        "object_index": null,
+        "text": "This is the main label where important information is displayed.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "bad_mask_button",
+        "object_index": null,
+        "text": "Click this button to perform an action.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "back_button",
+        "object_index": null,
+        "text": "Click this button to perform an action.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "delete_button",
+        "object_index": null,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "next_method_button",
+        "object_index": null,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "performing_embedding_label",
+        "object_index": null,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "experiment_instructions_label",
+        "object_index": null,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 0,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 2,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 3,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "top"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 1,
+        "text": "This is another button for additional actions.",
+        "arrow_position": "top"
+    }
+]

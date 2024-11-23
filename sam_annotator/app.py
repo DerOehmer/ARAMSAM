@@ -248,21 +248,33 @@ class App:
 
         self.threadpool.waitForDone(-1)
         if self.experiment_mode == "tutorial":
-            self.ui.close_basic_loading_window()
-            self.ui.create_info_box(
-                False,
-                "Welcome to the ARAMSAM tutorial!\n\n Now you will be introduced to the software's features. Pay close attention to the instructions in the top right corner of the window.\n\n NOTE: Now in the tutorial you will be asked to only annotate selected maize kernels. Later you are asked to annotate all relevant kernels",
-                wait_for_user=True,
-            )
-            self.ui.info_box.close()
-            if self.experiment_step == 1:
-                self.annotator.init_time_stamp()
-                self.annotator.load_tutorial_masks()
-                self.annotator.update_collections(self.annotator.annotation)
-                self.update_ui_imgs()
-                self.ui.start_tutorial()
 
+            if self.experiment_step == 1:
+                self.ui.close_basic_loading_window()
+                self.ui.create_info_box(
+                    False,
+                    "Welcome to the ARAMSAM tutorial!\n\n Now you will be introduced to the software's features. Pay close attention to the instructions in the top right corner of the window.\n\n NOTE: Now in the tutorial you will be asked to only annotate selected maize kernels. Later you are asked to annotate all relevant kernels",
+                    wait_for_user=True,
+                )
+                self.ui.info_box.close()
+                tut_mode = "ui_overview"
+            elif self.experiment_step == 2:
+                tut_mode = "kernel_examples"
+            self.annotator.init_time_stamp()
+            self.annotator.load_tutorial_masks(mode=tut_mode)
+            self.annotator.update_collections(self.annotator.annotation)
             self.update_ui_imgs()
+            self.ui.start_tutorial(tut_mode)
+            self.update_ui_imgs()
+            self.experiment_step += 1
+            self.annotator.annotation = None
+            self.annotator.next_annotation = None
+            self.annotator.sam.predictor.is_image_set = False
+
+            if self.experiment_step > 2:
+                self.ui.close()
+            return self.select_next_img()
+
         else:
             user_ready = self.ui.create_message_box(
                 False,
@@ -508,6 +520,8 @@ class App:
             self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
+        if self.experiment_mode == "tutorial":
+            return
         if result[0] is None:
             self.segment_anything()
             return

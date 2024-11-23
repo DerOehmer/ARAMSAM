@@ -29,7 +29,6 @@ class Annotator:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.mask_id_handler = MaskIdHandler()
 
-        self.prev_annotation: AnnotationObject = None
         self.annotation: AnnotationObject = None
         self.next_annotation: AnnotationObject = None
         self.mask_idx = 0
@@ -475,21 +474,43 @@ class Annotator:
                 break
         print(f"Delete mask time: {time.time() - startdeltime}")
 
-    def load_tutorial_masks(self):
-        masks_paths = glob.glob(
-            "UserExperiment/TutorialImages/39320223511025_low_192_annots/masks/*"
-        )
+    def load_tutorial_masks(self, mode: str):
+        """
+        Starts the tutorial overlay.
+        Parameters:
+        - mode: Can be "ui_overview" or "kernel_examples".
+        """
+
+        if mode == "ui_overview":
+            origin = "Sam2_tracking"
+            mask_p = (
+                "UserExperiment/TutorialImages/39320223511025_low_192_annots/masks/*"
+            )
+        elif mode == "kernel_examples":
+            origin = "Sam1_proposed"
+            mask_p = (
+                "UserExperiment/TutorialImages/39320223532020_low_64_annots/masks/*"
+            )
+
+        masks_paths = glob.glob(mask_p)
+
         mask_objs = [
             MaskData(
                 self.mask_id_handler.set_id(),
                 cv2.imread(mask_p, cv2.IMREAD_GRAYSCALE),
-                "Sam2_tracking",
+                origin,
             )
             for mask_p in masks_paths
         ]
         self.annotation.masks = []
         self.annotation.mask_decisions = []
-        self.annotation.add_masks(mask_objs, decision=True)
+        if mode == "ui_overview":
+            self.annotation.add_masks(mask_objs, decision=True)
+
+        elif mode == "kernel_examples":
+            self.annotation.add_masks(mask_objs, decision=False)
+        self.update_mask_idx()
+        self.update_collections(self.annotation)
         self.preselect_mask()
 
     def update_collections(self, annot: AnnotationObject):
@@ -511,7 +532,7 @@ class Annotator:
             img_sam_preview = mask_vis.get_mask_deletion_preview()
             mvis_data.img_sam_preview = img_sam_preview
 
-        masked_img = mask_vis.get_masked_img()
+        masked_img = mask_vis.get_masked_img()  # masks get contours
         mask_collection = mask_vis.get_mask_collection()
 
         if (
@@ -521,6 +542,8 @@ class Annotator:
             and not self.mask_deletion_enabled
         ):
             mask_obj = annot.masks[self.mask_idx]
+            if mask_obj.contour is None:
+                mask_vis.set_contour(mask_obj)
             cnt = mask_obj.contour
             maskinrgb = mask_vis.get_maskinrgb(mask_obj)
 

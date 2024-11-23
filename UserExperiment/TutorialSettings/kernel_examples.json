@@ -1,0 +1,28 @@
+[
+    
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 2,
+        "text": "Good mask",
+        "arrow_position": "none"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 2,
+        "text": "Bad mask",
+        "arrow_position": "none"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 2,
+        "text": "Good mask",
+        "arrow_position": "none"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 2,
+        "text": "Bad mask",
+        "arrow_position": "none"
+    }
+    
+]

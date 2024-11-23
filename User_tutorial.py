@@ -4,7 +4,8 @@ from PyQt6.QtTest import QTest
 
 
 def mock_open_load_folder_dialog():
-    return "UserExperiment/TutorialImages"
+    # return "UserExperiment/TutorialImages"
+    return ""
 
 
 def mock_main():
@@ -38,6 +39,11 @@ def mock_main():
     # set path
     load_folder_action = ui.menu_open.actions()[1]  # 1 is for loading folder
     load_folder_action.trigger()
+    app.img_fnames = [
+        "UserExperiment/TutorialImages/39320223532020_low_64.jpg",
+        "UserExperiment/TutorialImages/39320223511025_low_192.jpg",
+    ]
+    app.select_next_img()
 
     app.application.exec()
 

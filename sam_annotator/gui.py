@@ -5,6 +5,8 @@ from PyQt6 import QtWidgets
 from PyQt6 import QtGui
 from screeninfo import get_monitors
 import math
+import json
+import os
 
 from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QRect, QPointF
 from PyQt6.QtGui import (
@@ -641,13 +643,39 @@ class UserInterface(QMainWindow):
         else:
             QApplication.restoreOverrideCursor()
 
-    def start_tutorial(self):
-        self.tutorial_overlay = TutorialOverlay(parent=self)
+    def start_tutorial(self, mode: str):
+        """
+        Starts the tutorial overlay.
+        Parameters:
+        - mode: Can be "ui_overview" or "kernel_examples".
+        """
+        if mode == "ui_overview":
+            settings_file = "UserExperiment/TutorialSettings/ui_overview.json"
+            select_masks = False
+
+        elif mode == "kernel_examples":
+            settings_file = "UserExperiment/TutorialSettings/kernel_examples.json"
+            select_masks = True
+
+        else:
+            raise ValueError("Invalid tutorial mode.")
+
+        if not os.path.exists(settings_file):
+            raise FileNotFoundError("Tutorial settings file not found.")
+
+        with open(settings_file, "r") as file:
+            tut_steps = json.load(file)
+
+        self.tutorial_overlay = TutorialOverlay(
+            parent=self, tutorial_steps=tut_steps, select_masks=select_masks
+        )
         self.tutorial_overlay.exec()
 
 
 class TutorialOverlay(QDialog):
-    def __init__(self, parent=None):
+    def __init__(
+        self, parent=None, tutorial_steps: list[dict] = None, select_masks: bool = False
+    ):
         super().__init__(parent)
         self.parent = parent
         self.resize(self.parent.size())
@@ -658,43 +686,8 @@ class TutorialOverlay(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.move(0, 0)
 
-        self.steps = [
-            {
-                "widget": parent.good_mask_button,
-                "text": "This is the main label where important information is displayed.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.bad_mask_button,
-                "text": "Click this button to perform an action.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.back_button,
-                "text": "Click this button to perform an action.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.delete_button,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.next_method_button,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.performing_embedding_label,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.experiment_instructions_label,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-        ]
+        self.select_masks = select_masks
+        self.steps = tutorial_steps
         self.current_step = 0
 
         # Navigation buttons
@@ -713,6 +706,7 @@ class TutorialOverlay(QDialog):
         self.close_tutorial_button.clicked.connect(self.close)
         self.close_tutorial_button.move(750, 550)
         self.close_tutorial_button.setMinimumWidth(self.button_width)
+        self.close_tutorial_button.setVisible(False)
 
         self.arrow_buffer_space = 20
         self.arrow_length = 100
@@ -722,9 +716,18 @@ class TutorialOverlay(QDialog):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         if self.steps:
+            if self.current_step == len(self.steps) - 1:
+                self.next_tutorial_button.setVisible(False)
+                self.close_tutorial_button.setVisible(True)
+            else:
+                self.next_tutorial_button.setVisible(True)
+
             self.resize(self.parent.size())
             step = self.steps[self.current_step]
-            widget = step["widget"]
+            # widget = step["widget"]
+            widget = getattr(self.parent, step["widget"])
+            if step["object_index"] is not None:
+                widget = widget[step["object_index"]]
             widget_rect = widget.geometry()
 
             # Map widget rect to overlay coordinates
@@ -740,20 +743,40 @@ class TutorialOverlay(QDialog):
             painter.fillPath(path, QColor(0, 0, 0, 180))
 
             widget_center = widget_rect.center()
-            arrow_end = QPointF(
-                widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
-            )
-            arrow_start = QPointF(
-                widget_center.x(),
-                widget_rect.bottom() + self.arrow_buffer_space + self.arrow_length,
-            )
-            self.draw_arrow(painter, arrow_start, arrow_end)
+            if step["arrow_position"] == "bottom":
+                arrow_end = QPointF(
+                    widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
+                )
+                arrow_start = QPointF(
+                    widget_center.x(),
+                    widget_rect.bottom() + self.arrow_buffer_space + self.arrow_length,
+                )
+                self.draw_arrow(painter, arrow_start, arrow_end)
+
+            elif step["arrow_position"] == "top":
+                arrow_end = QPointF(
+                    widget_center.x(), widget_rect.top() - self.arrow_buffer_space
+                )
+                arrow_start = QPointF(
+                    widget_center.x(),
+                    widget_rect.top() - self.arrow_buffer_space - self.arrow_length,
+                )
+                self.draw_arrow(painter, arrow_start, arrow_end)
+
+            elif step["arrow_position"] == "none":
+                arrow_start = QPointF(
+                    widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
+                )
 
             # Draw the tutorial text
             text = step["text"]
             painter.setPen(QColor(255, 255, 255))
             painter.setBrush(QColor(0, 0, 0, 200))
-            text_rect = self.move_instructions(widget_center, int(arrow_start.y()))
+            text_rect = self.move_instructions(
+                widget_center,
+                int(arrow_start.y()),
+                arrow_below_text=(step["arrow_position"] == "bottom"),
+            )
             painter.drawRoundedRect(text_rect, 10, 10)
             painter.drawText(
                 text_rect,
@@ -765,6 +788,7 @@ class TutorialOverlay(QDialog):
         self,
         widget_center: QPoint,
         arrow_ymin: int,
+        arrow_below_text: bool = True,
         text_box_width: int = 600,
         text_box_height: int = 100,
         edge_buffer: int = 10,
@@ -779,8 +803,15 @@ class TutorialOverlay(QDialog):
             text_aleft = self.width() - edge_buffer - text_box_width
         else:
             text_aleft = widget_center.x() - int(0.5 * text_box_width)
-
-        text_atop = arrow_ymin + edge_buffer
+        if arrow_below_text:
+            text_atop = arrow_ymin + edge_buffer
+        else:
+            text_atop = (
+                arrow_ymin
+                - text_box_height
+                - 2 * edge_buffer
+                - self.next_tutorial_button.height()
+            )
         box_center_x = text_aleft + int(0.5 * text_box_width)
         button_y = text_atop + text_box_height + edge_buffer
         button_x_base = box_center_x - int(0.5 * self.button_width)
@@ -806,7 +837,10 @@ class TutorialOverlay(QDialog):
         pen.setWidth(pen_thickness)
         pen.setColor(QtGui.QColor("white"))
         painter.setPen(pen)
-        line_end = QPointF(end.x(), end.y() + pen_thickness)
+        if start.y() > end.y():
+            line_end = QPointF(end.x(), end.y() + pen_thickness)
+        elif start.y() < end.y():
+            line_end = QPointF(end.x(), end.y() - pen_thickness)
         painter.drawLine(start, line_end)
         # painter.setPen(QtGui.QPen())
 
@@ -840,11 +874,18 @@ class TutorialOverlay(QDialog):
 
     def next_step(self):
         if self.current_step < len(self.steps) - 1:
+            if self.select_masks:
+                if self.current_step % 2 == 0:
+                    self.parent.good_mask_button.click()
+                else:
+                    self.parent.bad_mask_button.click()
             self.current_step += 1
             self.update()
 
     def prev_step(self):
         if self.current_step > 0:
+            if self.select_masks:
+                self.parent.back_button.click()
             self.current_step -= 1
             self.update()
 
