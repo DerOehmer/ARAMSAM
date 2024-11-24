@@ -46,7 +46,7 @@ def mock_main():
 
 
 if __name__ == "__main__":
-    root_p = "/home/geink81/pythonstuff/SequenceSAM-Annotator/EarImgPairs"
+    root_p = "ExperimentData/EarImgPairs"
     for img_pair_folder_p in natsorted(glob.glob(f"{root_p}/*")):
         update_mock_path(img_pair_folder_p)
         mock_main()

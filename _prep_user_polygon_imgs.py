@@ -34,8 +34,8 @@ def get_img_and_masks_paths(img_dir: str, n_masks: int = 2):
 
 
 if __name__ == "__main__":
-    ear_img_dir = "BackboneExperimentData/MaizeEar"
-    img_dest = "UserExperiment/IndicatedPolygonPositionImages"
+    ear_img_dir = "ExperimentData/BackboneExperimentData/MaizeEar"
+    img_dest = "ExperimentData/IndicatedPolygonPositionImages"
     if not os.path.exists(img_dest):
         os.makedirs(img_dest)
     ear_img_paths, mask_paths = get_img_and_masks_paths(ear_img_dir)

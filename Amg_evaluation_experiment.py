@@ -200,7 +200,7 @@ def sam_process(
 
 
 def main():
-    datasets = ["Exp32"]
+    datasets = ["ExperimentData/AmgEvaluationData"]
     start_img = 8
     end_img_exclusive = 9
 

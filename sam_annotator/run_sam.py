@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import time
+import json
 
 from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 from segment_anything.modeling import Sam
@@ -23,6 +24,7 @@ class SamInference:
         model_type="vit_b",
         device="cpu",
         background_embedding=True,
+        amg_config_path="ExperimentData/AmgEvaluationData/Sam1_VitH_best_config.json",
     ):
         self.mask_id_handler = mask_id_handler
         self.sam_checkpoint = sam_checkpoint
@@ -47,7 +49,8 @@ class SamInference:
         else:
             self.predictor = MainThreadSamPredictor(self.sam)
         # self.custom_amg = CustomAMG(self)
-        self.amg = DefaultAMG(self, SamAutomaticMaskGenerator(self.sam))
+        amg_kwargs = load_amg_config(amg_config_path)
+        self.amg = DefaultAMG(self, SamAutomaticMaskGenerator(self.sam, **amg_kwargs))
         self.img = None
 
     def predict_batch(
@@ -229,6 +232,7 @@ class Sam2Inference:
         sam2_checkpoint: str = "sam2_hiera_small.pt",
         cfg_path: str = "sam2_hiera_s.yaml",
         background_embedding: bool = True,
+        amg_config_path: str = "ExperimentData/AmgEvaluationData/Sam2_hieraS2.1_best_config.json",
     ):
         from sam2.build_sam import build_sam2_video_predictor
         from sam2.sam2_video_predictor import SAM2VideoPredictor
@@ -249,7 +253,10 @@ class Sam2Inference:
             cfg_path, sam2_checkpoint, device="cuda"
         )
         # self.custom_amg = CustomAMG(self)
-        self.amg = DefaultAMG(self, SAM2AutomaticMaskGenerator(self.predictor))
+        amg_kwargs = load_amg_config(amg_config_path)
+        self.amg = DefaultAMG(
+            self, SAM2AutomaticMaskGenerator(self.predictor, **amg_kwargs)
+        )
         self.img_predictor = SAM2ImagePredictor(self.predictor)
         self.imgs: list[np.ndarray] = None
         self.inference_state: dict = None
@@ -619,3 +626,9 @@ def print_tensor_gpu_usage(tensor, name=""):
     memory_in_bytes = tensor.element_size() * tensor.nelement()
     memory_in_megabytes = memory_in_bytes / (1024**2)
     print(f"Memory usage of {name}: {memory_in_megabytes} MB")
+
+
+def load_amg_config(amg_config_path: str):
+    with open(amg_config_path, "r") as f:
+        amg_config = json.load(f)
+    return amg_config
