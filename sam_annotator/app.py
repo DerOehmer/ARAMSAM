@@ -54,7 +54,7 @@ class App:
         elif self.experiment_mode == "polygon":
             self.ui.next_method_button.clicked.connect(self.next_indicated_polygon_img)
         elif self.experiment_mode == "tutorial":
-            self.ui.next_method_button.clicked.connect(self.next_tutorial_step)
+            # self.ui.next_method_button.clicked.connect(self.next_tutorial_step)
             self.experiment_step: int = 1
         else:
             self.ui.next_img_button.clicked.connect(self.select_next_img)
@@ -507,7 +507,7 @@ class App:
         print(f"{len(bad_mask_ids)} falsely propagated masks have been purged")
 
     def embedding_done(self, img_name: str | int):
-        if self.experiment_mode == ["structured", "tutorial"]:
+        if self.experiment_mode in ["structured", "tutorial"]:
             return
         if isinstance(img_name, int):
             self.ui.performing_embedding_label.setText(
@@ -723,9 +723,8 @@ class App:
             self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
-    def next_tutorial_step(self):
+    """def next_tutorial_step(self):
         print("Next tutorial step")
-        # TODO: load predefined examples of good and bad proposed masks
 
         if self.experiment_step == 0:
             self.experiment_step = 1
@@ -741,7 +740,7 @@ class App:
             self.ui.good_mask_button.setDisabled(False)
             self.ui.bad_mask_button.setDisabled(False)
             self.ui.back_button.setDisabled(False)
-            self.ui.delete_button.setDisabled(False)
+            self.ui.delete_button.setDisabled(False)"""
 
     def next_indicated_polygon_img(self):
         print("Next polygon img")
@@ -757,11 +756,7 @@ class App:
     def next_method(self):
         print("Next method")
         # TODO: Simplify condidtions. Self.experiment might be sufficient
-        if (
-            not self.annotator.manual_annotation_enabled
-            and not self.annotator.polygon_drawing_enabled
-            and self.experiment_step == 0
-        ):
+        if self.experiment_step == 0:
             self.experiment_step = 1
             self.ui.performing_embedding_label.setText(
                 f"Step 1/3: Select the good proposed masks"
@@ -776,11 +771,7 @@ class App:
             self.ui.back_button.setDisabled(False)
             self.ui.delete_button.setDisabled(False)
 
-        elif (
-            not self.annotator.manual_annotation_enabled
-            and not self.annotator.polygon_drawing_enabled
-            and self.experiment_step == 1
-        ):
+        elif self.experiment_step == 1:
             self.experiment_step = 2
             self.ui.performing_embedding_label.setText(
                 f"Step 2/3: Annotate masks interactively with SAM{self.sam_gen}"
@@ -788,11 +779,7 @@ class App:
             self.ui.manual_annotation_button.setDisabled(False)
             self.ui.manual_annotation_button.click()
             self.ui.manual_annotation_button.setDisabled(True)
-        elif (
-            self.annotator.manual_annotation_enabled
-            and not self.annotator.polygon_drawing_enabled
-            and self.experiment_step == 2
-        ):
+        elif self.experiment_step == 2:
             self.experiment_step = 3
             self.ui.performing_embedding_label.setText(
                 f"Step 3/3: Draw polygon masks for remaining objects"
@@ -800,11 +787,7 @@ class App:
             self.ui.draw_poly_button.setDisabled(False)
             self.ui.draw_poly_button.click()
             self.ui.draw_poly_button.setDisabled(True)
-        elif (
-            not self.annotator.manual_annotation_enabled
-            and self.annotator.polygon_drawing_enabled
-            and self.experiment_step == 3
-        ):
+        elif self.experiment_step == 3:
             self.experiment_step = 0
             self.select_next_img()
             self.ui.performing_embedding_label.setText(

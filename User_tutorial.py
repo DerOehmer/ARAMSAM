@@ -32,7 +32,7 @@ def mock_main():
     ui.menu_settings.setDisabled(True)
     ui.manual_annotation_button.setDisabled(True)
     ui.draw_poly_button.setDisabled(True)
-    ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
+    ui.performing_embedding_label.setText(f"Find experiment steps here")
 
     # set path
     app.img_fnames = [
@@ -40,10 +40,7 @@ def mock_main():
         "ExperimentData/TutorialImages/39320223511025_low_192.jpg",
     ]
     load_folder_action = ui.menu_open.actions()[1]  # 1 is for loading folder
-    # sys.exit(app.application.exec())
     sys.exit(load_folder_action.trigger())
-
-    # app.select_next_img()
 
 
 if __name__ == "__main__":

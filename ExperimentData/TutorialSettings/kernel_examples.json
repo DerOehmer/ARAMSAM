@@ -3,6 +3,7 @@
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
+        "decision" : "good",
         "text": "Good mask",
         "arrow_position": "none"
     },

@@ -143,7 +143,7 @@ class UserInterface(QMainWindow):
         )
         self.back_button.setMinimumWidth(self.buttons_min_width)
 
-        self.manual_annotation_button = QPushButton(text="manual", parent=self)
+        self.manual_annotation_button = QPushButton(text="Interactive", parent=self)
         self.manual_annotation_button.setCheckable(True)
         self.manual_annotation_button.move(
             4 * self.buttons_spacing + 3 * self.buttons_min_width,
