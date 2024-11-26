@@ -290,7 +290,11 @@ class MaskVisualization:
                 lineType=cv2.LINE_8,
             )
         if self.preview_mask is not None:
-            self.mask_collection_cnt[self.preview_mask == 255] = 191, 196, 45
+            self.mask_collection_cnt[self.preview_mask == 255] = (
+                224,
+                167,
+                61,
+            )  # 191, 196, 45
 
         return self.mask_collection_cnt
 

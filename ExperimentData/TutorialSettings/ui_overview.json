@@ -2,25 +2,25 @@
     {
         "widget": "good_mask_button",
         "object_index": null,
-        "text": "This is the main label where important information is displayed.",
+        "text": "By clicking good mask(n) button or press key 'N' then a GOOD MASK is anotated  .",
         "arrow_position": "bottom"
     },
     {
         "widget": "bad_mask_button",
         "object_index": null,
-        "text": "Click this button to perform an action.",
+        "text": "Bt clicking on bad mask(m) or press key 'M' then a bad mask is anotated .",
         "arrow_position": "bottom"
     },
     {
         "widget": "back_button",
         "object_index": null,
-        "text": "Click this button to perform an action.",
+        "text": "Click on key B to clear the whole propoed mask and start to mask again.",
         "arrow_position": "bottom"
     },
     {
         "widget": "delete_button",
         "object_index": null,
-        "text": "This is another button for additional actions.",
+        "text": "Click on key D to UNDO the individual actions performed previously .",
         "arrow_position": "bottom"
     },
     {

@@ -484,12 +484,12 @@ class Annotator:
         if mode == "ui_overview":
             origin = "Sam2_tracking"
             mask_p = (
-                "UserExperiment/TutorialImages/39320223511025_low_192_annots/masks/*"
+                "ExperimentData/TutorialImages/39320223511025_low_192_annots/masks/*"
             )
         elif mode == "kernel_examples":
             origin = "Sam1_proposed"
             mask_p = (
-                "UserExperiment/TutorialImages/39320223532020_low_64_annots/masks/*"
+                "ExperimentData/TutorialImages/39320223532020_low_64_annots/masks/*"
             )
 
         masks_paths = glob.glob(mask_p)

@@ -71,7 +71,7 @@ class App:
 
         self.fields = ui_options["layout_settings_options"]["default"]
 
-        self.manual_sam_preview_updates_per_sec: int = 5
+        self.manual_sam_preview_updates_per_sec: int = 10
         self.last_sam_preview_time_stamp: int = time.time_ns()
         self.bbox_tracker: object = None
         self.sam_gen: int = None
@@ -159,13 +159,14 @@ class App:
         self.set_sam()
         print("loading folder")
         img_dir = self.ui.open_load_folder_dialog()
-        if img_dir == "":
-            return
-        img_fnames = [
-            join(img_dir, f) for f in listdir(img_dir) if isfile(join(img_dir, f))
-        ]
-        self.img_fnames.extend(img_fnames)
-        self.img_fnames = natsorted(self.img_fnames)
+        if self.experiment_mode != "tutorial":
+            if img_dir == "":
+                return
+            img_fnames = [
+                join(img_dir, f) for f in listdir(img_dir) if isfile(join(img_dir, f))
+            ]
+            self.img_fnames.extend(img_fnames)
+            self.img_fnames = natsorted(self.img_fnames)
         self.select_next_img()
 
     def _pop_img_fnames(self) -> tuple[Path, Path]:
@@ -223,6 +224,7 @@ class App:
                 self.ui.open_save_annots_box()
             else:
                 self.ui.save()
+
         self.propagate_good_masks()
 
         embed_current, embed_next = self.annotator.create_new_annotation(
@@ -247,10 +249,10 @@ class App:
                 self.embed_img(basename(next_img_name))
 
         self.threadpool.waitForDone(-1)
+        self.ui.close_basic_loading_window()
         if self.experiment_mode == "tutorial":
 
             if self.experiment_step == 1:
-                self.ui.close_basic_loading_window()
                 self.ui.create_info_box(
                     False,
                     "Welcome to the ARAMSAM tutorial!\n\n Now you will be introduced to the software's features. Pay close attention to the instructions in the top right corner of the window.\n\n NOTE: Now in the tutorial you will be asked to only annotate selected maize kernels. Later you are asked to annotate all relevant kernels",
@@ -259,6 +261,11 @@ class App:
                 self.ui.info_box.close()
                 tut_mode = "ui_overview"
             elif self.experiment_step == 2:
+                self.ui.create_info_box(
+                    False,
+                    "Deciding which masks are good or bad can be difficult. In this step you will be shown examples of difficult cases, to help you make decisions in the experiment.",
+                    wait_for_user=True,
+                )
                 tut_mode = "kernel_examples"
             self.annotator.init_time_stamp()
             self.annotator.load_tutorial_masks(mode=tut_mode)
@@ -273,6 +280,7 @@ class App:
 
             if self.experiment_step > 2:
                 self.ui.close()
+                return 0
             return self.select_next_img()
 
         else:

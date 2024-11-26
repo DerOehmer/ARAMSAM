@@ -88,6 +88,7 @@ class UserInterface(QMainWindow):
         self.last_panned_img = None
 
         self.loading_window = None
+        self.basic_loading_window = None
 
         self.construct_ui()
         self.showMaximized()
@@ -560,8 +561,9 @@ class UserInterface(QMainWindow):
         self.basic_loading_window.show()
 
     def close_basic_loading_window(self):
-        self.basic_loading_window.close()
-        self.basic_loading_window = None
+        if self.basic_loading_window is not None:
+            self.basic_loading_window.close()
+            self.basic_loading_window = None
 
     def create_loading_window(
         self, label_text: str, max_val: int = 100, initial_val: int = 0
@@ -650,11 +652,11 @@ class UserInterface(QMainWindow):
         - mode: Can be "ui_overview" or "kernel_examples".
         """
         if mode == "ui_overview":
-            settings_file = "UserExperiment/TutorialSettings/ui_overview.json"
+            settings_file = "ExperimentData/TutorialSettings/ui_overview.json"
             select_masks = False
 
         elif mode == "kernel_examples":
-            settings_file = "UserExperiment/TutorialSettings/kernel_examples.json"
+            settings_file = "ExperimentData/TutorialSettings/kernel_examples.json"
             select_masks = True
 
         else:
@@ -883,9 +885,9 @@ class TutorialOverlay(QDialog):
             self.update()
 
     def prev_step(self):
+        if self.select_masks:
+            self.parent.back_button.click()
         if self.current_step > 0:
-            if self.select_masks:
-                self.parent.back_button.click()
             self.current_step -= 1
             self.update()
 

@@ -28,6 +28,7 @@ def mock_main():
     app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/output"
     app.sam_gen = 2
     ui = app.ui
+    ui.create_basic_loading_window()
     ui.open_load_folder_dialog = mock_open_load_folder_dialog
     ui.run()
     QTest.qWait(50)
@@ -42,7 +43,7 @@ def mock_main():
     ui.draw_poly_button.setDisabled(True)
 
     ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
-    app.application.exec()
+    sys.exit(app.application.exec())
 
 
 if __name__ == "__main__":
@@ -50,4 +51,3 @@ if __name__ == "__main__":
     for img_pair_folder_p in natsorted(glob.glob(f"{root_p}/*")):
         update_mock_path(img_pair_folder_p)
         mock_main()
-    sys.exit()
