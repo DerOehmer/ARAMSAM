@@ -26,7 +26,7 @@ def mock_main():
     }
     app = App(ui_options=ui_options, experiment_mode="structured")
     app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/output"
-    app.sam_gen = 2
+    app.sam_gen = 1
     ui = app.ui
     ui.create_basic_loading_window()
     ui.open_load_folder_dialog = mock_open_load_folder_dialog

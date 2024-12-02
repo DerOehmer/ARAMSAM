@@ -542,7 +542,7 @@ class DefaultAMG:
         self.sam_cls: SamInference | Sam2Inference = sam_cls
         self.amg = amg
 
-    def __call__(self, roi_pts=False, n_points=100, msize_thresh=10000):
+    def __call__(self, msize_thresh=10000):
 
         startpredtimer = time.time()
         masks = self.amg.generate(cv2.cvtColor(self.imgbgr, cv2.COLOR_BGR2RGB))

@@ -18,7 +18,11 @@ from PyQt6.QtCore import (
 )
 from natsort import natsorted
 
-from sam_annotator.run_sam import BackgroundThreadSamPredictor, Sam2Inference
+from sam_annotator.run_sam import (
+    BackgroundThreadSamPredictor,
+    Sam2Inference,
+    SamInference,
+)
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
 from sam_annotator.mask_visualizations import MaskData, AnnotationObject
@@ -245,11 +249,16 @@ class App:
             else:
                 self.annotator.update_sam_features_to_current_annotation()
                 self.segment_anything()
+
             if embed_next and self.experiment_mode is None:
                 self.embed_img(basename(next_img_name))
 
         self.threadpool.waitForDone(-1)
+
         self.ui.close_basic_loading_window()
+        # self.start_annotation()
+
+    def start_user_annotation(self):
         if self.experiment_mode == "tutorial":
 
             if self.experiment_step == 1:
@@ -374,18 +383,16 @@ class App:
         else:
             img_pair = [self.annotator.annotation.img]
         img_embed_worker = Sam2ImgPairEmbeddingWorker(
-            self.annotator.sam, img_pair, self.mutex
+            self.annotator.sam, img_pair, do_amg, self.mutex
         )
         img_embed_worker.signals.finished.connect(self.embedding_done)
+        img_embed_worker.signals.result.connect(self.receive_sam2_embedding)
         img_embed_worker.signals.error.connect(self.print_thread_error)
         if self.experiment_mode is None:
             self.ui.performing_embedding_label.setText(
                 f"Embedding {len(img_pair)} images"
             )
         self.threadpool.start(img_embed_worker)
-        self.threadpool.waitForDone(-1)
-        if do_amg:
-            self.segment_anything()
 
     def embed_img(self, img_name: str):
         current_ann_name = self.annotator.get_annotation_img_name()
@@ -523,6 +530,10 @@ class App:
             else:
                 self.ui.performing_embedding_label.setText(f"Embeddings done!")
 
+    def amg_done(self, _):
+        self.ui.close_basic_loading_window()
+        print("AMG done")
+
     def propagation_done(self, maskn):
         if self.experiment_mode is None:
             self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
@@ -532,6 +543,7 @@ class App:
             return
         if result[0] is None:
             self.segment_anything()
+
             return
         features, original_size, input_size, img_name = result
         current_ann_name = self.annotator.get_annotation_img_name()
@@ -544,6 +556,7 @@ class App:
                 )
 
                 self.annotator.update_sam_features_to_current_annotation()
+
                 self.segment_anything()
 
                 return
@@ -559,11 +572,28 @@ class App:
                 return
         print(f"Warning could not find annotation object with fitting name {img_name}")
 
+    def receive_sam2_embedding(self, do_amg: bool):
+        print("Will now do SAM2 embedding", do_amg)
+        if do_amg:
+            self.segment_anything()
+
     def segment_anything(self):
-        now = time.time()
-        self.annotator.predict_with_sam(self.bbox_tracker)
-        duration = time.time() - now
-        print(f"SAM inference {duration}")
+
+        # self.annotator.predict_with_sam(self.bbox_tracker)
+        self.annotator.prepare_amg(self.bbox_tracker)
+        worker = AMGWorker(self.annotator.sam, self.mutex)
+        worker.signals.result.connect(self.receive_amg_results)
+        worker.signals.finished.connect(self.amg_done)
+        self.threadpool.start(worker)
+        self.ui.create_basic_loading_window(
+            text="Please wait... This step can take up to 30 seconds"
+        )
+
+        # mask_objs, annotated_image = self.annotator.automatic_mask_generation()
+
+    def receive_amg_results(self, result: tuple):
+        mask_objs, annotated_image = result
+        self.annotator.process_amg_masks(mask_objs, annotated_image)
 
         now = time.time()
         first_mask_center = self.annotator.annotation.masks[0].center
@@ -572,6 +602,7 @@ class App:
         print(f"update ui {duration}")
         if self.sam_gen == 2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
+        self.start_user_annotation()
 
     def _ui_config_changed(self, fields: list[str]):
         assert (
@@ -723,25 +754,6 @@ class App:
             self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
-    """def next_tutorial_step(self):
-        print("Next tutorial step")
-
-        if self.experiment_step == 0:
-            self.experiment_step = 1
-            self.ui.performing_embedding_label.setText(
-                f"Step 1/3: Select the good proposed masks"
-            )
-
-            # reset
-            self.ui.manual_annotation_button.setDisabled(False)
-            self.ui.manual_annotation_button.click()
-            self.ui.manual_annotation_button.click()
-            self.ui.manual_annotation_button.setDisabled(True)
-            self.ui.good_mask_button.setDisabled(False)
-            self.ui.bad_mask_button.setDisabled(False)
-            self.ui.back_button.setDisabled(False)
-            self.ui.delete_button.setDisabled(False)"""
-
     def next_indicated_polygon_img(self):
         print("Next polygon img")
         if len(self.annotator.annotation.good_masks) != 2:
@@ -858,7 +870,7 @@ class Sam2PropagationWorker(QRunnable):
         mutex: QMutex,
     ):
         super().__init__()
-        self.signals = Sam2WorkerSignals()
+        self.signals = Sam2PropagationWorkerSignals()
         self.sam2_predictor = sam2_predictor
         self.next_annotation = next_annotation
         self.unpropagated_masks = unpropagated_masks
@@ -907,12 +919,14 @@ class Sam2ImgPairEmbeddingWorker(QRunnable):
         self,
         sam2: Sam2Inference,
         img_pair: list[np.ndarray],
+        do_amg: bool,
         mutex: QMutex,
     ):
         super().__init__()
-        self.signals = Sam2WorkerSignals()
+        self.signals = Sam2EmbeddingWorkerSignals()
         self.sam2 = sam2
         self.img_pair = img_pair
+        self.do_amg = do_amg
         self.mutex = mutex
 
     @pyqtSlot()
@@ -930,8 +944,45 @@ class Sam2ImgPairEmbeddingWorker(QRunnable):
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, value, traceback.format_exc()))
 
+        else:
+            self.signals.result.emit(self.do_amg)
+
         finally:
             self.signals.finished.emit(len(self.img_pair))
+
+
+class AMGWorker(QRunnable):
+
+    def __init__(
+        self,
+        sam: Sam2Inference | SamInference,
+        mutex: QMutex,
+    ):
+        super().__init__()
+        self.signals = WorkerSignals()
+        self.sam = sam
+        self.mutex = mutex
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            self.mutex.lock()
+            now = time.time()
+            mask_objs, annotated_image = self.sam.amg()
+            duration = time.time() - now
+            print(f"AMG took {duration} s")
+            result = (mask_objs, annotated_image)
+            self.mutex.unlock()
+
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+
+        else:
+            self.signals.result.emit(result)
+        finally:
+            self.signals.finished.emit("done")
 
 
 class WorkerSignals(QObject):
@@ -940,6 +991,12 @@ class WorkerSignals(QObject):
     result: pyqtSignal = pyqtSignal(tuple)
 
 
-class Sam2WorkerSignals(QObject):
+class Sam2EmbeddingWorkerSignals(QObject):
+    finished: pyqtSignal = pyqtSignal(int)
+    error: pyqtSignal = pyqtSignal(tuple)
+    result: pyqtSignal = pyqtSignal(bool)
+
+
+class Sam2PropagationWorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(int)
     error: pyqtSignal = pyqtSignal(tuple)

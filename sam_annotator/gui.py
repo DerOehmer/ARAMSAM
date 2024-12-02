@@ -37,6 +37,7 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
     QApplication,
     QDialog,
+    QVBoxLayout,
 )
 
 
@@ -554,14 +555,13 @@ class UserInterface(QMainWindow):
             self.info_box.setStandardButtons(QMessageBox.StandardButton.NoButton)
             self.info_box.show()
 
-    def create_basic_loading_window(self):
-        self.basic_loading_window = QMessageBox(self)
-        self.basic_loading_window.setIcon(QMessageBox.Icon.Information)
-        self.basic_loading_window.setText("Loading, please wait...")
+    def create_basic_loading_window(self, text: str = "Loading, please wait..."):
+        self.basic_loading_window = BasicLoadingWindow(self, text=text)
         self.basic_loading_window.show()
 
     def close_basic_loading_window(self):
         if self.basic_loading_window is not None:
+            print("Closing basic loading window")
             self.basic_loading_window.close()
             self.basic_loading_window = None
 
@@ -672,6 +672,62 @@ class UserInterface(QMainWindow):
             parent=self, tutorial_steps=tut_steps, select_masks=select_masks
         )
         self.tutorial_overlay.exec()
+
+
+"""class BasicLoadingWindow(QMessageBox):
+    def __init__(self, parent=None, text: str = "Loading, please wait..."):
+        super().__init__(parent)
+        self.text = text
+        self.setWindowTitle("Loading...")
+        self.init_ui()
+
+    def init_ui(self):
+        self.setIcon(QMessageBox.Icon.Information)
+        self.setText(self.text)
+        #self.setStandardButtons(QMessageBox.StandardButton.NoButton)
+
+    def force_close(self):
+        self.close()
+
+    def closeEvent(self, event):
+        # Ignore any close events to prevent the window from closing
+        self.close()"""
+
+
+class BasicLoadingWindow(QDialog):
+    def __init__(self, parent=None, text: str = "Loading, please wait..."):
+        super().__init__(parent)
+        self.text = text
+        self.setWindowTitle("Loading...")
+        self.setFixedSize(700, 100)
+
+        # Remove the close button and disable window resizing
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.CustomizeWindowHint
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            # Exclude Qt.WindowType.WindowCloseButtonHint to remove close button
+        )
+
+        # Optionally, make the window modal to block interaction with other windows
+        self.setModal(True)
+
+        # Setup UI components
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        label = QLabel(self.text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+
+        # self.progress = QProgressBar()
+        # self.progress.setRange(0, 0)  # Indeterminate progress bar
+        # layout.addWidget(self.progress)
+
+        self.setLayout(layout)
 
 
 class TutorialOverlay(QDialog):
