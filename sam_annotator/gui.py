@@ -556,6 +556,8 @@ class UserInterface(QMainWindow):
             self.info_box.show()
 
     def create_basic_loading_window(self, text: str = "Loading, please wait..."):
+        if self.basic_loading_window is not None:
+            self.basic_loading_window.close()
         self.basic_loading_window = BasicLoadingWindow(self, text=text)
         self.basic_loading_window.show()
 
@@ -649,15 +651,16 @@ class UserInterface(QMainWindow):
         """
         Starts the tutorial overlay.
         Parameters:
-        - mode: Can be "ui_overview" or "kernel_examples".
+        - mode: Can be "ui_overview", "kernel_examples" or "intro_texts".
         """
         if mode == "ui_overview":
             settings_file = "ExperimentData/TutorialSettings/ui_overview.json"
-            select_masks = False
 
         elif mode == "kernel_examples":
             settings_file = "ExperimentData/TutorialSettings/kernel_examples.json"
-            select_masks = True
+
+        elif mode == "intro_texts":
+            settings_file = "ExperimentData/TutorialSettings/intro_texts.json"
 
         else:
             raise ValueError("Invalid tutorial mode.")
@@ -669,29 +672,9 @@ class UserInterface(QMainWindow):
             tut_steps = json.load(file)
 
         self.tutorial_overlay = TutorialOverlay(
-            parent=self, tutorial_steps=tut_steps, select_masks=select_masks
+            parent=self, tutorial_steps=tut_steps, mode=mode
         )
         self.tutorial_overlay.exec()
-
-
-"""class BasicLoadingWindow(QMessageBox):
-    def __init__(self, parent=None, text: str = "Loading, please wait..."):
-        super().__init__(parent)
-        self.text = text
-        self.setWindowTitle("Loading...")
-        self.init_ui()
-
-    def init_ui(self):
-        self.setIcon(QMessageBox.Icon.Information)
-        self.setText(self.text)
-        #self.setStandardButtons(QMessageBox.StandardButton.NoButton)
-
-    def force_close(self):
-        self.close()
-
-    def closeEvent(self, event):
-        # Ignore any close events to prevent the window from closing
-        self.close()"""
 
 
 class BasicLoadingWindow(QDialog):
@@ -732,7 +715,7 @@ class BasicLoadingWindow(QDialog):
 
 class TutorialOverlay(QDialog):
     def __init__(
-        self, parent=None, tutorial_steps: list[dict] = None, select_masks: bool = False
+        self, parent=None, tutorial_steps: list[dict] = None, mode: str = None
     ):
         super().__init__(parent)
         self.parent = parent
@@ -743,10 +726,12 @@ class TutorialOverlay(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.move(0, 0)
-
-        self.select_masks = select_masks
+        self.mode = mode  # Can be "ui_overview" or "kernel_examples".
         self.steps = tutorial_steps
         self.current_step = 0
+        self.select_masks = False
+        if self.mode == "kernel_examples":
+            self.select_masks = True
 
         # Navigation buttons
         self.button_width = 70
@@ -782,65 +767,86 @@ class TutorialOverlay(QDialog):
 
             self.resize(self.parent.size())
             step = self.steps[self.current_step]
-            # widget = step["widget"]
-            widget = getattr(self.parent, step["widget"])
-            if step["object_index"] is not None:
-                widget = widget[step["object_index"]]
-            widget_rect = widget.geometry()
-
-            # Map widget rect to overlay coordinates
-            global_pos = widget.mapToGlobal(QPoint(0, 0))
-            overlay_pos = self.mapFromGlobal(global_pos)
-            widget_rect = QRect(overlay_pos, widget_rect.size())
 
             # Create a transparent path over the widget
             path = QPainterPath()
             path.addRect(QRectF(self.rect()))
-            path.addRoundedRect(QRectF(widget_rect.adjusted(-10, -10, 10, 10)), 10, 10)
+
+            if step["widget"] is not None:
+                widget = getattr(self.parent, step["widget"])
+                if step["object_index"] is not None:
+                    widget = widget[step["object_index"]]
+                widget_rect = widget.geometry()
+
+                # Map widget rect to overlay coordinates
+                global_pos = widget.mapToGlobal(QPoint(0, 0))
+                overlay_pos = self.mapFromGlobal(global_pos)
+                widget_rect = QRect(overlay_pos, widget_rect.size())
+
+                path.addRoundedRect(
+                    QRectF(widget_rect.adjusted(-10, -10, 10, 10)), 10, 10
+                )
+
+            elif step["widget"] is None:
+                widget_rect = QRect(self.rect())
 
             painter.fillPath(path, QColor(0, 0, 0, 180))
-
             widget_center = widget_rect.center()
+
             if step["arrow_position"] == "bottom":
                 arrow_end = QPointF(
                     widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
                 )
-                arrow_start = QPointF(
+                anchor_pt = QPointF(
                     widget_center.x(),
                     widget_rect.bottom() + self.arrow_buffer_space + self.arrow_length,
                 )
-                self.draw_arrow(painter, arrow_start, arrow_end)
+                self.draw_arrow(painter, anchor_pt, arrow_end)
+                text_box_height, text_box_width = 100, 600
 
             elif step["arrow_position"] == "top":
                 arrow_end = QPointF(
                     widget_center.x(), widget_rect.top() - self.arrow_buffer_space
                 )
-                arrow_start = QPointF(
+                anchor_pt = QPointF(
                     widget_center.x(),
                     widget_rect.top() - self.arrow_buffer_space - self.arrow_length,
                 )
-                self.draw_arrow(painter, arrow_start, arrow_end)
+                self.draw_arrow(painter, anchor_pt, arrow_end)
+                text_box_height, text_box_width = 100, 600
 
-            elif step["arrow_position"] == "none":
-                arrow_start = QPointF(
+            elif self.mode == "kernel_examples":
+                anchor_pt = QPointF(
                     widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
                 )
+                text_box_height, text_box_width = 100, 600
 
-            # Draw the tutorial text
-            text = step["text"]
-            painter.setPen(QColor(255, 255, 255))
-            painter.setBrush(QColor(0, 0, 0, 200))
+            elif self.mode == "intro_texts":
+                anchor_pt = QPointF(widget_center.x(), widget_center.y())
+                text_box_height, text_box_width = 300, 900
+
             text_rect = self.move_instructions(
                 widget_center,
-                int(arrow_start.y()),
+                int(anchor_pt.y()),
                 arrow_below_text=(step["arrow_position"] == "bottom"),
+                text_box_width=text_box_width,
+                text_box_height=text_box_height,
             )
-            painter.drawRoundedRect(text_rect, 10, 10)
-            painter.drawText(
-                text_rect,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                text,
-            )
+
+            # Draw the tutorial text
+            self.set_text(step, painter, text_rect)
+
+    def set_text(self, step, painter, text_rect):
+        text = step["text"]
+        painter.setPen(QColor(255, 255, 255))
+        painter.setBrush(QColor(0, 0, 0, 200))
+
+        painter.drawRoundedRect(text_rect, 10, 10)
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            text,
+        )
 
     def move_instructions(
         self,
@@ -933,7 +939,7 @@ class TutorialOverlay(QDialog):
     def next_step(self):
         if self.current_step < len(self.steps) - 1:
             if self.select_masks:
-                if self.current_step % 2 == 0:
+                if self.steps[self.current_step]["decision"] == "good":
                     self.parent.good_mask_button.click()
                 else:
                     self.parent.bad_mask_button.click()

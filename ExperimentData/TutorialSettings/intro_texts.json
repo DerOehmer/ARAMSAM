@@ -1,0 +1,26 @@
+[
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Welcome to the user experiment of the Agricultural Rapid\nAnnotation Module based on the Segment Anything Model\n(ARAMSAM). First of all thank you very much for\nparticipating!\n\nIn the following windows you will receive\nsome background information as well as instructions for\nyour tasks. During this entire introduction phase you are\nallowed to ask question to the experiment supervisor. The\nexperiment will take approximately one hour.\n\nClick next to continue.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Artificial intelligence (AI) requires large amounts of high\nquality training data. Image data for example requires\nhuman helpers to encircle objects of interest within an\nimage to highlight that respective object for an AI model\nto learn from.\n\nIn this experiment the task will be to\nhighlight maize kernels on maize ear images. The process\nof highlighting will be later referred to as ANNOTATING\nand the highlighted area will be later referred to as MASK.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Models that are trained on image masks to later predict\nimage masks themselves are called SEGMENTATION models.\nThis study aims to speed up the process of annotating\nsegmentation masks by comparing different annotation\nmethods.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "This is the first of 4 tutorial sections. Now you will be\nintroduced to the general structure of the experiment user\ninterface.\n\nClick 'Close' to start the fist tutorial step.",
+        "arrow_position": "none"
+    }
+]

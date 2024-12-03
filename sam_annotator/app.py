@@ -237,13 +237,17 @@ class App:
         if self.sam_gen == 2:
             self.embed_img_pair()
         elif self.sam_gen == 1:
-            if (
+            if self.experiment_mode == "tutorial":
+                self.ui.close_basic_loading_window()
+                self.start_user_annotation()
+                return
+            elif (
                 embed_current
                 or (
                     current_img_done
                     and not next_img_done  # if previous annotations wer just loaded from disk, embedding is still required
                 )
-                or self.experiment_mode in ["structured", "tutorial"]
+                or self.experiment_mode == "structured"
             ):
                 self.embed_img(basename(img_name))
             else:
@@ -256,23 +260,17 @@ class App:
         self.threadpool.waitForDone(-1)
 
         self.ui.close_basic_loading_window()
-        # self.start_annotation()
 
     def start_user_annotation(self):
         if self.experiment_mode == "tutorial":
 
             if self.experiment_step == 1:
-                self.ui.create_info_box(
-                    False,
-                    "Welcome to the ARAMSAM tutorial!\n\n Now you will be introduced to the software's features. Pay close attention to the instructions in the top right corner of the window.\n\n NOTE: Now in the tutorial you will be asked to only annotate selected maize kernels. Later you are asked to annotate all relevant kernels",
-                    wait_for_user=True,
-                )
-                self.ui.info_box.close()
+                self.ui.start_tutorial("intro_texts")
                 tut_mode = "ui_overview"
             elif self.experiment_step == 2:
                 self.ui.create_info_box(
                     False,
-                    "Deciding which masks are good or bad can be difficult. In this step you will be shown examples of difficult cases, to help you make decisions in the experiment.",
+                    "This is the second of 4 tutorial sections. Now you will learn to decide how to choose a good maize kernel mask.",
                     wait_for_user=True,
                 )
                 tut_mode = "kernel_examples"
@@ -428,6 +426,7 @@ class App:
         )
         worker.signals.result.connect(self.receive_embedding_from_thread)
         worker.signals.finished.connect(self.embedding_done)
+
         self.threadpool.start(worker)
 
         embedding_threads = self.threadpool.activeThreadCount()
@@ -539,8 +538,7 @@ class App:
             self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
-        if self.experiment_mode == "tutorial":
-            return
+
         if result[0] is None:
             self.segment_anything()
 

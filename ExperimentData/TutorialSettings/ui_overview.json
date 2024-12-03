@@ -2,67 +2,85 @@
     {
         "widget": "good_mask_button",
         "object_index": null,
-        "text": "By clicking the good mask(n) button or pressing key 'N' a GOOD MASK is anotated.",
+        "text": "Click 'good mask(n)' button or press key'N'\nto annotate a GOOD MASK. Later you will\nbe taught to decide what is a good mask.",
         "arrow_position": "bottom"
     },
     {
         "widget": "bad_mask_button",
         "object_index": null,
-        "text": "Bt clicking on bad mask(m) or press key 'M' then a BAD MASK is anotated .",
+        "text": "Click 'bad mask(m)' button or press key'M'\nto annotate a BAD MASK.",
         "arrow_position": "bottom"
     },
     {
         "widget": "back_button",
         "object_index": null,
-        "text": "By Clicking on back(b) or press key 'B' whole anotated  mask is cleared ",
+        "text": "Click 'back(b)' button or press key 'B'\n to undo the last decision or remove an unfinished polygon mask.",
         "arrow_position": "bottom"
     },
     {
         "widget": "delete_button",
         "object_index": null,
-        "text": " By Clicking  on undo(d) or press key 'D' to UNDO the individual actions performed previously .",
+        "text": "Click the 'delete' button to enable/disable\n deletion of falsely annotated masks.\n When delete is enabled, right-click on a\nmask to delete it.",
         "arrow_position": "bottom"
     },
     {
         "widget": "next_method_button",
         "object_index": null,
-        "text": "Click the NEXT button after completing each pert of the experiment  .",
+        "text": "During the experiment, click the 'Next' button\nto proceed to the next experiment step.",
         "arrow_position": "bottom"
     },
     {
         "widget": "performing_embedding_label",
         "object_index": null,
-        "text": "Individual tasks to be performed in each step are displayed .",
+        "text": "During the experiment your current task\n is shortly described here.",
         "arrow_position": "bottom"
     },
     {
         "widget": "experiment_instructions_label",
         "object_index": null,
-        "text": "Short instructions guiding the actions to be performed  are displayed here.",
+        "text": "Here you will find hints which keys and\nbuttons to use at the current stage of the\nexperiment.",
         "arrow_position": "bottom"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 0,
-        "text": "This is another button for additional actions.",
+        "text": "Original image view(RGB).\n\nNOTE: Later you can use all 4 views to\nzoom, hover and click.",
         "arrow_position": "bottom"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "This is another button for additional actions.",
+        "text": "Colored masks on original image view.\n\n Masks that have been annotated as GOOD MASK\nare indicated here in different colors.",
+        "arrow_position": "bottom"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 2,
+        "text": "Numbers indicate the unique mask ID. During\nthe experiment, propsed masks will be indicated\nby a green contour. When creating masks interactively\nthe mask will be shown in full white.",
         "arrow_position": "bottom"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 3,
-        "text": "This is another button for additional actions.",
+        "text": "Binary masks on original image view.\n\nMasks that have been annotated as GOOD MASK\nare shown here in white color. During the experiment,\npropsed masks will be indicated by a green contour.",
+        "arrow_position": "top"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 3,
+        "text": "When creating masks interactively the mask\nwill be shown in light blue. Overlapping\nmasks will be indicated in red.",
+        "arrow_position": "top"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 3,
+        "text": "NOTE: Small areas overlapping at the masks'\nedges are no problem but large red areas possibly\n indicate a falsely annotated mask.",
         "arrow_position": "top"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 1,
-        "text": "This is another button for additional actions.",
+        "text": "Annotation point view.\n\n Later when drawing polygon masks and when\nannotating interactively the\nannotation points will be shown here.",
         "arrow_position": "top"
     }
 ]

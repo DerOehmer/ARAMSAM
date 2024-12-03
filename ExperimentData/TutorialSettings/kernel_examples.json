@@ -3,50 +3,57 @@
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
+        "decision" : "bad",
+        "text": "The proposed mask is a BAD MASK due to the\ntiny spot next to it. Maize kernel masks\nshould consist of only one part.\n Whithout the spot, the mask would be good.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": "annotation_visualizers",
+        "object_index": 2,
         "decision" : "good",
-        "text": "Good mask",
+        "text": "GOOD MASK. The kernel is well developed,\nalthough its surface has probably\nbeen damaged after harvest.",
         "arrow_position": "none"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "Bad mask",
+        "decision" : "bad",
+        "text": "The proposed mask is a BAD MASK. Two kernels\n are covererd by a single mask. ",
         "arrow_position": "none"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "Good mask",
+        "decision": "bad",
+        "text": "The proposed mask is a BAD MASK. The kernel\n is wrinkly and not well developed.",
         "arrow_position": "none"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "Bad mask",
+        "decision":"good",
+        "text": "GOOD MASK. Even though the kernel is small,\nit's not wrinkly.",
         "arrow_position": "none"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "Bad mask",
+        "decision": "good",
+        "text": "GOOD MASK. Even though the kernel is small,\nit's not wrinkly.",
         "arrow_position": "none"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "Bad mask",
+        "decision":"good",
+        "text": "GOOD MASK. As long as individual kernels are\npossible to be recognised, they should should\nbe annotated even at the edges od the ear.",
         "arrow_position": "none"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "Bad mask",
-        "arrow_position": "none"
-    },
-    {
-        "widget": "annotation_visualizers",
-        "object_index": 2,
-        "text": "Bad mask",
+        "decision":"good",
+        "text": "GOOD MASK. Normal fully developed kernel, depicted by correct\nmask consisting of only one part.\n\n NOTE: Later you will be asked to draw polygon masks.\nRegarding contour quality, take these masks as examples.",
         "arrow_position": "none"
     }
     
