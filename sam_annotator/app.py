@@ -9,24 +9,21 @@ from os.path import isfile, join, basename, isdir, splitext, basename
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import (
-    QRunnable,
-    pyqtSignal,
     QThreadPool,
-    QObject,
     QMutex,
-    pyqtSlot,
 )
 from natsort import natsorted
 
-from sam_annotator.run_sam import (
-    BackgroundThreadSamPredictor,
-    Sam2Inference,
-    SamInference,
-)
 from sam_annotator.gui import UserInterface
 from sam_annotator.annotator import Annotator
-from sam_annotator.mask_visualizations import MaskData, AnnotationObject
+from sam_annotator.mask_visualizations import MaskData
 from sam_annotator.tracker import PanoImageAligner
+from sam_annotator.workers import (
+    AMGWorker,
+    Sam2ImgPairEmbeddingWorker,
+    Sam1EmbeddingWorker,
+    Sam2PropagationWorker,
+)
 
 
 class App:
@@ -44,6 +41,7 @@ class App:
         self.img_fnames = []
         self.output_dir = None
         self.experiment_mode = experiment_mode
+        self.tutorial_flag = False
 
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
@@ -57,8 +55,8 @@ class App:
             self.experiment_step: int = 1
         elif self.experiment_mode == "polygon":
             self.ui.next_method_button.clicked.connect(self.next_indicated_polygon_img)
+            self.experiment_step: int = 1
         elif self.experiment_mode == "tutorial":
-            # self.ui.next_method_button.clicked.connect(self.next_tutorial_step)
             self.experiment_step: int = 1
         else:
             self.ui.next_img_button.clicked.connect(self.select_next_img)
@@ -256,6 +254,12 @@ class App:
 
             if embed_next and self.experiment_mode is None:
                 self.embed_img(basename(next_img_name))
+        elif self.experiment_mode == "polygon":
+            self.ui.performing_embedding_label.setText(
+                f"Draw 2 polygon masks at the indicated kernels"
+            )
+            self.ui.close_basic_loading_window()
+            self.start_user_annotation()
 
         self.threadpool.waitForDone(-1)
 
@@ -289,21 +293,33 @@ class App:
                 self.ui.close()
                 return 0
             return self.select_next_img()
+        elif (
+            self.experiment_mode == "structured"
+            and self.tutorial_flag
+            and self.experiment_step == 1
+        ):
+            self.ui.start_tutorial("user_experiment_tutorial_texts")
+            self.ui.start_tutorial("proposed_masks_texts")
+        elif (
+            self.experiment_mode == "polygon"
+            and self.tutorial_flag
+            and self.experiment_step == 1
+        ):
+            self.experiment_step += 1
+            self.ui.start_tutorial("plygon_user_experiment_texts")
 
         else:
-            user_ready = self.ui.create_message_box(
-                False,
-                "Experiment is about to start. Click Yes once you are ready",
-                wait_for_user=True,
-            )
-            if user_ready:
-                self.annotator.init_time_stamp()
-                self.annotator.update_collections(self.annotator.annotation)
-                self.update_ui_imgs()
-
-            else:
-                self.ui.close()
-                raise KeyboardInterrupt("User is not ready")
+            user_ready = False
+            if not self.tutorial_flag:
+                while not user_ready:
+                    user_ready = self.ui.create_message_box(
+                        False,
+                        "Experiment is about to start. Click Yes once you are ready",
+                        wait_for_user=True,
+                    )
+        self.annotator.init_time_stamp()
+        self.annotator.update_collections(self.annotator.annotation)
+        self.update_ui_imgs()
 
     def check_annotations_done(
         self, img_name: str, next_img_name: str
@@ -664,6 +680,9 @@ class App:
         self.ui.draw_poly_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.manual_annotation_enabled)
+        self.ui.experiment_instructions_label.setText(
+            "positive point ('a'), negative point ('s'), undo point ('d')"
+        )
         self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
@@ -762,10 +781,12 @@ class App:
         self.ui.draw_poly_button.setDisabled(False)
         self.ui.draw_poly_button.click()
         self.ui.draw_poly_button.setDisabled(True)
+        if self.tutorial_flag and self.experiment_step == 1:
+            self.ui.start_tutorial("polygon_drawing_texts")
+            self.experiment_step += 1
 
     def next_method(self):
         print("Next method")
-        # TODO: Simplify condidtions. Self.experiment might be sufficient
         if self.experiment_step == 0:
             self.experiment_step = 1
             self.ui.performing_embedding_label.setText(
@@ -780,7 +801,8 @@ class App:
             self.ui.bad_mask_button.setDisabled(False)
             self.ui.back_button.setDisabled(False)
             self.ui.delete_button.setDisabled(False)
-
+            if self.tutorial_flag:
+                self.ui.start_tutorial("proposed_masks_texts")
         elif self.experiment_step == 1:
             self.experiment_step = 2
             self.ui.performing_embedding_label.setText(
@@ -789,6 +811,8 @@ class App:
             self.ui.manual_annotation_button.setDisabled(False)
             self.ui.manual_annotation_button.click()
             self.ui.manual_annotation_button.setDisabled(True)
+            if self.tutorial_flag:
+                self.ui.start_tutorial("interactive_annotation_texts")
         elif self.experiment_step == 2:
             self.experiment_step = 3
             self.ui.performing_embedding_label.setText(
@@ -797,204 +821,18 @@ class App:
             self.ui.draw_poly_button.setDisabled(False)
             self.ui.draw_poly_button.click()
             self.ui.draw_poly_button.setDisabled(True)
+            if self.tutorial_flag:
+                self.ui.start_tutorial("polygon_drawing_texts")
         elif self.experiment_step == 3:
             self.experiment_step = 0
             self.select_next_img()
             self.ui.performing_embedding_label.setText(
-                f"Step 0/3: Check whether all masks have been propagated correctly"
+                f"Step 0/3: Check whether masks have been propagated correctly"
             )
             self.ui.good_mask_button.setDisabled(True)
             self.ui.bad_mask_button.setDisabled(True)
             self.ui.back_button.setDisabled(True)
             self.ui.delete_button.click()
             self.ui.delete_button.setDisabled(True)
-
-
-# https://www.pythonguis.com/tutorials/multithreading-pyqt6-applications-qthreadpool/
-class Sam1EmbeddingWorker(QRunnable):
-    finished: pyqtSignal = pyqtSignal(str)
-    error: pyqtSignal = pyqtSignal(tuple)
-    result: pyqtSignal = pyqtSignal(tuple)
-
-    def __init__(
-        self,
-        sam_predictor: BackgroundThreadSamPredictor,
-        img: np.ndarray,
-        img_name: str,
-        mutex: QMutex,
-        delay: float = 0.0,
-    ):
-        super().__init__()
-        self.signals = WorkerSignals()
-        self.sam_predictor = sam_predictor
-        self.img = img
-        self.img_name = img_name
-        self.delay = delay
-        self.mutex = mutex
-
-    @pyqtSlot()
-    def run(self):
-        try:
-            self.mutex.lock()
-            now = time.time()
-            embedding_result = self.sam_predictor.embed_img(self.img)
-            if embedding_result is not None:
-                features, original_size, input_size = embedding_result
-                result = (features, original_size, input_size, self.img_name)
-            else:
-                result = (None, None, None, self.img_name)
-            duration = time.time() - now
-            print(f"embedding took {duration}")
-            self.mutex.unlock()
-        except:
-            traceback.print_exc()
-            exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
-        else:
-            self.signals.result.emit(result)
-        finally:
-            self.signals.finished.emit(self.img_name)
-
-
-class Sam2PropagationWorker(QRunnable):
-
-    def __init__(
-        self,
-        sam2_predictor: Sam2Inference,
-        next_annotation: AnnotationObject,
-        unpropagated_masks: list[MaskData],
-        batch_size: int,
-        track_remaining: bool,
-        mutex: QMutex,
-    ):
-        super().__init__()
-        self.signals = Sam2PropagationWorkerSignals()
-        self.sam2_predictor = sam2_predictor
-        self.next_annotation = next_annotation
-        self.unpropagated_masks = unpropagated_masks
-        self.batch_size = batch_size
-        self.track_remaining = track_remaining
-        self.mutex = mutex
-
-    @pyqtSlot()
-    def run(self):
-        try:
-            for mask_batch_idx in range(
-                0, len(self.unpropagated_masks), self.batch_size
-            ):
-
-                mask_batch = self.unpropagated_masks[
-                    mask_batch_idx : mask_batch_idx + self.batch_size
-                ]
-
-                self.mutex.lock()
-                assert len(mask_batch) > 0 and mask_batch[0].mask is not None
-
-                now = time.time()
-                mask_objs = self.sam2_predictor.prop_thread_func(mask_batch)
-                self.next_annotation.add_masks(mask_objs, decision=True)
-                duration = time.time() - now
-                print(
-                    f"Propagating of mask batch containig {len(mask_batch)} masks took {duration}"
-                )
-                self.mutex.unlock()
-                time.sleep(
-                    0.01
-                )  # give some time to the main thread to access data for loading window
-
-        except:
-            traceback.print_exc()
-            exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
-
-        finally:
-            self.signals.finished.emit(len(self.unpropagated_masks))
-
-
-class Sam2ImgPairEmbeddingWorker(QRunnable):
-
-    def __init__(
-        self,
-        sam2: Sam2Inference,
-        img_pair: list[np.ndarray],
-        do_amg: bool,
-        mutex: QMutex,
-    ):
-        super().__init__()
-        self.signals = Sam2EmbeddingWorkerSignals()
-        self.sam2 = sam2
-        self.img_pair = img_pair
-        self.do_amg = do_amg
-        self.mutex = mutex
-
-    @pyqtSlot()
-    def run(self):
-        try:
-            self.mutex.lock()
-            now = time.time()
-            self.sam2.set_features(self.img_pair)
-            duration = time.time() - now
-            print(f"Embedding images with Sam2 took {duration}")
-            self.mutex.unlock()
-
-        except:
-            traceback.print_exc()
-            exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
-
-        else:
-            self.signals.result.emit(self.do_amg)
-
-        finally:
-            self.signals.finished.emit(len(self.img_pair))
-
-
-class AMGWorker(QRunnable):
-
-    def __init__(
-        self,
-        sam: Sam2Inference | SamInference,
-        mutex: QMutex,
-    ):
-        super().__init__()
-        self.signals = WorkerSignals()
-        self.sam = sam
-        self.mutex = mutex
-
-    @pyqtSlot()
-    def run(self):
-        try:
-            self.mutex.lock()
-            now = time.time()
-            mask_objs, annotated_image = self.sam.amg()
-            duration = time.time() - now
-            print(f"AMG took {duration} s")
-            result = (mask_objs, annotated_image)
-            self.mutex.unlock()
-
-        except:
-            traceback.print_exc()
-            exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
-
-        else:
-            self.signals.result.emit(result)
-        finally:
-            self.signals.finished.emit("done")
-
-
-class WorkerSignals(QObject):
-    finished: pyqtSignal = pyqtSignal(str)
-    error: pyqtSignal = pyqtSignal(tuple)
-    result: pyqtSignal = pyqtSignal(tuple)
-
-
-class Sam2EmbeddingWorkerSignals(QObject):
-    finished: pyqtSignal = pyqtSignal(int)
-    error: pyqtSignal = pyqtSignal(tuple)
-    result: pyqtSignal = pyqtSignal(bool)
-
-
-class Sam2PropagationWorkerSignals(QObject):
-    finished: pyqtSignal = pyqtSignal(int)
-    error: pyqtSignal = pyqtSignal(tuple)
+            if self.tutorial_flag:
+                self.ui.start_tutorial("mask_deletion_texts")

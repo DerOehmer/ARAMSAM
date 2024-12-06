@@ -39,7 +39,7 @@ def set_vis(annotator: Annotator) -> tuple[bool]:
     self.update_collections(self.annotation)
 
 
-def mock_main():
+def mock_main(tutorial=True):
     vis_options, default_vis_options, current_options = create_vis_options()
     ui_options = {
         "layout_settings_options": {
@@ -49,6 +49,8 @@ def mock_main():
         }
     }
     app = App(ui_options=ui_options, experiment_mode="polygon")
+    if tutorial:
+        app.tutorial_flag = True
     app.set_sam = mock_set_sam
     app.propagate_good_masks = mock_propagate_good_masks
     app.change_output_dir("output")

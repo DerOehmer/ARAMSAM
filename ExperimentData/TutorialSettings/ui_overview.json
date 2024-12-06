@@ -56,13 +56,13 @@
     {
         "widget": "annotation_visualizers",
         "object_index": 2,
-        "text": "Numbers indicate the unique mask ID. During\nthe experiment, propsed masks will be indicated\nby a green contour. When creating masks interactively\nthe mask will be shown in full white.",
+        "text": "Numbers indicate the unique mask ID. During\nthe experiment, proposed masks will be indicated\nby a green contour. When creating masks interactively\nthe mask will be shown in full white.",
         "arrow_position": "bottom"
     },
     {
         "widget": "annotation_visualizers",
         "object_index": 3,
-        "text": "Binary masks on original image view.\n\nMasks that have been annotated as GOOD MASK\nare shown here in white color. During the experiment,\npropsed masks will be indicated by a green contour.",
+        "text": "Binary masks on original image view.\n\nMasks that have been annotated as GOOD MASK\nare shown here in white color. During the experiment,\nproposed masks will be indicated by a green contour.",
         "arrow_position": "top"
     },
     {

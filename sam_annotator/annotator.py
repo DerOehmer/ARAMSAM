@@ -229,7 +229,7 @@ class Annotator:
                     mid=self.mask_id_handler.set_id(),
                     mask=mask,
                     origin="Panorama_tracking",
-                    time_stamp=self._get_time_stamp(),
+                    time_stamp=1,
                 )
                 for mask in prop_mask_out
             ]
@@ -240,7 +240,7 @@ class Annotator:
         if self.annotation.masks:
             for dec, mobj in zip(self.annotation.mask_decisions, self.annotation.masks):
                 if dec:
-                    mobj.time_stamp = self._get_time_stamp()
+                    mobj.time_stamp = 1
                     self.annotation.good_masks.append(mobj)
                     if self.mask_id_handler._id == mobj.mid:
                         raise ValueError("Mask ID is not unique and set correctly")
@@ -276,68 +276,6 @@ class Annotator:
         self.preselect_mask()
         print(f"Preselect time: {time.time() - start_preselect}")
 
-    def predict_with_sam(self, bbox_tracker: PanoImageAligner = None):
-        if self.annotation is None:
-            raise ValueError("No annotation object found.")
-
-        start_mask_idx = 0
-        self.sam.amg.set_visualization_img(self.annotation.img)
-
-        if bbox_tracker is not None:
-            tracked_bboxes = bbox_tracker.track(self.annotation)
-            input_bboxes = self.sam.transform_bboxes(
-                tracked_bboxes, self.annotation.img.shape[:2]
-            )
-            prop_mask_out_torch = self.sam.predict_batch(bboxes=input_bboxes)
-            prop_mask_out = self.sam._torch_to_npmasks(prop_mask_out_torch)
-            prop_mask_objs = [
-                MaskData(
-                    mid=self.mask_id_handler.set_id(),
-                    mask=mask,
-                    origin="Panorama_tracking",
-                    time_stamp=self._get_time_stamp(),
-                )
-                for mask in prop_mask_out
-            ]
-            prop_mask_objs = self.convey_color_to_next_annot(prop_mask_objs)
-            self.annotation.add_masks(prop_mask_objs, decision=True)
-
-        start_setting_masks = time.time()
-        if self.annotation.masks:
-            for dec, mobj in zip(self.annotation.mask_decisions, self.annotation.masks):
-                if dec:
-                    mobj.time_stamp = self._get_time_stamp()
-                    self.annotation.good_masks.append(mobj)
-                    if self.mask_id_handler._id == mobj.mid:
-                        raise ValueError("Mask ID is not unique and set correctly")
-                    start_mask_idx += 1
-                else:
-                    raise ValueError(
-                        "Tracked annotations have not been annotated Correctly. Mask decision 'False' received"
-                    )
-        print(f"Setting masks time: {time.time() - start_setting_masks}")
-
-        start_custom_amg = time.time()
-        mask_objs, annotated_image = self.sam.amg()
-
-        print(f"Custom AMG time: {time.time() - start_custom_amg}")
-        assert (
-            isinstance(mask_objs, list)
-            and isinstance(mask_objs[0], MaskData)
-            and annotated_image.dtype == np.uint8
-        )
-
-        self.annotation.mask_visualizations.masked_img = annotated_image
-        self.annotation.add_masks(mask_objs)
-
-        self.update_mask_idx(start_mask_idx)
-        start_updating_collections = time.time()
-        self.update_collections(self.annotation)
-        print(f"Updating collections time: {time.time() - start_updating_collections}")
-        start_preselect = time.time()
-        self.preselect_mask()
-        print(f"Preselect time: {time.time() - start_preselect}")
-
     def convey_color_to_next_annot(self, next_mask_objs: list[MaskData]):
         for mobj in self.annotation.good_masks:
             mid = mobj.mid
@@ -346,9 +284,8 @@ class Annotator:
                     next_mobj.color_idx = mobj.color_idx
         return next_mask_objs
 
-    def good_mask(self):
+    def good_mask(self, time_stamp: int | None = None):
         annot = self.annotation
-        # TODO: ensure that correct mask is stored when switching modes
         if self.manual_annotation_enabled:
             origin = (
                 "Sam1_interactive"
@@ -357,6 +294,7 @@ class Annotator:
             )
             if annot.preview_mask is None:
                 return "Mask not ready"
+
             mask_to_store = MaskData(
                 mid=self.mask_id_handler.set_id(),
                 mask=annot.preview_mask,
@@ -382,6 +320,8 @@ class Annotator:
 
         elif len(annot.masks) > self.mask_idx:
             mask_obj = annot.masks[self.mask_idx]
+            if time_stamp is None:
+                time_stamp = self._get_time_stamp()
             mask_to_store = MaskData(
                 mid=(
                     self.mask_id_handler.set_id()
@@ -393,7 +333,7 @@ class Annotator:
                 color_idx=mask_obj.color_idx,
                 center=mask_obj.center,
                 contour=mask_obj.contour,
-                time_stamp=self._get_time_stamp(),
+                time_stamp=time_stamp,
             )
             annot.mask_decisions[self.mask_idx] = True
 
@@ -458,7 +398,7 @@ class Annotator:
             mcenter = self.bad_mask()
 
         if "tracking" in maskorigin:
-            mcenter = self.good_mask()
+            mcenter = self.good_mask(time_stamp=1)
         return mcenter
 
     def _recycle_mask_meta_data(self, popped_mobj: MaskData):

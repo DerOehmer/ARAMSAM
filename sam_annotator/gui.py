@@ -283,7 +283,7 @@ class UserInterface(QMainWindow):
             self.experiment_instructions_label = QLabel(
                 text="Find instructions here", parent=self
             )
-            instruction_x = 15 * self.buttons_spacing + 14 * self.buttons_min_width
+            instruction_x = 14 * self.buttons_spacing + 13 * self.buttons_min_width
             self.experiment_instructions_label.move(
                 instruction_x,
                 int(self.height_offset / 2),
@@ -662,6 +662,30 @@ class UserInterface(QMainWindow):
         elif mode == "intro_texts":
             settings_file = "ExperimentData/TutorialSettings/intro_texts.json"
 
+        elif mode == "user_experiment_tutorial_texts":
+            settings_file = (
+                "ExperimentData/TutorialSettings/user_experiment_tutorial_texts.json"
+            )
+
+        elif mode == "plygon_user_experiment_texts":
+            settings_file = (
+                "ExperimentData/TutorialSettings/polygon_user_experiment_texts.json"
+            )
+
+        elif mode == "proposed_masks_texts":
+            settings_file = "ExperimentData/TutorialSettings/proposed_masks_texts.json"
+
+        elif mode == "interactive_annotation_texts":
+            settings_file = (
+                "ExperimentData/TutorialSettings/interactive_annotation_texts.json"
+            )
+
+        elif mode == "polygon_drawing_texts":
+            settings_file = "ExperimentData/TutorialSettings/polygon_drawing_texts.json"
+
+        elif mode == "mask_deletion_texts":
+            settings_file = "ExperimentData/TutorialSettings/mask_deletion_texts.json"
+
         else:
             raise ValueError("Invalid tutorial mode.")
 
@@ -821,7 +845,7 @@ class TutorialOverlay(QDialog):
                 )
                 text_box_height, text_box_width = 100, 600
 
-            elif self.mode == "intro_texts":
+            elif "texts" in self.mode:
                 anchor_pt = QPointF(widget_center.x(), widget_center.y())
                 text_box_height, text_box_width = 300, 900
 

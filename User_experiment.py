@@ -15,7 +15,7 @@ def update_mock_path(new_path):
     img_pair_folder_p = new_path
 
 
-def mock_main():
+def mock_main(tutorial=False):
     vis_options, default_vis_options, current_options = create_vis_options()
     ui_options = {
         "layout_settings_options": {
@@ -25,8 +25,10 @@ def mock_main():
         }
     }
     app = App(ui_options=ui_options, experiment_mode="structured")
+    if tutorial:
+        app.tutorial_flag = True
     app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/output"
-    app.sam_gen = 2
+    app.sam_gen = 1
     ui = app.ui
     ui.create_basic_loading_window()
     ui.open_load_folder_dialog = mock_open_load_folder_dialog
@@ -48,6 +50,6 @@ def mock_main():
 
 if __name__ == "__main__":
     root_p = "ExperimentData/EarImgPairs"
-    for img_pair_folder_p in natsorted(glob.glob(f"{root_p}/*")):
+    for img_pair_folder_p in natsorted(glob.glob(f"{root_p}/*"))[1:-2]:
         update_mock_path(img_pair_folder_p)
         mock_main()

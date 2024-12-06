@@ -369,7 +369,7 @@ class Sam2Inference:
             mask = m.mask.astype(bool)
             self.predictor.add_new_mask(self.inference_state, 0, m.mid, mask)
 
-    def propagate_to_next_img(self):
+    def propagate_to_next_img(self) -> list[MaskData]:
         prop_masks: list[MaskData] = []
         for (
             out_frame_idx,
