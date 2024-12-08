@@ -144,7 +144,7 @@ class UserInterface(QMainWindow):
         )
         self.back_button.setMinimumWidth(self.buttons_min_width)
 
-        self.manual_annotation_button = QPushButton(text="Interactive", parent=self)
+        self.manual_annotation_button = QPushButton(text="interactive", parent=self)
         self.manual_annotation_button.setCheckable(True)
         self.manual_annotation_button.move(
             4 * self.buttons_spacing + 3 * self.buttons_min_width,
@@ -710,7 +710,7 @@ class BasicLoadingWindow(QDialog):
 
         # Remove the close button and disable window resizing
         self.setWindowFlags(
-            Qt.WindowType.Window
+            Qt.WindowType.Dialog
             | Qt.WindowType.CustomizeWindowHint
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowStaysOnTopHint

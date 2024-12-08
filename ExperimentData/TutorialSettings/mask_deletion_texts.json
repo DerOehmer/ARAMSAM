@@ -8,7 +8,7 @@
     {
         "widget": null,
         "object_index": null,
-        "text": "Use your mouse to hover(move) over the propagated masks.\nIn the bottom-left view you will see the masks contour to help you judging the mask.\nIf the mask is BAD, right-click to delete it",
+        "text": "Use your mouse to hover(move) over the propagated masks.\nIn the bottom-left view you will see the masks contour to help you judging the mask.\nIf the mask is BAD, right-click to delete it.",
         "arrow_position": "none"
     },   
     {

@@ -40,8 +40,8 @@ def mock_main():
         "ExperimentData/TutorialImages/39320223511025_low_192.jpg",
     ]
     load_folder_action = ui.menu_open.actions()[1]  # 1 is for loading folder
-    sys.exit(load_folder_action.trigger())
+    return load_folder_action.trigger()
 
 
 if __name__ == "__main__":
-    mock_main()
+    sys.exit(mock_main())

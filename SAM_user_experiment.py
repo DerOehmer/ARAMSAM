@@ -6,8 +6,13 @@ import sys
 import glob
 
 
+"""def mock_open_load_folder_dialog():
+    return img_pair_folder_p"""
+
+
 def mock_open_load_folder_dialog():
-    return img_pair_folder_p
+    # return "UserExperiment/TutorialImages"
+    return ""
 
 
 def update_mock_path(new_path):
@@ -15,7 +20,13 @@ def update_mock_path(new_path):
     img_pair_folder_p = new_path
 
 
-def mock_main(tutorial=False):
+def mock_main(
+    img_pair_folder_p: str,
+    tutorial: bool = False,
+    sam_gen: int = 2,
+    user_id: int = 0,
+    progress: tuple[int, int] = None,
+):
     vis_options, default_vis_options, current_options = create_vis_options()
     ui_options = {
         "layout_settings_options": {
@@ -24,19 +35,20 @@ def mock_main(tutorial=False):
             "current": current_options,
         }
     }
-    app = App(ui_options=ui_options, experiment_mode="structured")
+    app = App(
+        ui_options=ui_options,
+        experiment_mode="structured",
+        experiment_progress=progress,
+    )
     if tutorial:
         app.tutorial_flag = True
-    app.output_dir = "/home/geink81/pythonstuff/SequenceSAM-Annotator/output"
-    app.sam_gen = 1
+    app.output_dir = f"output/User_{user_id}"
+    app.sam_gen = sam_gen
     ui = app.ui
     ui.create_basic_loading_window()
     ui.open_load_folder_dialog = mock_open_load_folder_dialog
     ui.run()
     QTest.qWait(50)
-    # set path
-    load_folder_action = ui.menu_open.actions()[1]
-    load_folder_action.trigger()
 
     ui.menu.setDisabled(True)
     ui.menu_open.setDisabled(True)
@@ -45,11 +57,14 @@ def mock_main(tutorial=False):
     ui.draw_poly_button.setDisabled(True)
 
     ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
-    sys.exit(app.application.exec())
+    app.img_fnames = glob.glob(f"{img_pair_folder_p}/*")
+    load_folder_action = ui.menu_open.actions()[1]
+    load_folder_action.trigger()
+    return app.application.exec()
 
 
 if __name__ == "__main__":
-    root_p = "ExperimentData/EarImgPairs"
-    for img_pair_folder_p in natsorted(glob.glob(f"{root_p}/*"))[1:-2]:
-        update_mock_path(img_pair_folder_p)
-        mock_main()
+    root_p = "ExperimentData/EarImgPairs/Tutorial"
+    for img_pair_folder_p in natsorted(glob.glob(f"{root_p}/*")):
+        # update_mock_path(img_pair_folder_p)
+        sys.exit(mock_main(img_pair_folder_p, tutorial=False))

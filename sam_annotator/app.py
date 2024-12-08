@@ -31,7 +31,12 @@ class App:
     Contains the UI with main thread and subprocesses for the annotation
     """
 
-    def __init__(self, ui_options: dict = None, experiment_mode: str = None) -> None:
+    def __init__(
+        self,
+        ui_options: dict = None,
+        experiment_mode: str = None,
+        experiment_progress: tuple = None,
+    ) -> None:
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
         self.ui = UserInterface(ui_options=ui_options, experiment_mode=experiment_mode)
@@ -52,14 +57,17 @@ class App:
 
         if self.experiment_mode == "structured":
             self.ui.next_method_button.clicked.connect(self.next_method)
-            self.experiment_step: int = 1
+            self.proposed_masks_instructions()
+
         elif self.experiment_mode == "polygon":
             self.ui.next_method_button.clicked.connect(self.next_indicated_polygon_img)
-            self.experiment_step: int = 1
-        elif self.experiment_mode == "tutorial":
-            self.experiment_step: int = 1
+
         else:
             self.ui.next_img_button.clicked.connect(self.select_next_img)
+
+        if self.experiment_mode is not None:
+            self.experiment_step: int = 1
+            self.experiment_progress = experiment_progress
 
         self.ui.mouse_position.connect(self.manage_mouse_move)
         self.ui.load_img_signal.connect(self.load_img)
@@ -103,7 +111,7 @@ class App:
         )
 
     def save_output(self, _=None):
-        if self.experiment_mode == "tutorial":
+        if self.experiment_mode == "tutorial" or self.tutorial_flag == True:
             return
         if self.output_dir is None:
             print("Select output directory before saving")
@@ -116,7 +124,16 @@ class App:
             self.ui.save()
             return
 
-        output_exists = self.annotator.save_annotations(self.output_dir)
+        if self.experiment_mode == "structured":
+            save_suffix = f"{self.experiment_mode}_sam{self.sam_gen}"
+        elif self.experiment_mode == "polygon":
+            save_suffix = f"{self.experiment_mode}"
+        else:
+            save_suffix = None
+
+        output_exists = self.annotator.save_annotations(
+            self.output_dir, save_suffix=save_suffix
+        )
         if output_exists:
             self.ui.create_message_box(
                 True,
@@ -161,7 +178,7 @@ class App:
         self.set_sam()
         print("loading folder")
         img_dir = self.ui.open_load_folder_dialog()
-        if self.experiment_mode != "tutorial":
+        if self.experiment_mode not in ["tutorial", "structured", "polygon"]:
             if img_dir == "":
                 return
             img_fnames = [
@@ -184,14 +201,10 @@ class App:
             print("No image left in the queue")
             if self.experiment_mode == "structured":
                 self.ui.create_message_box(False, "No image left in the queue")
-                self.ui.save()  # TODO this is probably not used
+                self.ui.save()
                 self.ui.close()
             elif self.experiment_mode == "polygon":
-                self.ui.create_info_box(
-                    False,
-                    "Congratulations! You are done with the current set of images",
-                    wait_for_user=True,
-                )
+                self.ui.save()
                 self.ui.close()
             return
 
@@ -274,7 +287,7 @@ class App:
             elif self.experiment_step == 2:
                 self.ui.create_info_box(
                     False,
-                    "This is the second of 4 tutorial sections. Now you will learn to decide how to choose a good maize kernel mask.",
+                    "Let's move on to the second of 4 tutorial sections. Now you will learn to decide how to choose a good maize kernel mask.",
                     wait_for_user=True,
                 )
                 tut_mode = "kernel_examples"
@@ -312,9 +325,20 @@ class App:
             user_ready = False
             if not self.tutorial_flag:
                 while not user_ready:
+                    if self.experiment_progress is not None:
+                        if self.experiment_progress[0] == 1:
+                            if (
+                                self.experiment_mode == "structured"
+                                and self.annotator.next_annotation is not None
+                            ) or self.experiment_mode == "polygon":
+                                msg = "Welcome to the timed experiment. This is your last chance to ask questions. From now on, please only take breaks when you are specifically allowed to. Click Yes once you are ready"
+                        else:
+                            msg = f"Good job so far! If neccessary, you could take a short break now. Timed experiment section {self.experiment_progress[0]} of {self.experiment_progress[1]} is about to start. Click Yes once you are ready"
+                    else:
+                        msg = "Timed experiment section is about to start. Click Yes once you are ready"
                     user_ready = self.ui.create_message_box(
                         False,
-                        "Experiment is about to start. Click Yes once you are ready",
+                        msg,
                         wait_for_user=True,
                     )
         self.annotator.init_time_stamp()
@@ -675,14 +699,22 @@ class App:
         self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs(center=new_center)
 
+    def proposed_masks_instructions(self):
+        self.ui.experiment_instructions_label.setText(
+            "pan with left-click, zoom with mouse wheel"
+        )
+
     def manual_annotation(self):
         self.annotator.toggle_manual_annotation()
         self.ui.draw_poly_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.manual_annotation_enabled)
-        self.ui.experiment_instructions_label.setText(
-            "positive point ('a'), negative point ('s'), undo point ('d')"
-        )
+        if self.annotator.manual_annotation_enabled:
+            self.ui.experiment_instructions_label.setText(
+                "positive point ('a'), negative point ('s'), undo point ('d')"
+            )
+        else:
+            self.proposed_masks_instructions()
         self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
@@ -691,6 +723,12 @@ class App:
         self.ui.manual_annotation_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.polygon_drawing_enabled)
+        if self.annotator.polygon_drawing_enabled:
+            self.ui.experiment_instructions_label.setText(
+                "positive point ('a'/'right-click'), undo point ('d')"
+            )
+        else:
+            self.proposed_masks_instructions()
         self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
@@ -705,6 +743,12 @@ class App:
         self.ui.manual_annotation_button.setChecked(man_state)
         self.ui.draw_poly_button.setChecked(poly_state)
         self.annotator.toggle_mask_deletion()
+        if self.annotator.mask_deletion_enabled:
+            self.ui.experiment_instructions_label.setText(
+                "right-click on mask to delete it"
+            )
+        else:
+            self.proposed_masks_instructions()
         self.update_ui_imgs()
 
     def manage_mouse_move(self, point: tuple[int]):

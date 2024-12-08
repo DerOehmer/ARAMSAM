@@ -573,10 +573,12 @@ class Annotator:
 
         self.annotation.good_masks = mask_vis.mask_objs
 
-    def save_annotations(self, save_path: Path):
+    def save_annotations(self, save_path: Path, save_suffix: str = None) -> bool:
         output_masks_exist = False
         img_id = os.path.splitext(self.annotation.img_name)[0]
         annots_path = os.path.join(save_path, f"{img_id}_annots")
+        if save_suffix is not None:
+            annots_path = f"{annots_path}_{save_suffix}"
 
         if not os.path.exists(annots_path):
             os.makedirs(annots_path)

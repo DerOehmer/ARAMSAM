@@ -408,7 +408,7 @@ class MaskVisualization:
             return None
         img = self.img.copy()
         extended_mask = cv2.dilate(
-            self.preview_mask, np.ones((5, 5), np.uint8), iterations=5
+            self.preview_mask, np.ones((5, 5), np.uint8), iterations=7
         )
         result_img = cv2.bitwise_and(img, img, mask=extended_mask)
         cnts = cv2.findContours(
