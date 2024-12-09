@@ -1,7 +1,5 @@
 import sys
 import time
-import numpy as np
-import traceback
 import qdarkstyle
 
 from os import listdir
@@ -62,7 +60,7 @@ class App:
         elif self.experiment_mode == "polygon":
             self.ui.next_method_button.clicked.connect(self.next_indicated_polygon_img)
 
-        else:
+        elif self.experiment_mode is None:
             self.ui.next_img_button.clicked.connect(self.select_next_img)
 
         if self.experiment_mode is not None:
@@ -761,6 +759,7 @@ class App:
             )
         else:
             self.proposed_masks_instructions()
+        self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
 
     def manage_mouse_move(self, point: tuple[int]):
