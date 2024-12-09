@@ -199,13 +199,21 @@ class App:
     def select_next_img(self):
         if not self.img_fnames:
             print("No image left in the queue")
-            if self.experiment_mode == "structured":
-                self.ui.create_message_box(False, "No image left in the queue")
+            if self.experiment_mode in ["structured", "polygon"]:
                 self.ui.save()
+                if (
+                    self.experiment_progress is not None
+                    and self.experiment_progress[0] == self.experiment_progress[1]
+                ):
+
+                    self.ui.create_message_box(
+                        False,
+                        "Congratulations! You have finished the experiment. Thank you for your participation! Tell the experiment supervisor that you are done and click Yes.",
+                        wait_for_user=True,
+                    )
+
                 self.ui.close()
-            elif self.experiment_mode == "polygon":
-                self.ui.save()
-                self.ui.close()
+
             return
 
         if self.threadpool.activeThreadCount() > 0:
@@ -269,7 +277,7 @@ class App:
                 self.embed_img(basename(next_img_name))
         elif self.experiment_mode == "polygon":
             self.ui.performing_embedding_label.setText(
-                f"Draw 2 polygon masks at the indicated kernels"
+                f"Draw 3 polygon masks at the indicated kernels"
             )
             self.ui.close_basic_loading_window()
             self.start_user_annotation()
@@ -324,18 +332,22 @@ class App:
         else:
             user_ready = False
             if not self.tutorial_flag:
+                user_info_collected = False
                 while not user_ready:
                     if self.experiment_progress is not None:
+                        msg = f"Good job so far! If neccessary, you could take a short break now. Timed experiment section {self.experiment_progress[0]} of {self.experiment_progress[1]} is about to start. Click Yes once you are ready."
+
                         if self.experiment_progress[0] == 1:
                             if (
                                 self.experiment_mode == "structured"
                                 and self.annotator.next_annotation is not None
                             ) or self.experiment_mode == "polygon":
-                                msg = "Welcome to the timed experiment. This is your last chance to ask questions. From now on, please only take breaks when you are specifically allowed to. Click Yes once you are ready"
-                        else:
-                            msg = f"Good job so far! If neccessary, you could take a short break now. Timed experiment section {self.experiment_progress[0]} of {self.experiment_progress[1]} is about to start. Click Yes once you are ready"
+                                if not user_info_collected:
+                                    self.ui.ask_user_information(self.output_dir)
+                                    user_info_collected = True
+                                msg = "Now the timed experiment section will start. This is your last chance to ask questions. From now on, please only take breaks when you are specifically allowed to. Click Yes once you are ready."
                     else:
-                        msg = "Timed experiment section is about to start. Click Yes once you are ready"
+                        msg = "Timed experiment section is about to start. Click Yes once you are ready."
                     user_ready = self.ui.create_message_box(
                         False,
                         msg,
@@ -817,8 +829,8 @@ class App:
 
     def next_indicated_polygon_img(self):
         print("Next polygon img")
-        if len(self.annotator.annotation.good_masks) != 2:
-            self.ui.create_message_box(False, "Please select exactly 2 masks")
+        if len(self.annotator.annotation.good_masks) != 3:
+            self.ui.create_message_box(False, "Please select exactly 3 masks")
             return
         self.select_next_img()
         # reset

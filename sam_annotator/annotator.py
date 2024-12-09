@@ -427,8 +427,8 @@ class Annotator:
         if self.mask_idx == 0:
             return
 
-        if len(annot.good_masks) == 0:
-            return
+        # if len(annot.good_masks) == 0:
+        # return
 
         if not (
             self.manual_annotation_enabled

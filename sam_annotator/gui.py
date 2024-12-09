@@ -38,6 +38,8 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QVBoxLayout,
+    QSpinBox,
+    QComboBox,
 )
 
 
@@ -511,6 +513,10 @@ class UserInterface(QMainWindow):
         for ann_viz in self.annotation_visualizers:
             ann_viz.setSceneRect(self.current_viewport)
 
+    def ask_user_information(self, output_dir: str):
+        self.child_window = UserInfoWindow(parent=self, output_dir=output_dir)
+        self.child_window.exec()
+
     def create_message_box(
         self, crticial: bool = False, text: str = "", wait_for_user: bool = False
     ):
@@ -735,6 +741,70 @@ class BasicLoadingWindow(QDialog):
         # layout.addWidget(self.progress)
 
         self.setLayout(layout)
+
+
+class UserInfoWindow(QDialog):
+    def __init__(self, parent=None, output_dir: str = None):
+        super().__init__(parent)
+        self.output_dir = output_dir
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint)
+
+        self.setWindowTitle("User Information:")
+
+        # Create layout
+        layout = QVBoxLayout()
+
+        # Introduction text
+        self.intro_label = QLabel(
+            "\nWelcome to the experiment! Please provide the following information:\n"
+        )
+        layout.addWidget(self.intro_label)
+
+        # Age input
+        self.age_label = QLabel("Enter your age:")
+        layout.addWidget(self.age_label)
+
+        self.age_input = QSpinBox()
+        self.age_input.setMinimum(0)  # Minimum age
+        self.age_input.setMaximum(120)  # Maximum age
+        layout.addWidget(self.age_input)
+
+        # Gender input
+        self.gender_label = QLabel("Select your gender:")
+        layout.addWidget(self.gender_label)
+
+        self.gender_input = QComboBox()
+        self.gender_input.addItems(["Female", "Male", "Diverse"])
+        layout.addWidget(self.gender_input)
+
+        # Computer skills
+        self.skills = QLabel("Rate your general IT skills from 1 - 10:")
+        layout.addWidget(self.skills)
+
+        self.skill_input = QSpinBox()
+        self.skill_input.setMinimum(1)
+        self.skill_input.setMaximum(10)
+        layout.addWidget(self.skill_input)
+
+        # Submit button
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.clicked.connect(self.save_information)
+        layout.addWidget(self.submit_button)
+
+        self.setLayout(layout)
+
+    def save_information(self):
+        age = self.age_input.value()
+        gender = self.gender_input.currentText()
+        skills = self.skill_input.value()
+
+        # You can save this information to a file, database, or a variable
+        saved_data = {"age": age, "gender": gender, "skills": skills}
+
+        with open(os.path.join(self.output_dir, "user_information.json"), "w") as file:
+            json.dump(saved_data, file)
+
+        self.accept()  # Close the dialog
 
 
 class TutorialOverlay(QDialog):

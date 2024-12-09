@@ -4,20 +4,18 @@ from sam_annotator.app import App
 from PyQt6.QtTest import QTest
 import sys
 import glob
+import os
 
 
-"""def mock_open_load_folder_dialog():
-    return img_pair_folder_p"""
+def extract_img_pos(img_path: str) -> int:
+    img_name = os.path.basename(img_path)
+    img_name = img_name.split(".")[0]
+    img_pos = img_name.split("_low_")[-1]
+    return img_pos
 
 
 def mock_open_load_folder_dialog():
-    # return "UserExperiment/TutorialImages"
     return ""
-
-
-def update_mock_path(new_path):
-    global img_pair_folder_p  # Use global to modify the img_pair_folder_p variable
-    img_pair_folder_p = new_path
 
 
 def mock_main(
@@ -57,7 +55,9 @@ def mock_main(
     ui.draw_poly_button.setDisabled(True)
 
     ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
-    app.img_fnames = glob.glob(f"{img_pair_folder_p}/*")
+    img_paths = glob.glob(f"{img_pair_folder_p}/*")
+    sorted_img_paths = sorted(img_paths, key=extract_img_pos)
+    app.img_fnames = sorted_img_paths
     load_folder_action = ui.menu_open.actions()[1]
     load_folder_action.trigger()
     return app.application.exec()

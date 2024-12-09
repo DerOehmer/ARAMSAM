@@ -20,10 +20,12 @@ def highlight_masks_on_img(img_p: str, mask_ps: list):
     return img
 
 
-def get_img_and_masks_paths(img_dir: str, n_masks: int = 2):
+def get_img_and_masks_paths(img_dir: str, n_masks: int = 3):
     imgps = []
     maskps = []
     for ear_view in glob.glob(img_dir + "/*"):
+        if not os.path.isdir(ear_view):
+            continue
         mask_ps = glob.glob(os.path.join(ear_view, "masks") + "/*")
         rand_mask_idcs = np.random.choice(len(mask_ps), n_masks, replace=False)
         rand_mask_ps = [mask_ps[i] for i in rand_mask_idcs]
@@ -34,11 +36,11 @@ def get_img_and_masks_paths(img_dir: str, n_masks: int = 2):
 
 
 if __name__ == "__main__":
-    ear_img_dir = "ExperimentData/BackboneExperimentData/MaizeEar"
-    img_dest = "ExperimentData/IndicatedPolygonPositionImages"
+    ear_img_dir = "ExperimentData/TutorialImages"
+    img_dest = "ExperimentData/IndicatedPolygonPositionImages/Tutorial"
     if not os.path.exists(img_dest):
         os.makedirs(img_dest)
-    ear_img_paths, mask_paths = get_img_and_masks_paths(ear_img_dir)
+    ear_img_paths, mask_paths = get_img_and_masks_paths(ear_img_dir, 3)
     print(ear_img_paths, mask_paths)
     for ear_img_p, mask_ps in zip(ear_img_paths, mask_paths):
         img_name = os.path.basename(os.path.dirname(ear_img_p))

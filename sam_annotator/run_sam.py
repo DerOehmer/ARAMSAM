@@ -88,6 +88,9 @@ class SamInference:
     ):
         if not self.predictor.is_image_set:
             raise ValueError("Image embedding has not been initialized yet")
+        assert (
+            pts.dtype == np.float32 and pts.shape[-1] == 2
+        ), "Expecting numpy array with shape (N, 2) and dtype float32"
         masks, scores, logits = self.predictor.predict(
             point_coords=pts,
             point_labels=pts_labels,
