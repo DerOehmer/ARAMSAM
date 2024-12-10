@@ -482,6 +482,11 @@ class Annotator:
                 break
         print(f"Delete mask time: {time.time() - startdeltime}")
 
+    def _get_mask_id(self, mask_path: str):
+        mask_name = os.path.basename(mask_path).split(".")[0]
+        mask_id = mask_name.split("_")[-1]
+        return int(mask_id)
+
     def load_tutorial_masks(self, mode: str):
         """
         Starts the tutorial overlay.
@@ -500,7 +505,8 @@ class Annotator:
                 "ExperimentData/TutorialImages/39320223532020_low_64_annots/masks/*"
             )
 
-        masks_paths = glob.glob(mask_p)
+        masks_paths0 = glob.glob(mask_p)
+        masks_paths = sorted(masks_paths0, key=self._get_mask_id)
 
         mask_objs = [
             MaskData(
