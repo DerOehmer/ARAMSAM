@@ -11,7 +11,6 @@ from sam_annotator.run_sam import SamInference, Sam2Inference
 from sam_annotator.tracker import PanoImageAligner
 from sam_annotator.mask_visualizations import (
     MaskData,
-    MaskVisualization,
     MaskVisualizationData,
     AnnotationObject,
     MaskIdHandler,
