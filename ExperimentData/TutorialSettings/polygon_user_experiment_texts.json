@@ -1,0 +1,34 @@
+[
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Welcome to the third out of 4 Tutorials.\nNow you will learn how to draw polygon masks for selected kernels.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Drawing polygons around objects of interest is a\nstandard method for manual annotation of images. To save you some time,\nyou are only asked to draw polygons for kernels\nthat are highlighted by a green box.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Drawing a polygon is done by adding multiple points around a kernel through right-clicking or pressing 'a'\nat the current mask location. Try to use multiple points to approximate a round shape.",
+        "arrow_position": "none"
+    },   
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "To undo a point press 'd'. To undo the entire mask press 'b'.\nYour collected mask points will be visible in the bottom left image.\nOnce your are happy with one mask press 'n' or click the GOOD MASK button to save the mask.\n\nNOTE: The algorithm will connect the points in the order they are clicked.\nThis means you should add polygon points only in one direction around the maize kernel.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Now during the tutorial, feel free to test all the functionalities you have been introduced to.\nIf anything is unclear, do not hesitate to ask any questions.\n\nClick 'Close' to start drawing polygons.\nClick the green 'Next' button after annotating two masks.",
+        "arrow_position": "none"
+    }
+
+   
+]

@@ -253,7 +253,7 @@ def append_mask_metrics_dict(storage_dict: dict, mask_metrics_dict: dict):
 
 
 def main():
-    datasets = ["BackboneExperimentData/MaizeEar/"]
+    datasets = ["ExperimentData/BackboneExperimentData/MaizeEar"]
     sam_flavors = SamFlavors()
     metric_results = []
     metrics_per_mask_results = {}
@@ -296,9 +296,10 @@ def main():
     df = pd.DataFrame(metric_results)
     df_metrics_per_mask = pd.DataFrame(metrics_per_mask_results)
     print(df_metrics_per_mask)
-    # df.to_csv("BackboneExperimentData/MaizeEar_results.csv", index=False)
+    # df.to_csv("ExperimentData/BackboneExperimentData/MaizeEar_results.csv", index=False)
     df_metrics_per_mask.to_csv(
-        "BackboneExperimentData/MaizeEar_results_per_mask.csv", index=False
+        "ExperimentData/BackboneExperimentData/MaizeEar_results_per_mask.csv",
+        index=False,
     )
 
 

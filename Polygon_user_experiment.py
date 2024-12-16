@@ -5,6 +5,7 @@ from sam_annotator.mask_visualizations import MaskData
 from PyQt6.QtTest import QTest
 import sys
 import numpy as np
+import glob
 
 
 def mock_set_sam():
@@ -18,7 +19,8 @@ def mock_propagate_good_masks():
 
 
 def mock_open_load_folder_dialog():
-    return "UserExperiment/IndicatedPolygonPositionImages"
+    # return "UserExperiment/TutorialImages"
+    return ""
 
 
 def set_vis(annotator: Annotator) -> tuple[bool]:
@@ -39,7 +41,12 @@ def set_vis(annotator: Annotator) -> tuple[bool]:
     self.update_collections(self.annotation)
 
 
-def mock_main():
+def mock_main(
+    polygon_img_paths: str,
+    tutorial: bool = False,
+    user_id: int = 0,
+    progress: tuple[int, int] = None,
+):
     vis_options, default_vis_options, current_options = create_vis_options()
     ui_options = {
         "layout_settings_options": {
@@ -48,10 +55,14 @@ def mock_main():
             "current": current_options,
         }
     }
-    app = App(ui_options=ui_options, experiment_mode="polygon")
+    app = App(
+        ui_options=ui_options, experiment_mode="polygon", experiment_progress=progress
+    )
+    if tutorial:
+        app.tutorial_flag = True
     app.set_sam = mock_set_sam
     app.propagate_good_masks = mock_propagate_good_masks
-    app.change_output_dir("output")
+    app.change_output_dir(f"output/User_{user_id}")
     ui = app.ui
     ui.open_load_folder_dialog = mock_open_load_folder_dialog
     ui.manual_annotation_button.setDisabled(True)
@@ -62,17 +73,15 @@ def mock_main():
     ui.run()
     QTest.qWait(50)
 
-    # set path
+    app.img_fnames = polygon_img_paths
     load_folder_action = ui.menu_open.actions()[1]
     load_folder_action.trigger()
-    QTest.qWait(50)
     set_vis(app.annotator)
     app.update_ui_imgs()
     ui.draw_poly_button.click()
     ui.draw_poly_button.setDisabled(True)
-
-    sys.exit(app.application.exec())
+    return app.application.exec()
 
 
 if __name__ == "__main__":
-    mock_main()
+    sys.exit(mock_main("ExperimentData/IndicatedPolygonPositionImages/Experiment"))

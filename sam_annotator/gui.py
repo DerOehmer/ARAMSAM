@@ -5,6 +5,8 @@ from PyQt6 import QtWidgets
 from PyQt6 import QtGui
 from screeninfo import get_monitors
 import math
+import json
+import os
 
 from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QRect, QPointF
 from PyQt6.QtGui import (
@@ -35,6 +37,9 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
     QApplication,
     QDialog,
+    QVBoxLayout,
+    QSpinBox,
+    QComboBox,
 )
 
 
@@ -86,6 +91,7 @@ class UserInterface(QMainWindow):
         self.last_panned_img = None
 
         self.loading_window = None
+        self.basic_loading_window = None
 
         self.construct_ui()
         self.showMaximized()
@@ -140,7 +146,7 @@ class UserInterface(QMainWindow):
         )
         self.back_button.setMinimumWidth(self.buttons_min_width)
 
-        self.manual_annotation_button = QPushButton(text="manual", parent=self)
+        self.manual_annotation_button = QPushButton(text="interactive", parent=self)
         self.manual_annotation_button.setCheckable(True)
         self.manual_annotation_button.move(
             4 * self.buttons_spacing + 3 * self.buttons_min_width,
@@ -279,7 +285,7 @@ class UserInterface(QMainWindow):
             self.experiment_instructions_label = QLabel(
                 text="Find instructions here", parent=self
             )
-            instruction_x = 15 * self.buttons_spacing + 14 * self.buttons_min_width
+            instruction_x = 14 * self.buttons_spacing + 13 * self.buttons_min_width
             self.experiment_instructions_label.move(
                 instruction_x,
                 int(self.height_offset / 2),
@@ -507,6 +513,10 @@ class UserInterface(QMainWindow):
         for ann_viz in self.annotation_visualizers:
             ann_viz.setSceneRect(self.current_viewport)
 
+    def ask_user_information(self, output_dir: str):
+        self.child_window = UserInfoWindow(parent=self, output_dir=output_dir)
+        self.child_window.exec()
+
     def create_message_box(
         self, crticial: bool = False, text: str = "", wait_for_user: bool = False
     ):
@@ -551,15 +561,17 @@ class UserInterface(QMainWindow):
             self.info_box.setStandardButtons(QMessageBox.StandardButton.NoButton)
             self.info_box.show()
 
-    def create_basic_loading_window(self):
-        self.basic_loading_window = QMessageBox(self)
-        self.basic_loading_window.setIcon(QMessageBox.Icon.Information)
-        self.basic_loading_window.setText("Loading, please wait...")
+    def create_basic_loading_window(self, text: str = "Loading, please wait..."):
+        if self.basic_loading_window is not None:
+            self.basic_loading_window.close()
+        self.basic_loading_window = BasicLoadingWindow(self, text=text)
         self.basic_loading_window.show()
 
     def close_basic_loading_window(self):
-        self.basic_loading_window.close()
-        self.basic_loading_window = None
+        if self.basic_loading_window is not None:
+            print("Closing basic loading window")
+            self.basic_loading_window.close()
+            self.basic_loading_window = None
 
     def create_loading_window(
         self, label_text: str, max_val: int = 100, initial_val: int = 0
@@ -641,13 +653,164 @@ class UserInterface(QMainWindow):
         else:
             QApplication.restoreOverrideCursor()
 
-    def start_tutorial(self):
-        self.tutorial_overlay = TutorialOverlay(parent=self)
+    def start_tutorial(self, mode: str):
+        """
+        Starts the tutorial overlay.
+        Parameters:
+        - mode: Can be "ui_overview", "kernel_examples" or "intro_texts".
+        """
+        if mode == "ui_overview":
+            settings_file = "ExperimentData/TutorialSettings/ui_overview.json"
+
+        elif mode == "kernel_examples":
+            settings_file = "ExperimentData/TutorialSettings/kernel_examples.json"
+
+        elif mode == "intro_texts":
+            settings_file = "ExperimentData/TutorialSettings/intro_texts.json"
+
+        elif mode == "user_experiment_tutorial_texts":
+            settings_file = (
+                "ExperimentData/TutorialSettings/user_experiment_tutorial_texts.json"
+            )
+
+        elif mode == "plygon_user_experiment_texts":
+            settings_file = (
+                "ExperimentData/TutorialSettings/polygon_user_experiment_texts.json"
+            )
+
+        elif mode == "proposed_masks_texts":
+            settings_file = "ExperimentData/TutorialSettings/proposed_masks_texts.json"
+
+        elif mode == "interactive_annotation_texts":
+            settings_file = (
+                "ExperimentData/TutorialSettings/interactive_annotation_texts.json"
+            )
+
+        elif mode == "polygon_drawing_texts":
+            settings_file = "ExperimentData/TutorialSettings/polygon_drawing_texts.json"
+
+        elif mode == "mask_deletion_texts":
+            settings_file = "ExperimentData/TutorialSettings/mask_deletion_texts.json"
+
+        else:
+            raise ValueError("Invalid tutorial mode.")
+
+        if not os.path.exists(settings_file):
+            raise FileNotFoundError("Tutorial settings file not found.")
+
+        with open(settings_file, "r") as file:
+            tut_steps = json.load(file)
+
+        self.tutorial_overlay = TutorialOverlay(
+            parent=self, tutorial_steps=tut_steps, mode=mode
+        )
         self.tutorial_overlay.exec()
 
 
+class BasicLoadingWindow(QDialog):
+    def __init__(self, parent=None, text: str = "Loading, please wait..."):
+        super().__init__(parent)
+        self.text = text
+        self.setWindowTitle("Loading...")
+        self.setFixedSize(700, 100)
+
+        # Remove the close button and disable window resizing
+        self.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.CustomizeWindowHint
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            # Exclude Qt.WindowType.WindowCloseButtonHint to remove close button
+        )
+
+        # Optionally, make the window modal to block interaction with other windows
+        self.setModal(True)
+
+        # Setup UI components
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        label = QLabel(self.text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+
+        # self.progress = QProgressBar()
+        # self.progress.setRange(0, 0)  # Indeterminate progress bar
+        # layout.addWidget(self.progress)
+
+        self.setLayout(layout)
+
+
+class UserInfoWindow(QDialog):
+    def __init__(self, parent=None, output_dir: str = None):
+        super().__init__(parent)
+        self.output_dir = output_dir
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint)
+
+        self.setWindowTitle("User Information:")
+
+        # Create layout
+        layout = QVBoxLayout()
+
+        # Introduction text
+        self.intro_label = QLabel(
+            "\nWelcome to the experiment! Please provide the following information:\n"
+        )
+        layout.addWidget(self.intro_label)
+
+        # Age input
+        self.age_label = QLabel("Enter your age:")
+        layout.addWidget(self.age_label)
+
+        self.age_input = QSpinBox()
+        self.age_input.setMinimum(0)  # Minimum age
+        self.age_input.setMaximum(120)  # Maximum age
+        layout.addWidget(self.age_input)
+
+        # Gender input
+        self.gender_label = QLabel("Select your gender:")
+        layout.addWidget(self.gender_label)
+
+        self.gender_input = QComboBox()
+        self.gender_input.addItems(["Female", "Male", "Diverse"])
+        layout.addWidget(self.gender_input)
+
+        # Computer skills
+        self.skills = QLabel("Rate your general IT skills from 1 - 10:")
+        layout.addWidget(self.skills)
+
+        self.skill_input = QSpinBox()
+        self.skill_input.setMinimum(1)
+        self.skill_input.setMaximum(10)
+        layout.addWidget(self.skill_input)
+
+        # Submit button
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.clicked.connect(self.save_information)
+        layout.addWidget(self.submit_button)
+
+        self.setLayout(layout)
+
+    def save_information(self):
+        age = self.age_input.value()
+        gender = self.gender_input.currentText()
+        skills = self.skill_input.value()
+
+        # You can save this information to a file, database, or a variable
+        saved_data = {"age": age, "gender": gender, "skills": skills}
+
+        with open(os.path.join(self.output_dir, "user_information.json"), "w") as file:
+            json.dump(saved_data, file)
+
+        self.accept()  # Close the dialog
+
+
 class TutorialOverlay(QDialog):
-    def __init__(self, parent=None):
+    def __init__(
+        self, parent=None, tutorial_steps: list[dict] = None, mode: str = None
+    ):
         super().__init__(parent)
         self.parent = parent
         self.resize(self.parent.size())
@@ -657,45 +820,12 @@ class TutorialOverlay(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.move(0, 0)
-
-        self.steps = [
-            {
-                "widget": parent.good_mask_button,
-                "text": "This is the main label where important information is displayed.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.bad_mask_button,
-                "text": "Click this button to perform an action.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.back_button,
-                "text": "Click this button to perform an action.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.delete_button,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.next_method_button,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.performing_embedding_label,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-            {
-                "widget": parent.experiment_instructions_label,
-                "text": "This is another button for additional actions.",
-                "arrow_position": "bottom",
-            },
-        ]
+        self.mode = mode  # Can be "ui_overview" or "kernel_examples".
+        self.steps = tutorial_steps
         self.current_step = 0
+        self.select_masks = False
+        if self.mode == "kernel_examples":
+            self.select_masks = True
 
         # Navigation buttons
         self.button_width = 70
@@ -713,6 +843,7 @@ class TutorialOverlay(QDialog):
         self.close_tutorial_button.clicked.connect(self.close)
         self.close_tutorial_button.move(750, 550)
         self.close_tutorial_button.setMinimumWidth(self.button_width)
+        self.close_tutorial_button.setVisible(False)
 
         self.arrow_buffer_space = 20
         self.arrow_length = 100
@@ -722,49 +853,100 @@ class TutorialOverlay(QDialog):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         if self.steps:
+            if self.current_step == len(self.steps) - 1:
+                self.next_tutorial_button.setVisible(False)
+                self.close_tutorial_button.setVisible(True)
+            else:
+                self.next_tutorial_button.setVisible(True)
+
             self.resize(self.parent.size())
             step = self.steps[self.current_step]
-            widget = step["widget"]
-            widget_rect = widget.geometry()
-
-            # Map widget rect to overlay coordinates
-            global_pos = widget.mapToGlobal(QPoint(0, 0))
-            overlay_pos = self.mapFromGlobal(global_pos)
-            widget_rect = QRect(overlay_pos, widget_rect.size())
 
             # Create a transparent path over the widget
             path = QPainterPath()
             path.addRect(QRectF(self.rect()))
-            path.addRoundedRect(QRectF(widget_rect.adjusted(-10, -10, 10, 10)), 10, 10)
+
+            if step["widget"] is not None:
+                widget = getattr(self.parent, step["widget"])
+                if step["object_index"] is not None:
+                    widget = widget[step["object_index"]]
+                widget_rect = widget.geometry()
+
+                # Map widget rect to overlay coordinates
+                global_pos = widget.mapToGlobal(QPoint(0, 0))
+                overlay_pos = self.mapFromGlobal(global_pos)
+                widget_rect = QRect(overlay_pos, widget_rect.size())
+
+                path.addRoundedRect(
+                    QRectF(widget_rect.adjusted(-10, -10, 10, 10)), 10, 10
+                )
+
+            elif step["widget"] is None:
+                widget_rect = QRect(self.rect())
 
             painter.fillPath(path, QColor(0, 0, 0, 180))
-
             widget_center = widget_rect.center()
-            arrow_end = QPointF(
-                widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
+
+            if step["arrow_position"] == "bottom":
+                arrow_end = QPointF(
+                    widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
+                )
+                anchor_pt = QPointF(
+                    widget_center.x(),
+                    widget_rect.bottom() + self.arrow_buffer_space + self.arrow_length,
+                )
+                self.draw_arrow(painter, anchor_pt, arrow_end)
+                text_box_height, text_box_width = 100, 600
+
+            elif step["arrow_position"] == "top":
+                arrow_end = QPointF(
+                    widget_center.x(), widget_rect.top() - self.arrow_buffer_space
+                )
+                anchor_pt = QPointF(
+                    widget_center.x(),
+                    widget_rect.top() - self.arrow_buffer_space - self.arrow_length,
+                )
+                self.draw_arrow(painter, anchor_pt, arrow_end)
+                text_box_height, text_box_width = 100, 600
+
+            elif self.mode == "kernel_examples":
+                anchor_pt = QPointF(
+                    widget_center.x(), widget_rect.bottom() + self.arrow_buffer_space
+                )
+                text_box_height, text_box_width = 100, 600
+
+            elif "texts" in self.mode:
+                anchor_pt = QPointF(widget_center.x(), widget_center.y())
+                text_box_height, text_box_width = 300, 900
+
+            text_rect = self.move_instructions(
+                widget_center,
+                int(anchor_pt.y()),
+                arrow_below_text=(step["arrow_position"] == "bottom"),
+                text_box_width=text_box_width,
+                text_box_height=text_box_height,
             )
-            arrow_start = QPointF(
-                widget_center.x(),
-                widget_rect.bottom() + self.arrow_buffer_space + self.arrow_length,
-            )
-            self.draw_arrow(painter, arrow_start, arrow_end)
 
             # Draw the tutorial text
-            text = step["text"]
-            painter.setPen(QColor(255, 255, 255))
-            painter.setBrush(QColor(0, 0, 0, 200))
-            text_rect = self.move_instructions(widget_center, int(arrow_start.y()))
-            painter.drawRoundedRect(text_rect, 10, 10)
-            painter.drawText(
-                text_rect,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                text,
-            )
+            self.set_text(step, painter, text_rect)
+
+    def set_text(self, step, painter, text_rect):
+        text = step["text"]
+        painter.setPen(QColor(255, 255, 255))
+        painter.setBrush(QColor(0, 0, 0, 200))
+
+        painter.drawRoundedRect(text_rect, 10, 10)
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            text,
+        )
 
     def move_instructions(
         self,
         widget_center: QPoint,
         arrow_ymin: int,
+        arrow_below_text: bool = True,
         text_box_width: int = 600,
         text_box_height: int = 100,
         edge_buffer: int = 10,
@@ -779,8 +961,15 @@ class TutorialOverlay(QDialog):
             text_aleft = self.width() - edge_buffer - text_box_width
         else:
             text_aleft = widget_center.x() - int(0.5 * text_box_width)
-
-        text_atop = arrow_ymin + edge_buffer
+        if arrow_below_text:
+            text_atop = arrow_ymin + edge_buffer
+        else:
+            text_atop = (
+                arrow_ymin
+                - text_box_height
+                - 2 * edge_buffer
+                - self.next_tutorial_button.height()
+            )
         box_center_x = text_aleft + int(0.5 * text_box_width)
         button_y = text_atop + text_box_height + edge_buffer
         button_x_base = box_center_x - int(0.5 * self.button_width)
@@ -806,7 +995,10 @@ class TutorialOverlay(QDialog):
         pen.setWidth(pen_thickness)
         pen.setColor(QtGui.QColor("white"))
         painter.setPen(pen)
-        line_end = QPointF(end.x(), end.y() + pen_thickness)
+        if start.y() > end.y():
+            line_end = QPointF(end.x(), end.y() + pen_thickness)
+        elif start.y() < end.y():
+            line_end = QPointF(end.x(), end.y() - pen_thickness)
         painter.drawLine(start, line_end)
         # painter.setPen(QtGui.QPen())
 
@@ -840,10 +1032,17 @@ class TutorialOverlay(QDialog):
 
     def next_step(self):
         if self.current_step < len(self.steps) - 1:
+            if self.select_masks:
+                if self.steps[self.current_step]["decision"] == "good":
+                    self.parent.good_mask_button.click()
+                else:
+                    self.parent.bad_mask_button.click()
             self.current_step += 1
             self.update()
 
     def prev_step(self):
+        if self.select_masks:
+            self.parent.back_button.click()
         if self.current_step > 0:
             self.current_step -= 1
             self.update()

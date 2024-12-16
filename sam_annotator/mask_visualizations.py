@@ -188,6 +188,13 @@ class MaskVisualization:
 
         return new_mask_ids
 
+    def set_contour(self, mask_obj: MaskData) -> np.ndarray:
+        cnts, _ = cv2.findContours(
+            mask_obj.mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+        )
+        mask_obj.contour = cnts
+        return cnts
+
     def get_masked_img(self) -> np.ndarray:
         if self.no_collection_to_update:
             return self.masked_img
@@ -204,8 +211,7 @@ class MaskVisualization:
                 and m.mid not in self.mask_ids_to_add
             ):
                 continue
-            cnts, _ = cv2.findContours(m.mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-            m.contour = cnts
+            cnts = self.set_contour(m)
             r, g, b = self.colormap[m.color_idx]
             self.masked_img = cv2.drawContours(
                 self.masked_img,
@@ -284,7 +290,11 @@ class MaskVisualization:
                 lineType=cv2.LINE_8,
             )
         if self.preview_mask is not None:
-            self.mask_collection_cnt[self.preview_mask == 255] = 191, 196, 45
+            self.mask_collection_cnt[self.preview_mask == 255] = (
+                224,
+                167,
+                61,
+            )  # 191, 196, 45
 
         return self.mask_collection_cnt
 
@@ -398,7 +408,7 @@ class MaskVisualization:
             return None
         img = self.img.copy()
         extended_mask = cv2.dilate(
-            self.preview_mask, np.ones((5, 5), np.uint8), iterations=5
+            self.preview_mask, np.ones((5, 5), np.uint8), iterations=7
         )
         result_img = cv2.bitwise_and(img, img, mask=extended_mask)
         cnts = cv2.findContours(

@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import json
 import time
+import glob
 
 from sam_annotator.run_sam import SamInference, Sam2Inference
 from sam_annotator.tracker import PanoImageAligner
@@ -28,7 +29,6 @@ class Annotator:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.mask_id_handler = MaskIdHandler()
 
-        self.prev_annotation: AnnotationObject = None
         self.annotation: AnnotationObject = None
         self.next_annotation: AnnotationObject = None
         self.mask_idx = 0
@@ -55,11 +55,11 @@ class Annotator:
 
         if sam_gen == 2:
             if self.sam_ckpt is None:
-                sam2_ckpt = "sam2.1_hiera_large.pt"
+                sam2_ckpt = "sam2.1_hiera_small.pt"
             else:
                 sam2_ckpt = self.sam_ckpt
             if self.sam_model_type is None:
-                sam2_model_type = "configs/sam2.1/sam2.1_hiera_l.yaml"  # Sam2.1 config files have to be starting with "configs/sam2.1/", others don't (e.g. "sam2_hiera_l.yaml")
+                sam2_model_type = "configs/sam2.1/sam2.1_hiera_s.yaml"  # Sam2.1 config files have to be starting with "configs/sam2.1/", others don't (e.g. "sam2_hiera_l.yaml")
             else:
                 sam2_model_type = self.sam_model_type
             self.sam = Sam2Inference(
@@ -70,11 +70,11 @@ class Annotator:
             )
         elif sam_gen == 1:
             if self.sam_ckpt is None:
-                sam1_ckpt = "sam_vit_b_01ec64.pth"
+                sam1_ckpt = "sam_vit_h_4b8939.pth"
             else:
                 sam1_ckpt = self.sam_ckpt
             if self.sam_model_type is None:
-                sam1_model_type = "vit_b"
+                sam1_model_type = "vit_h"
             else:
                 sam1_model_type = self.sam_model_type
             self.sam = SamInference(
@@ -210,11 +210,11 @@ class Annotator:
             input_size=self.annotation.input_size,
         )
 
-    def predict_with_sam(self, bbox_tracker: PanoImageAligner = None):
+    def prepare_amg(self, bbox_tracker: PanoImageAligner = None):
         if self.annotation is None:
             raise ValueError("No annotation object found.")
 
-        start_mask_idx = 0
+        self.mask_idx = 0
         self.sam.amg.set_visualization_img(self.annotation.img)
 
         if bbox_tracker is not None:
@@ -229,7 +229,7 @@ class Annotator:
                     mid=self.mask_id_handler.set_id(),
                     mask=mask,
                     origin="Panorama_tracking",
-                    time_stamp=self._get_time_stamp(),
+                    time_stamp=1,
                 )
                 for mask in prop_mask_out
             ]
@@ -240,19 +240,25 @@ class Annotator:
         if self.annotation.masks:
             for dec, mobj in zip(self.annotation.mask_decisions, self.annotation.masks):
                 if dec:
-                    mobj.time_stamp = self._get_time_stamp()
+                    mobj.time_stamp = 1
                     self.annotation.good_masks.append(mobj)
                     if self.mask_id_handler._id == mobj.mid:
                         raise ValueError("Mask ID is not unique and set correctly")
-                    start_mask_idx += 1
+                    self.mask_idx += 1
                 else:
                     raise ValueError(
                         "Tracked annotations have not been annotated Correctly. Mask decision 'False' received"
                     )
         print(f"Setting masks time: {time.time() - start_setting_masks}")
+
+    def automatic_mask_generation(self):
         start_custom_amg = time.time()
-        mask_objs, annotated_image = self.sam.amg(roi_pts=False, n_points=100)
+        mask_objs, annotated_image = self.sam.amg()
+
         print(f"Custom AMG time: {time.time() - start_custom_amg}")
+        return mask_objs, annotated_image
+
+    def process_amg_masks(self, mask_objs: list[MaskData], annotated_image: np.ndarray):
         assert (
             isinstance(mask_objs, list)
             and isinstance(mask_objs[0], MaskData)
@@ -262,7 +268,7 @@ class Annotator:
         self.annotation.mask_visualizations.masked_img = annotated_image
         self.annotation.add_masks(mask_objs)
 
-        self.update_mask_idx(start_mask_idx)
+        self.update_mask_idx(self.mask_idx)
         start_updating_collections = time.time()
         self.update_collections(self.annotation)
         print(f"Updating collections time: {time.time() - start_updating_collections}")
@@ -278,9 +284,8 @@ class Annotator:
                     next_mobj.color_idx = mobj.color_idx
         return next_mask_objs
 
-    def good_mask(self):
+    def good_mask(self, time_stamp: int | None = None):
         annot = self.annotation
-        # TODO: ensure that correct mask is stored when switching modes
         if self.manual_annotation_enabled:
             origin = (
                 "Sam1_interactive"
@@ -289,6 +294,7 @@ class Annotator:
             )
             if annot.preview_mask is None:
                 return "Mask not ready"
+
             mask_to_store = MaskData(
                 mid=self.mask_id_handler.set_id(),
                 mask=annot.preview_mask,
@@ -314,6 +320,8 @@ class Annotator:
 
         elif len(annot.masks) > self.mask_idx:
             mask_obj = annot.masks[self.mask_idx]
+            if time_stamp is None:
+                time_stamp = self._get_time_stamp()
             mask_to_store = MaskData(
                 mid=(
                     self.mask_id_handler.set_id()
@@ -325,7 +333,7 @@ class Annotator:
                 color_idx=mask_obj.color_idx,
                 center=mask_obj.center,
                 contour=mask_obj.contour,
-                time_stamp=self._get_time_stamp(),
+                time_stamp=time_stamp,
             )
             annot.mask_decisions[self.mask_idx] = True
 
@@ -390,7 +398,7 @@ class Annotator:
             mcenter = self.bad_mask()
 
         if "tracking" in maskorigin:
-            mcenter = self.good_mask()
+            mcenter = self.good_mask(time_stamp=1)
         return mcenter
 
     def _recycle_mask_meta_data(self, popped_mobj: MaskData):
@@ -419,8 +427,8 @@ class Annotator:
         if self.mask_idx == 0:
             return
 
-        if len(annot.good_masks) == 0:
-            return
+        # if len(annot.good_masks) == 0:
+        # return
 
         if not (
             self.manual_annotation_enabled
@@ -474,6 +482,45 @@ class Annotator:
                 break
         print(f"Delete mask time: {time.time() - startdeltime}")
 
+    def load_tutorial_masks(self, mode: str):
+        """
+        Starts the tutorial overlay.
+        Parameters:
+        - mode: Can be "ui_overview" or "kernel_examples".
+        """
+
+        if mode == "ui_overview":
+            origin = "Sam2_tracking"
+            mask_p = (
+                "ExperimentData/TutorialImages/39320223511025_low_192_annots/masks/*"
+            )
+        elif mode == "kernel_examples":
+            origin = "Sam1_proposed"
+            mask_p = (
+                "ExperimentData/TutorialImages/39320223532020_low_64_annots/masks/*"
+            )
+
+        masks_paths = glob.glob(mask_p)
+
+        mask_objs = [
+            MaskData(
+                self.mask_id_handler.set_id(),
+                cv2.imread(mask_p, cv2.IMREAD_GRAYSCALE),
+                origin,
+            )
+            for mask_p in masks_paths
+        ]
+        self.annotation.masks = []
+        self.annotation.mask_decisions = []
+        if mode == "ui_overview":
+            self.annotation.add_masks(mask_objs, decision=True)
+
+        elif mode == "kernel_examples":
+            self.annotation.add_masks(mask_objs, decision=False)
+        self.update_mask_idx()
+        self.update_collections(self.annotation)
+        self.preselect_mask()
+
     def update_collections(self, annot: AnnotationObject):
 
         mask_vis = self.annotation.mask_visualizer
@@ -493,7 +540,7 @@ class Annotator:
             img_sam_preview = mask_vis.get_mask_deletion_preview()
             mvis_data.img_sam_preview = img_sam_preview
 
-        masked_img = mask_vis.get_masked_img()
+        masked_img = mask_vis.get_masked_img()  # masks get contours
         mask_collection = mask_vis.get_mask_collection()
 
         if (
@@ -503,6 +550,8 @@ class Annotator:
             and not self.mask_deletion_enabled
         ):
             mask_obj = annot.masks[self.mask_idx]
+            if mask_obj.contour is None:
+                mask_vis.set_contour(mask_obj)
             cnt = mask_obj.contour
             maskinrgb = mask_vis.get_maskinrgb(mask_obj)
 
@@ -524,10 +573,12 @@ class Annotator:
 
         self.annotation.good_masks = mask_vis.mask_objs
 
-    def save_annotations(self, save_path: Path):
+    def save_annotations(self, save_path: Path, save_suffix: str = None) -> bool:
         output_masks_exist = False
         img_id = os.path.splitext(self.annotation.img_name)[0]
         annots_path = os.path.join(save_path, f"{img_id}_annots")
+        if save_suffix is not None:
+            annots_path = f"{annots_path}_{save_suffix}"
 
         if not os.path.exists(annots_path):
             os.makedirs(annots_path)

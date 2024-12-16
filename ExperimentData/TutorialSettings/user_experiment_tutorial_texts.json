@@ -1,0 +1,20 @@
+[
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Welcome to the fourth out of 4 Tutorials.\nNow you will learn how to use the advanced annotation tools as they will be part of the experiment.\n\n",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Now and in the experiment you will be asked to annotate pairs of overlapping images.\nYou will use the following tools in the following order:\n\n - 1/3 Proposed masks (image 1)\n- 2/3 Interactive prompting (image 1)\n- 3/3 Polygon drawing (image 1)\n- 0/3 Delete falsely propagated mask (image 2)\n- 1/3 Proposed masks (image 2)\n- 2/3 Interactive prompting (image 2)\n- 3/3 Polygon drawing (image 2)",
+        "arrow_position": "none"
+    },   
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Now you will be introduced to each tool individually.\n\nClick 'Close' to start with the first tool.",
+        "arrow_position": "none"
+    }
+]
