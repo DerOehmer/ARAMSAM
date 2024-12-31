@@ -253,7 +253,8 @@ def append_mask_metrics_dict(storage_dict: dict, mask_metrics_dict: dict):
 
 
 def main():
-    datasets = ["ExperimentData/BackboneExperimentData/MaizeEar"]
+    dataset = "ExperimentData/BackboneExperimentData/Soil"
+    dset_name = dataset.split("/")[-1]
     sam_flavors = SamFlavors()
     metric_results = []
     metrics_per_mask_results = {}
@@ -263,42 +264,43 @@ def main():
             weights_path=weights_path,
             config=config,
         )
-        for dataset in datasets:
-            test_imgs = []
-            for test_img_dir in glob.glob(dataset + "/*"):
-                test_img = TestImages(test_img_dir)
-                test_imgs.append(test_img)
 
-            metrics, metrics_per_mask = sam.get_sam_inference(test_imgs)
-            metrics_per_mask["Mask N"] = [
-                i for i in range(len(metrics_per_mask["Dice per mask"]))
-            ]
-            metrics["Sam generation"] = sam_gen
-            metrics_per_mask["Sam generation"] = [
-                sam_gen for i in range(len(metrics_per_mask["Dice per mask"]))
-            ]
-            metrics["Weights path"] = weights_path
-            metrics_per_mask["Weights path"] = [
-                weights_path for i in range(len(metrics_per_mask["Dice per mask"]))
-            ]
-            metrics["Dataset"] = dataset
-            metrics_per_mask["Dataset"] = [
-                dataset for i in range(len(metrics_per_mask["Dice per mask"]))
-            ]
+       
+        test_imgs = []
+        for test_img_dir in glob.glob(dataset + "/*"):
+            test_img = TestImages(test_img_dir)
+            test_imgs.append(test_img)
 
-            print(metrics)
-            metric_results.append(metrics)
-            metrics_per_mask_results = append_mask_metrics_dict(
-                metrics_per_mask_results, metrics_per_mask
-            )
+        metrics, metrics_per_mask = sam.get_sam_inference(test_imgs)
+        metrics_per_mask["Mask N"] = [
+            i for i in range(len(metrics_per_mask["Dice per mask"]))
+        ]
+        metrics["Sam generation"] = sam_gen
+        metrics_per_mask["Sam generation"] = [
+            sam_gen for i in range(len(metrics_per_mask["Dice per mask"]))
+        ]
+        metrics["Weights path"] = weights_path
+        metrics_per_mask["Weights path"] = [
+            weights_path for i in range(len(metrics_per_mask["Dice per mask"]))
+        ]
+        metrics["Dataset"] = dataset
+        metrics_per_mask["Dataset"] = [
+            dataset for i in range(len(metrics_per_mask["Dice per mask"]))
+        ]
+
+        print(metrics)
+        metric_results.append(metrics)
+        metrics_per_mask_results = append_mask_metrics_dict(
+            metrics_per_mask_results, metrics_per_mask
+        )
         del sam
 
     df = pd.DataFrame(metric_results)
+    df.to_csv(f"ExperimentData/BackboneExperimentData/{dset_name}_results.csv", index=False)
     df_metrics_per_mask = pd.DataFrame(metrics_per_mask_results)
     print(df_metrics_per_mask)
-    # df.to_csv("ExperimentData/BackboneExperimentData/MaizeEar_results.csv", index=False)
     df_metrics_per_mask.to_csv(
-        "ExperimentData/BackboneExperimentData/MaizeEar_results_per_mask.csv",
+        f"ExperimentData/BackboneExperimentData/{dset_name}_results_per_mask.csv",
         index=False,
     )
 
