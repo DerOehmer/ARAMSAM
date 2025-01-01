@@ -881,8 +881,6 @@ class App:
         elif self.experiment_step == 3:
             self.experiment_step = 0
             self.select_next_img()
-            if not self.img_fnames:
-                return
             self.ui.performing_embedding_label.setText(
                 f"Step 0/3: Check whether masks have been propagated correctly"
             )
@@ -892,4 +890,6 @@ class App:
             self.ui.delete_button.click()
             self.ui.delete_button.setDisabled(True)
             if self.tutorial_flag:
+                if not self.img_fnames:
+                    return
                 self.ui.start_tutorial("mask_deletion_texts")
