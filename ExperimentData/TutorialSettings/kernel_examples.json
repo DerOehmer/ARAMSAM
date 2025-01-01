@@ -46,7 +46,7 @@
         "widget": "annotation_visualizers",
         "object_index": 2,
         "decision":"good",
-        "text": "GOOD MASK. As long as individual kernels are\npossible to be recognised, they should\nbe annotated even at the edges od the ear.",
+        "text": "GOOD MASK. As long as individual kernels are\npossible to be recognised, they should\nbe annotated even at the edges of the ear.",
         "arrow_position": "none"
     },
     {

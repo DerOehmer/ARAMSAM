@@ -8,7 +8,7 @@
     {
         "widget": null,
         "object_index": null,
-        "text": "Drawing a polygon is done by adding multiple points around a kernel through right-clicking or pressing 'a'\nat the current mask location. Try to use multiple points to approximate a round shape.",
+        "text": "Drawing a polygon is done by adding multiple points around a kernel through right-clicking or pressing 'a'\nat the current cursor location. Try to use multiple points to approximate a round shape.",
         "arrow_position": "none"
     },   
     {
