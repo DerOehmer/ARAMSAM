@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import json
+import numpy as np
 
 
 def f_beta(row, beta, epsilon=1e-7):
@@ -13,8 +14,8 @@ def f_beta(row, beta, epsilon=1e-7):
 
 if __name__ == "__main__":
     BETA = 2
-    # PATH = "ExperimentData/AmgEvaluationData/Sam2_hieraS2.1.csv"
-    PATH = "ExperimentData/AmgEvaluationData/Sam1_VitH.csv"
+    PATH = "ExperimentData/AmgEvaluationData/Sam2_hieraS2.1.csv"
+    # PATH = "ExperimentData/AmgEvaluationData/Sam1_VitH.csv"
 
     amg_setting_cols = {
         "points_per_side": int,
@@ -31,11 +32,13 @@ if __name__ == "__main__":
     sam_type = os.path.basename(PATH).split(".csv")[0]
     config_json_path = f"ExperimentData/AmgEvaluationData/{sam_type}_best_config.json"
     amg_results_path = f"ExperimentData/AmgEvaluationData/{sam_type}_amg_results.csv"
+    best_config_results_path = (
+        f"ExperimentData/AmgEvaluationData/{sam_type}_best_config_results.csv"
+    )
 
     df = pd.read_csv(PATH)
 
     df["f_beta"] = df.apply(f_beta, axis=1, beta=BETA)
-    best_score = max(df["f_beta"])
 
     mean_fbeta_per_config = (
         df.groupby(list(amg_setting_cols.keys()))
@@ -55,6 +58,7 @@ if __name__ == "__main__":
         )
         .reset_index()
     )
+
     best_config_ser = mean_fbeta_per_config.sort_values("f_beta", ascending=False).iloc[
         [0]
     ]
@@ -62,8 +66,11 @@ if __name__ == "__main__":
     best_config_dict = best_config_ser.loc[:, list(amg_setting_cols.keys())].to_dict(
         orient="records"
     )[0]
+    conditions = [(df[col] == val) for col, val in best_config_dict.items()]
+    best_config_results = df[np.logical_and.reduce(conditions)]
 
     with open(config_json_path, "w") as f:
         json.dump(best_config_dict, f, indent=4)
 
     mean_fbeta_per_config.to_csv(amg_results_path, index=False)
+    best_config_results.to_csv(best_config_results_path, index=False)

@@ -244,7 +244,9 @@ def main():
                 metrics = queue.get()
                 metric_results.append(metrics)
                 df = pd.DataFrame(metric_results)
-                df.to_csv("Exp32/Sam2_hieraS2.1_8.csv", index=False)
+                df.to_csv(
+                    "ExperimentData/AmgEvaluationData/Sam2_hieraS2.1_8.csv", index=False
+                )
 
 
 if __name__ == "__main__":
