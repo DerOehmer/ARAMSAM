@@ -265,7 +265,6 @@ def main():
             config=config,
         )
 
-       
         test_imgs = []
         for test_img_dir in glob.glob(dataset + "/*"):
             test_img = TestImages(test_img_dir)
@@ -296,7 +295,9 @@ def main():
         del sam
 
     df = pd.DataFrame(metric_results)
-    df.to_csv(f"ExperimentData/BackboneExperimentData/{dset_name}_results.csv", index=False)
+    df.to_csv(
+        f"ExperimentData/BackboneExperimentData/{dset_name}_results.csv", index=False
+    )
     df_metrics_per_mask = pd.DataFrame(metrics_per_mask_results)
     print(df_metrics_per_mask)
     df_metrics_per_mask.to_csv(
