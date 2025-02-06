@@ -14,8 +14,8 @@ def f_beta(row, beta, epsilon=1e-7):
 
 if __name__ == "__main__":
     BETA = 2
-    PATH = "ExperimentData/AmgEvaluationData/Sam2_hieraS2.1.csv"
-    # PATH = "ExperimentData/AmgEvaluationData/Sam1_VitH.csv"
+    # PATH = "ExperimentData/AmgEvaluationData/Sam2_hieraS2.1.csv"
+    PATH = "ExperimentData/AmgEvaluationData/Sam1_VitH.csv"
 
     amg_setting_cols = {
         "points_per_side": int,
@@ -30,10 +30,18 @@ if __name__ == "__main__":
     }
 
     sam_type = os.path.basename(PATH).split(".csv")[0]
-    config_json_path = f"ExperimentData/AmgEvaluationData/{sam_type}_best_config.json"
+    best_config_json_path = (
+        f"ExperimentData/AmgEvaluationData/{sam_type}_best_config.json"
+    )
+    def_config_json_path = (
+        f"ExperimentData/AmgEvaluationData/{sam_type}_def_config.json"
+    )
     amg_results_path = f"ExperimentData/AmgEvaluationData/{sam_type}_amg_results.csv"
     best_config_results_path = (
         f"ExperimentData/AmgEvaluationData/{sam_type}_best_config_results.csv"
+    )
+    def_config_results_path = (
+        f"ExperimentData/AmgEvaluationData/{sam_type}_def_config_results.csv"
     )
 
     df = pd.read_csv(PATH)
@@ -66,11 +74,16 @@ if __name__ == "__main__":
     best_config_dict = best_config_ser.loc[:, list(amg_setting_cols.keys())].to_dict(
         orient="records"
     )[0]
-    conditions = [(df[col] == val) for col, val in best_config_dict.items()]
-    best_config_results = df[np.logical_and.reduce(conditions)]
+    with open(def_config_json_path, "r") as f:
+        def_config_dict = json.load(f)
+    best_conditions = [(df[col] == val) for col, val in best_config_dict.items()]
+    def_conditions = [(df[col] == val) for col, val in def_config_dict.items()]
+    best_config_results = df[np.logical_and.reduce(best_conditions)]
+    def_config_results = df[np.logical_and.reduce(def_conditions)]
 
-    with open(config_json_path, "w") as f:
-        json.dump(best_config_dict, f, indent=4)
+    # with open(best_config_json_path, "w") as f:
+    # json.dump(best_config_dict, f, indent=4)
 
-    mean_fbeta_per_config.to_csv(amg_results_path, index=False)
-    best_config_results.to_csv(best_config_results_path, index=False)
+    # mean_fbeta_per_config.to_csv(amg_results_path, index=False)
+    # best_config_results.to_csv(best_config_results_path, index=False)
+    def_config_results.to_csv(def_config_results_path, index=False)
