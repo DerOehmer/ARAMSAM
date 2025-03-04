@@ -44,6 +44,7 @@ class App:
         self.img_fnames = []
         self.output_dir = None
         self.experiment_mode = experiment_mode
+        self.experiment_progress = experiment_progress
         self.tutorial_flag = False
 
         self.ui.good_mask_button.clicked.connect(self.add_good_mask)

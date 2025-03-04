@@ -454,7 +454,7 @@ class UserInterface(QMainWindow):
                 factor = 1 / self.zoom_factor
                 self.zoom_level -= 1
 
-        if event.angleDelta().y() > 0:
+        if event.angleDelta().y() >= 0:
             self.zoom_level += 1
             factor = self.zoom_factor
 
