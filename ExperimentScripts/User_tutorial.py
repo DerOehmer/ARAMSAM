@@ -1,7 +1,11 @@
-from sam_annotator.main import create_vis_options
-from sam_annotator.app import App
-from PyQt6.QtTest import QTest
 import sys
+import os
+
+sys.path.append(os.path.abspath("."))
+from aramsam_annotator.main import create_vis_options
+from aramsam_annotator.app import App
+from PyQt6.QtTest import QTest
+
 
 
 def mock_open_load_folder_dialog():

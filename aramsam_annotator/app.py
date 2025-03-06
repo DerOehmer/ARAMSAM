@@ -12,11 +12,11 @@ from PyQt6.QtCore import (
 )
 from natsort import natsorted
 
-from sam_annotator.gui import UserInterface
-from sam_annotator.annotator import Annotator
-from sam_annotator.mask_visualizations import MaskData
-from sam_annotator.tracker import PanoImageAligner
-from sam_annotator.workers import (
+from aramsam_annotator.gui import UserInterface
+from aramsam_annotator.annotator import Annotator
+from aramsam_annotator.mask_visualizations import MaskData
+from aramsam_annotator.tracker import PanoImageAligner
+from aramsam_annotator.workers import (
     AMGWorker,
     Sam2ImgPairEmbeddingWorker,
     Sam1EmbeddingWorker,

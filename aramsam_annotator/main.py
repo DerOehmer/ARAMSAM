@@ -1,7 +1,7 @@
 import dataclasses
 
-from sam_annotator.app import App
-from sam_annotator.mask_visualizations import MaskVisualizationData
+from aramsam_annotator.app import App
+from aramsam_annotator.mask_visualizations import MaskVisualizationData
 
 
 def create_vis_options() -> tuple[list[str]]:

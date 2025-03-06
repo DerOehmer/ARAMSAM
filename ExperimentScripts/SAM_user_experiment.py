@@ -1,6 +1,10 @@
-from sam_annotator.main import create_vis_options
+import sys
+import os
+
+sys.path.append(os.path.abspath("."))
+from aramsam_annotator.main import create_vis_options
 from natsort import natsorted
-from sam_annotator.app import App
+from aramsam_annotator.app import App
 from PyQt6.QtTest import QTest
 import sys
 import glob

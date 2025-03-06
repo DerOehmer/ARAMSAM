@@ -1,3 +1,7 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath("."))
 from segment_anything import sam_model_registry, SamPredictor
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor

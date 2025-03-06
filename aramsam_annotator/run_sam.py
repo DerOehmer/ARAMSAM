@@ -8,7 +8,7 @@ import json
 from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 from segment_anything.modeling import Sam
 
-from sam_annotator.mask_visualizations import MaskVisualization, MaskData, MaskIdHandler
+from aramsam_annotator.mask_visualizations import MaskVisualization, MaskData, MaskIdHandler
 
 
 class SAM2AutomaticMaskGenerator:

@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
 from scipy.spatial import KDTree
-from sam_annotator.mask_visualizations import MaskData
-from sam_annotator.mask_visualizations import AnnotationObject
+from aramsam_annotator.mask_visualizations import MaskData
+from aramsam_annotator.mask_visualizations import AnnotationObject
 
 
 class PanoImageAligner:

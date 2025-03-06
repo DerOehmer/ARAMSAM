@@ -1,7 +1,11 @@
-from sam_annotator.main import create_vis_options
-from sam_annotator.app import App
-from sam_annotator.annotator import Annotator
-from sam_annotator.mask_visualizations import MaskData
+import sys
+import os
+
+sys.path.append(os.path.abspath("."))
+from aramsam_annotator.main import create_vis_options
+from aramsam_annotator.app import App
+from aramsam_annotator.annotator import Annotator
+from aramsam_annotator.mask_visualizations import MaskData
 from PyQt6.QtTest import QTest
 import sys
 import numpy as np

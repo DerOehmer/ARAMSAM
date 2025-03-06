@@ -6,12 +6,12 @@ from PyQt6.QtCore import (
     pyqtSlot,
 )
 
-from sam_annotator.run_sam import (
+from aramsam_annotator.run_sam import (
     BackgroundThreadSamPredictor,
     Sam2Inference,
     SamInference,
 )
-from sam_annotator.mask_visualizations import AnnotationObject, MaskData
+from aramsam_annotator.mask_visualizations import AnnotationObject, MaskData
 import numpy as np
 import time
 import sys

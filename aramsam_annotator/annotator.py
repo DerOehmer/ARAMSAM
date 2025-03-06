@@ -7,9 +7,9 @@ import json
 import time
 import glob
 
-from sam_annotator.run_sam import SamInference, Sam2Inference
-from sam_annotator.tracker import PanoImageAligner
-from sam_annotator.mask_visualizations import (
+from aramsam_annotator.run_sam import SamInference, Sam2Inference
+from aramsam_annotator.tracker import PanoImageAligner
+from aramsam_annotator.mask_visualizations import (
     MaskData,
     MaskVisualizationData,
     AnnotationObject,
