@@ -720,11 +720,11 @@ class App:
         self.ui.draw_poly_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.manual_annotation_enabled)
-        if self.annotator.manual_annotation_enabled:
+        if self.annotator.manual_annotation_enabled and self.experiment_mode is not None:
             self.ui.experiment_instructions_label.setText(
                 "positive point ('a'), negative point ('s'), undo point ('d')"
             )
-        else:
+        elif self.experiment_mode is not None:
             self.proposed_masks_instructions()
         self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
@@ -734,11 +734,11 @@ class App:
         self.ui.manual_annotation_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.polygon_drawing_enabled)
-        if self.annotator.polygon_drawing_enabled:
+        if self.annotator.polygon_drawing_enabled and self.experiment_mode is not None:
             self.ui.experiment_instructions_label.setText(
                 "positive point ('a'/'right-click'), undo point ('d')"
             )
-        else:
+        elif self.experiment_mode is not None:
             self.proposed_masks_instructions()
         self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
@@ -754,11 +754,11 @@ class App:
         self.ui.manual_annotation_button.setChecked(man_state)
         self.ui.draw_poly_button.setChecked(poly_state)
         self.annotator.toggle_mask_deletion()
-        if self.annotator.mask_deletion_enabled:
+        if self.annotator.mask_deletion_enabled and self.experiment_mode is not None:
             self.ui.experiment_instructions_label.setText(
                 "right-click on mask to delete it"
             )
-        else:
+        elif self.experiment_mode is not None:
             self.proposed_masks_instructions()
         self.annotator.update_collections(self.annotator.annotation)
         self.update_ui_imgs()
