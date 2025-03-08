@@ -22,6 +22,7 @@ from aramsam_annotator.workers import (
     Sam1EmbeddingWorker,
     Sam2PropagationWorker,
 )
+from aramsam_annotator.configs import AramsamConfigs
 
 
 class App:
@@ -34,11 +35,13 @@ class App:
         ui_options: dict = None,
         experiment_mode: str = None,
         experiment_progress: tuple = None,
+        configs: AramsamConfigs = None,
     ) -> None:
+        self.configs = configs
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
         self.ui = UserInterface(ui_options=ui_options, experiment_mode=experiment_mode)
-        self.annotator = Annotator()
+        self.annotator = Annotator(**configs.sam_configs.__dict__)
         self.threadpool = QThreadPool.globalInstance()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
@@ -95,7 +98,7 @@ class App:
 
     def set_sam(self):
         if self.experiment_mode is None:
-            background_embedding = True
+            background_embedding = self.configs.sam_backround_embedding
             if self.ui.sam2_checkbox.isChecked():
                 self.sam_gen = 2
             else:
@@ -152,13 +155,11 @@ class App:
         else:
             print(f"could not infer model type from model path {model_path}")
             print("model path must include one of [vit_b, vit_h, vit_l]")
-        self.annotator = Annotator(sam_ckpt=model_path, sam_model_type=model_type)
+        self.annotator = Annotator(model_ckpt_p=model_path, model_type=model_type)
 
-        ### this is lazy and shouled be changed! ###
+        self.threadpool.waitForDone(-1)
         self.ui.construct_ui()
-        ### this is lazy and shouled be changed! ###
 
-        # TODO: kill & collect old threads first!
         self.threadpool = QThreadPool()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
@@ -579,6 +580,9 @@ class App:
                 )
             else:
                 self.ui.performing_embedding_label.setText(f"Embeddings done!")
+                if self.experiment_mode is None:
+                    self.annotator.init_time_stamp()
+                self.update_ui_imgs()
 
     def amg_done(self, _):
         self.ui.close_basic_loading_window()
@@ -627,7 +631,8 @@ class App:
             self.segment_anything()
 
     def segment_anything(self):
-
+        if not self.configs.sam_amg and self.configs.yolo_model_ckpt_p is None:
+            return
         # self.annotator.predict_with_sam(self.bbox_tracker)
         self.annotator.prepare_amg(self.bbox_tracker)
         worker = AMGWorker(self.annotator.sam, self.mutex)
@@ -720,7 +725,10 @@ class App:
         self.ui.draw_poly_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.manual_annotation_enabled)
-        if self.annotator.manual_annotation_enabled and self.experiment_mode is not None:
+        if (
+            self.annotator.manual_annotation_enabled
+            and self.experiment_mode is not None
+        ):
             self.ui.experiment_instructions_label.setText(
                 "positive point ('a'), negative point ('s'), undo point ('d')"
             )

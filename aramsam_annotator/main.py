@@ -2,6 +2,7 @@ import dataclasses
 
 from aramsam_annotator.app import App
 from aramsam_annotator.mask_visualizations import MaskVisualizationData
+from aramsam_annotator.configs import AramsamConfigs
 
 
 def create_vis_options() -> tuple[list[str]]:
@@ -34,7 +35,8 @@ def main():
             "current": current_options,
         }
     }
-    app = App(ui_options=ui_options)
+    confs = AramsamConfigs()
+    app = App(ui_options=ui_options, configs=confs)
     print("app")
     app.run()
 

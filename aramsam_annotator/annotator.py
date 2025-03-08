@@ -20,11 +20,12 @@ from aramsam_annotator.mask_visualizations import (
 class Annotator:
     def __init__(
         self,
-        sam_ckpt: str = None,
-        sam_model_type: str = None,
+        gen: int = None,
+        model_ckpt_p: str = None,
+        model_type: str = None,
     ) -> None:
-        self.sam_ckpt = sam_ckpt
-        self.sam_model_type = sam_model_type
+        self.sam_ckpt = model_ckpt_p
+        self.sam_model_type = model_type
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.mask_id_handler = MaskIdHandler()
 
@@ -68,14 +69,9 @@ class Annotator:
                 background_embedding=background_embedding,
             )
         elif sam_gen == 1:
-            if self.sam_ckpt is None:
-                sam1_ckpt = "sam_vit_h_4b8939.pth"
-            else:
-                sam1_ckpt = self.sam_ckpt
-            if self.sam_model_type is None:
-                sam1_model_type = "vit_h"
-            else:
-                sam1_model_type = self.sam_model_type
+            sam1_ckpt = self.sam_ckpt
+            sam1_model_type = self.sam_model_type
+
             self.sam = SamInference(
                 self.mask_id_handler,
                 sam_checkpoint=sam1_ckpt,
