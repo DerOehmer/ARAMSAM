@@ -576,6 +576,8 @@ class Annotator:
 
     def save_annotations(self, save_path: Path, save_suffix: str = None) -> bool:
         output_masks_exist = False
+        if self.annotation is None:
+            return output_masks_exist
         img_id = os.path.splitext(self.annotation.img_name)[0]
         annots_path = os.path.join(save_path, f"{img_id}_annots")
         if save_suffix is not None:
@@ -588,10 +590,11 @@ class Annotator:
             os.path.join(annots_path, "img.jpg"),
             self.annotation.img,
         )
-        cv2.imwrite(
-            os.path.join(annots_path, "annotations.jpg"),
-            self.annotation.mask_visualizations.masked_img,
-        )
+        if self.annotation.mask_visualizations.masked_img is not None:
+            cv2.imwrite(
+                os.path.join(annots_path, "annotations.jpg"),
+                self.annotation.mask_visualizations.masked_img,
+            )
 
         mask_dir = os.path.join(annots_path, "masks")
 
@@ -604,6 +607,7 @@ class Annotator:
         good_masks_log_dict, total_time = self._log_and_save_masks(
             self.annotation.good_masks, mask_dir
         )
+
         all_masks_log_dict, _ = self._log_and_save_masks(self.annotation.masks)
         log_dict = {
             "All_masks": all_masks_log_dict,

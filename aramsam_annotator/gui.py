@@ -22,6 +22,7 @@ from PyQt6.QtGui import (
     QPainter,
     QPainterPath,
     QPolygonF,
+    QCloseEvent,
 )
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -52,6 +53,7 @@ class UserInterface(QMainWindow):
     output_dir_signal: pyqtSignal = pyqtSignal(str)
     sam_path_signal: pyqtSignal = pyqtSignal(str)
     save_signal: pyqtSignal = pyqtSignal(int)
+    shutdown_signal: pyqtSignal = pyqtSignal(int)
 
     def __init__(self, ui_options: dict = None, experiment_mode: str = None) -> None:
         super().__init__(parent=None)
@@ -77,7 +79,7 @@ class UserInterface(QMainWindow):
         self.menu_settings = self.menuBar().addMenu("Settings")
         self.menu.addAction("Save", self.save)
         self.menu.addAction("Save As", self.save_as)
-        self.menu.addAction("Exit", self.exit)
+        self.menu.addAction("Exit", self.closeEvent)
         self.menu_open.addAction("Load Image", self.load_img)
         self.menu_open.addAction("Load Folder", self.load_img_folder)
         self.menu_settings.addAction("Change Layout", self.open_layout_settings_box)
@@ -254,13 +256,6 @@ class UserInterface(QMainWindow):
             )
             self.labelCoords.show()
 
-            self.sam2_checkbox = QCheckBox(text="SAM2", parent=self)
-            self.sam2_checkbox.move(
-                15 * self.buttons_spacing + 14 * self.buttons_min_width,
-                int(self.height_offset / 2),
-            )
-            self.sam2_checkbox.setChecked(True)
-
         if self.experiment_mode in ["structured", "polygon", "tutorial"]:
             self.next_method_button = QPushButton("Next", self)
             self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
@@ -299,10 +294,20 @@ class UserInterface(QMainWindow):
         vis_height = int((self.height() - self.height_offset) / 2)
         return vis_width, vis_height
 
-    def exit(self):
-        ret = QMessageBox.question(self, "Exit", "Are you sure you want to exit?")
-        if ret == QMessageBox.StandardButton.Yes:
-            self.close()
+    def closeEvent(self, event: QCloseEvent = QCloseEvent()) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Quit Application",
+            "Are you sure you want to quit?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            print("Quitting application")
+            self.shutdown_signal.emit(1)
+            event.accept()  # Proceed with closing
+        else:
+            event.ignore()  # Cancel the close
 
     def save(self):
         self.save_signal.emit(1)

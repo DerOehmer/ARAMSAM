@@ -1,10 +1,10 @@
 import cv2
 from aramsam_annotator.configs import ImgTiles
-import tempfile
+
 import os
 
 
-def split_image_into_tiles(img_path: str, config: ImgTiles) -> list[str]:
+def split_image_into_tiles(img_path: str, temp_dir: str, config: ImgTiles) -> list[str]:
     if not config.do_tiling:
         return [img_path]
 
@@ -12,7 +12,6 @@ def split_image_into_tiles(img_path: str, config: ImgTiles) -> list[str]:
     height, width = img.shape[:2]
 
     stride = int(config.tile_size * (1 - config.tile_overlap))
-    temp_dir = tempfile.mkdtemp(dir=os.getcwd())
     tile_paths = []
 
     for top in range(0, height, stride):

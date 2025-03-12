@@ -1,9 +1,11 @@
 import sys
 import time
 import qdarkstyle
+import shutil
 
-from os import listdir
+from os import listdir, getcwd
 from os.path import isfile, join, basename, isdir, splitext, basename
+import tempfile
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import (
@@ -39,6 +41,7 @@ class App:
         configs: AramsamConfigs = None,
     ) -> None:
         self.configs = configs
+        self.temp_dir = tempfile.mkdtemp(dir=getcwd())
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
         self.ui = UserInterface(ui_options=ui_options, experiment_mode=experiment_mode)
@@ -79,8 +82,8 @@ class App:
         self.ui.sam_path_signal.connect(self.changed_sam_model)
         self.ui.save_signal.connect(self.save_output)
         self.ui.preview_annotation_point_signal.connect(self.manage_mouse_action)
-
         self.ui.layout_options_signal.connect(self._ui_config_changed)
+        self.ui.shutdown_signal.connect(self.shutdown)
 
         self.fields = ui_options["layout_settings_options"]["default"]
 
@@ -97,13 +100,18 @@ class App:
         self.ui.run()
         sys.exit(self.application.exec())
 
+    def shutdown(self, _) -> None:
+        self.threadpool.waitForDone(-1)
+        shutil.rmtree(self.temp_dir)
+        # self.ui.close()
+
     def set_sam(self):
         if self.experiment_mode is None:
             background_embedding = self.configs.sam_backround_embedding
-            if self.ui.sam2_checkbox.isChecked():
-                self.sam_gen = 2
-            else:
+            if self.configs.sam_configs.gen == 1:
                 self.sam_gen = 1
+            else:
+                self.sam_gen = 2
         elif self.experiment_mode in ["structured", "tutorial"]:
             background_embedding = False
 
@@ -172,15 +180,10 @@ class App:
         img_fpath = self.ui.open_img_load_file_dialog()
         if img_fpath == "":
             return
-        if self.configs.img_tiles.do_tiling:
-            tiling_start = time.time()
-            tile_fpaths = split_image_into_tiles(img_fpath, self.configs.img_tiles)
-            tiling_duration = time.time() - tiling_start
-            print(f"Image tiling took {tiling_duration} seconds")
-            self.img_fnames.extend(tile_fpaths)
-        else:
-            self.img_fnames.append(img_fpath)
-        self.select_next_img()
+        self.img_fnames.append(img_fpath)
+        finish_code = self.select_next_img()
+        if finish_code == 0:
+            self.ui.close()
 
     def load_img_folder(self, _) -> None:
         self.set_sam()
@@ -192,22 +195,21 @@ class App:
             img_fnames = [
                 join(img_dir, f) for f in listdir(img_dir) if isfile(join(img_dir, f))
             ]
-            if self.configs.img_tiles.do_tiling:
-                tiling_start = time.time()
-                for img_fpath in img_fnames:
-                    tile_fpaths = split_image_into_tiles(
-                        img_fpath, self.configs.img_tiles
-                    )
-                    self.img_fnames.extend(tile_fpaths)
-                tiling_duration = time.time() - tiling_start
-                print(f"Image tiling took {tiling_duration} seconds")
-            else:
-                self.img_fnames.extend(img_fnames)
+            self.img_fnames.extend(img_fnames)
             self.img_fnames = natsorted(self.img_fnames)
         self.select_next_img()
 
     def _pop_img_fnames(self) -> tuple[Path, Path]:
-        img_name = Path(self.img_fnames.pop())
+        img_name = self.img_fnames.pop()
+
+        if self.configs.img_tiles.do_tiling and self.temp_dir not in img_name:
+            self.img_fnames.extend(
+                split_image_into_tiles(img_name, self.temp_dir, self.configs.img_tiles)
+            )
+            img_name = Path(self.img_fnames.pop())
+        else:
+            img_name = Path(img_name)
+
         if self.img_fnames:
             next_img_name = Path(self.img_fnames[-1])
         else:
@@ -231,6 +233,15 @@ class App:
                     )
 
                 self.ui.close()
+            else:
+                response = self.ui.create_message_box(
+                    False,
+                    "No more images left in current directory. Click Yes to save and close.",
+                    wait_for_user=True,
+                )
+                if response:
+                    self.ui.save()
+                    return 0  # TODO: Ensure the app closes properly
 
             return
 
@@ -261,9 +272,12 @@ class App:
             img_name, next_img_name = self._pop_img_fnames()
 
         elif self.annotator.annotation is not None:
-            if self.experiment_mode is None:
+            if (
+                self.experiment_mode is None
+                and len(self.annotator.annotation.good_masks) > 0
+            ):
                 self.ui.open_save_annots_box()
-            else:
+            elif len(self.annotator.annotation.good_masks) > 0:
                 self.ui.save()
 
         self.propagate_good_masks()
@@ -285,13 +299,19 @@ class App:
                     and not next_img_done  # if previous annotations wer just loaded from disk, embedding is still required
                 )
                 or self.experiment_mode == "structured"
+                or not self.configs.sam_backround_embedding
             ):
                 self.embed_img(basename(img_name))
+                return
             else:
                 self.annotator.update_sam_features_to_current_annotation()
                 self.segment_anything()
 
-            if embed_next and self.experiment_mode is None:
+            if (
+                embed_next
+                and self.experiment_mode is None
+                and self.configs.sam_backround_embedding
+            ):
                 self.embed_img(basename(next_img_name))
         elif self.experiment_mode == "polygon":
             self.ui.performing_embedding_label.setText(
@@ -300,9 +320,9 @@ class App:
             self.ui.close_basic_loading_window()
             self.start_user_annotation()
 
-        self.threadpool.waitForDone(-1)
+        # self.threadpool.waitForDone(-1)
 
-        self.ui.close_basic_loading_window()
+        # self.ui.close_basic_loading_window()
 
     def start_user_annotation(self):
         if self.experiment_mode == "tutorial":
@@ -329,7 +349,7 @@ class App:
             self.annotator.sam.predictor.is_image_set = False
 
             if self.experiment_step > 2:
-                self.ui.close()
+                self.ui.closeEvent()
                 return 0
             return self.select_next_img()
         elif (
@@ -504,6 +524,7 @@ class App:
             self.ui.performing_embedding_label.setText(
                 f"Embedding {embedding_threads} images"
             )
+            self.ui.create_basic_loading_window(text="Please wait... ")
 
     def start_mask_batch_thread(self, track_remaining: bool = False):
 
@@ -611,6 +632,7 @@ class App:
             self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
+        self.ui.close_basic_loading_window()
 
         if result[0] is None:
             self.segment_anything()
@@ -652,6 +674,7 @@ class App:
         if not self.configs.sam_amg and self.configs.yolo_model_ckpt_p is None:
             return
         elif self.configs.yolo_model_ckpt_p is not None:
+            self.annotator.mask_idx = 0  # TODO: this is only temporary
             return
         # self.annotator.predict_with_sam(self.bbox_tracker)
         self.annotator.prepare_amg(self.bbox_tracker)
