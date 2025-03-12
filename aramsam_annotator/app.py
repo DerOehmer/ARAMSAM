@@ -23,6 +23,7 @@ from aramsam_annotator.workers import (
     Sam2PropagationWorker,
 )
 from aramsam_annotator.configs import AramsamConfigs
+from aramsam_annotator.img_tiling import split_image_into_tiles
 
 
 class App:
@@ -171,7 +172,14 @@ class App:
         img_fpath = self.ui.open_img_load_file_dialog()
         if img_fpath == "":
             return
-        self.img_fnames.append(img_fpath)
+        if self.configs.img_tiles.do_tiling:
+            tiling_start = time.time()
+            tile_fpaths = split_image_into_tiles(img_fpath, self.configs.img_tiles)
+            tiling_duration = time.time() - tiling_start
+            print(f"Image tiling took {tiling_duration} seconds")
+            self.img_fnames.extend(tile_fpaths)
+        else:
+            self.img_fnames.append(img_fpath)
         self.select_next_img()
 
     def load_img_folder(self, _) -> None:
@@ -184,7 +192,17 @@ class App:
             img_fnames = [
                 join(img_dir, f) for f in listdir(img_dir) if isfile(join(img_dir, f))
             ]
-            self.img_fnames.extend(img_fnames)
+            if self.configs.img_tiles.do_tiling:
+                tiling_start = time.time()
+                for img_fpath in img_fnames:
+                    tile_fpaths = split_image_into_tiles(
+                        img_fpath, self.configs.img_tiles
+                    )
+                    self.img_fnames.extend(tile_fpaths)
+                tiling_duration = time.time() - tiling_start
+                print(f"Image tiling took {tiling_duration} seconds")
+            else:
+                self.img_fnames.extend(img_fnames)
             self.img_fnames = natsorted(self.img_fnames)
         self.select_next_img()
 
@@ -633,6 +651,8 @@ class App:
     def segment_anything(self):
         if not self.configs.sam_amg and self.configs.yolo_model_ckpt_p is None:
             return
+        elif self.configs.yolo_model_ckpt_p is not None:
+            return
         # self.annotator.predict_with_sam(self.bbox_tracker)
         self.annotator.prepare_amg(self.bbox_tracker)
         worker = AMGWorker(self.annotator.sam, self.mutex)
@@ -687,7 +707,6 @@ class App:
                     False,
                     "All proposed masks are done. Press the Next button if you want to continue with selecting masks interactively.",
                 )
-            print("All proposed masks are done")
             self.update_ui_imgs()
 
         else:
@@ -705,7 +724,6 @@ class App:
                     False,
                     "All proposed masks are done. Press the Next button if you want to continue with selecting masks interactively.",
                 )
-            print("All proposed masks are done")
             self.update_ui_imgs()
         else:
             self.update_ui_imgs(center=new_center)

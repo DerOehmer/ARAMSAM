@@ -9,10 +9,18 @@ class SamConfigs:
 
 
 @dataclass
+class ImgTiles:
+    do_tiling: bool = True
+    tile_size: int = 640
+    tile_overlap: float = 0.2
+
+
+@dataclass
 class AramsamConfigs:
     sam_configs: SamConfigs = SamConfigs()
-    sam_backround_embedding: bool = False
+    sam_backround_embedding: bool = True
     sam_amg: bool = False
+    img_tiles: ImgTiles = ImgTiles()
     yolo_model_ckpt_p: str = "KernelYOLO8x.pt"
 
     def __post_init__(self):
