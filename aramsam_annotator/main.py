@@ -10,7 +10,7 @@ def create_vis_options() -> tuple[list[str]]:
     default_vis_options = [
         "img",
         "img_sam_preview",
-        "masked_img_cnt",
+        "bbox_img_cnt",
         "mask_collection_cnt",
     ]
 

@@ -12,6 +12,7 @@ from aramsam_annotator.run_sam import (
     SamInference,
 )
 from aramsam_annotator.mask_visualizations import AnnotationObject, MaskData
+from aramsam_annotator.run_yolo import YoloInference
 import numpy as np
 import time
 import sys
@@ -191,10 +192,49 @@ class AMGWorker(QRunnable):
             self.signals.finished.emit("done")
 
 
+class YoloPredicitonWorker(QRunnable):
+    def __init__(
+        self,
+        yolo: YoloInference,
+        mutex: QMutex,
+    ):
+        super().__init__()
+        self.signals = YoloSignals()
+        self.yolo = yolo
+        self.mutex = mutex
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            self.mutex.lock()
+            now = time.time()
+            bbox_objs = self.yolo.infer_image()
+            duration = time.time() - now
+            print(f"YOLO took {duration} s")
+            result = bbox_objs
+            self.mutex.unlock()
+
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+
+        else:
+            self.signals.result.emit(result)
+        finally:
+            self.signals.finished.emit("done")
+
+
 class WorkerSignals(QObject):
     finished: pyqtSignal = pyqtSignal(str)
     error: pyqtSignal = pyqtSignal(tuple)
     result: pyqtSignal = pyqtSignal(tuple)
+
+
+class YoloSignals(QObject):
+    finished: pyqtSignal = pyqtSignal(str)
+    error: pyqtSignal = pyqtSignal(tuple)
+    result: pyqtSignal = pyqtSignal(list)
 
 
 class Sam2EmbeddingWorkerSignals(QObject):

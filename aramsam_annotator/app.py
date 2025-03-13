@@ -23,6 +23,7 @@ from aramsam_annotator.workers import (
     Sam2ImgPairEmbeddingWorker,
     Sam1EmbeddingWorker,
     Sam2PropagationWorker,
+    YoloPredicitonWorker,
 )
 from aramsam_annotator.configs import AramsamConfigs
 from aramsam_annotator.img_tiling import split_image_into_tiles
@@ -45,7 +46,7 @@ class App:
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
         self.ui = UserInterface(ui_options=ui_options, experiment_mode=experiment_mode)
-        self.annotator = Annotator(**configs.sam_configs.__dict__)
+        self.annotator = Annotator(self.configs)
         self.threadpool = QThreadPool.globalInstance()
         self.threadpool.setMaxThreadCount(1)
         self.img_fnames = []
@@ -164,7 +165,7 @@ class App:
         else:
             print(f"could not infer model type from model path {model_path}")
             print("model path must include one of [vit_b, vit_h, vit_l]")
-        self.annotator = Annotator(model_ckpt_p=model_path, model_type=model_type)
+        self.annotator = Annotator(self.configs)
 
         self.threadpool.waitForDone(-1)
         self.ui.construct_ui()
@@ -181,9 +182,7 @@ class App:
         if img_fpath == "":
             return
         self.img_fnames.append(img_fpath)
-        finish_code = self.select_next_img()
-        if finish_code == 0:
-            self.ui.close()
+        self.select_next_img()
 
     def load_img_folder(self, _) -> None:
         self.set_sam()
@@ -234,14 +233,13 @@ class App:
 
                 self.ui.close()
             else:
-                response = self.ui.create_message_box(
+                reply = self.ui.create_message_box(
                     False,
-                    "No more images left in current directory. Click Yes to save and close.",
+                    "No more images left in current directory. Load a new folder to proceed.\nClick Yes to save current annotations.",
                     wait_for_user=True,
                 )
-                if response:
+                if reply:
                     self.ui.save()
-                    return 0  # TODO: Ensure the app closes properly
 
             return
 
@@ -268,7 +266,9 @@ class App:
             print(
                 f"{img_name} is already annotated but {next_img_name} is not. Loading previous annotations"
             )
-            self.load_previous_annotations(img_name, next_img_name)
+            if self.configs.save_data.style == "default":
+                # TODO: implement loading of annotations with YOLO Format
+                self.load_previous_annotations(img_name, next_img_name)
             img_name, next_img_name = self._pop_img_fnames()
 
         elif self.annotator.annotation is not None:
@@ -305,7 +305,7 @@ class App:
                 return
             else:
                 self.annotator.update_sam_features_to_current_annotation()
-                self.segment_anything()
+                self.propose_masks()
 
             if (
                 embed_next
@@ -410,10 +410,15 @@ class App:
             return True
 
         img_path = str(img_name)
-        img_id = splitext(basename(img_path))[0]
+        img_file_name = basename(img_path)
+        img_id = splitext(img_file_name)[0]
         annot_id = f"{img_id}_annots"
         annot_path = join(self.output_dir, annot_id)
-        if isdir(annot_path) and isfile(join(annot_path, "log.json")):
+        if self.configs.save_data.style == "yolo":
+            yolo_img_path = join(self.output_dir, "images", img_file_name)
+            if isfile(yolo_img_path):
+                return True
+        elif isdir(annot_path) and isfile(join(annot_path, "log.json")):
             return True
         return False
 
@@ -524,7 +529,9 @@ class App:
             self.ui.performing_embedding_label.setText(
                 f"Embedding {embedding_threads} images"
             )
-            self.ui.create_basic_loading_window(text="Please wait... ")
+            self.ui.create_basic_loading_window(
+                text="Please wait... Processing image with SAM"
+            )
 
     def start_mask_batch_thread(self, track_remaining: bool = False):
 
@@ -623,9 +630,9 @@ class App:
                     self.annotator.init_time_stamp()
                 self.update_ui_imgs()
 
-    def amg_done(self, _):
+    def object_proposal_done(self, _):
         self.ui.close_basic_loading_window()
-        print("AMG done")
+        print("Object proposal done")
 
     def propagation_done(self, maskn):
         if self.experiment_mode is None:
@@ -635,7 +642,7 @@ class App:
         self.ui.close_basic_loading_window()
 
         if result[0] is None:
-            self.segment_anything()
+            self.propose_masks()
 
             return
         features, original_size, input_size, img_name = result
@@ -650,7 +657,7 @@ class App:
 
                 self.annotator.update_sam_features_to_current_annotation()
 
-                self.segment_anything()
+                self.propose_masks()
 
                 return
 
@@ -668,25 +675,40 @@ class App:
     def receive_sam2_embedding(self, do_amg: bool):
         print("Will now do SAM2 embedding", do_amg)
         if do_amg:
-            self.segment_anything()
+            self.propose_masks()
 
-    def segment_anything(self):
-        if not self.configs.sam_amg and self.configs.yolo_model_ckpt_p is None:
-            return
+    def propose_masks(self):
+        if self.configs.sam_amg:
+            self.start_amg_worker()
         elif self.configs.yolo_model_ckpt_p is not None:
-            self.annotator.mask_idx = 0  # TODO: this is only temporary
-            return
-        # self.annotator.predict_with_sam(self.bbox_tracker)
+            self.start_yolo_worker()
+        return
+
+    def start_yolo_worker(self):
+        self.annotator.prepare_yolo()
+        worker = YoloPredicitonWorker(self.annotator.yolo, self.mutex)
+        worker.signals.result.connect(self.receive_yolo_results)
+        worker.signals.finished.connect(self.object_proposal_done)
+        self.threadpool.start(worker)
+        self.ui.create_basic_loading_window(
+            text="Please wait... Running Prediction with YOLO model. If you see this\nyou propably don't have a GPU that is recognised by ARAMSAM"
+        )
+
+    def receive_yolo_results(self, result: list):
+        self.annotator.process_yolo_bboxes(result)
+        self.update_ui_imgs()
+        if self.annotator.time_stamp is None:
+            self.annotator.init_time_stamp()
+
+    def start_amg_worker(self):
         self.annotator.prepare_amg(self.bbox_tracker)
         worker = AMGWorker(self.annotator.sam, self.mutex)
         worker.signals.result.connect(self.receive_amg_results)
-        worker.signals.finished.connect(self.amg_done)
+        worker.signals.finished.connect(self.object_proposal_done)
         self.threadpool.start(worker)
         self.ui.create_basic_loading_window(
             text="Please wait... This step can take up to 30 seconds"
         )
-
-        # mask_objs, annotated_image = self.annotator.automatic_mask_generation()
 
     def receive_amg_results(self, result: tuple):
         mask_objs, annotated_image = result

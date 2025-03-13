@@ -12,7 +12,7 @@ class MaskIdHandler:
         self._id = 0
         self.ids: list[int] = []
 
-    def set_id(self):
+    def get_id(self):
         current_id = self._id
         self.ids.append(current_id)
         self._id += 1
@@ -22,8 +22,9 @@ class MaskIdHandler:
 @dataclass
 class MaskData:
     mid: int
-    mask: np.ndarray
     origin: str
+    mask: np.ndarray = None
+    bbox: tuple = None  # xyxy
     time_stamp: int = None  # in deciseconds (1/10th of a second)
     center: tuple = None
     color_idx: int = None
@@ -34,12 +35,15 @@ class MaskData:
 class MaskVisualizationData:
     img: np.ndarray = None
     img_sam_preview: np.ndarray = None
-    mask: np.ndarray = None
+    mask: np.ndarray = None  # mask of current object of interest
     maskinrgb: np.ndarray = None
     masked_img: np.ndarray = None
     mask_collection: np.ndarray = None
     masked_img_cnt: np.ndarray = None
     mask_collection_cnt: np.ndarray = None
+    bbox: tuple = None  # xyxy of current object of interest
+    bbox_img: np.ndarray = None
+    bbox_img_cnt: np.ndarray = None
 
 
 class AnnotationObject:
@@ -69,9 +73,12 @@ class AnnotationObject:
         self.mask_decisions = [False for _ in range(len(self.masks))]"""
 
     def set_current_mask(self, mask_idx: int):
-        self.mask_visualizations.mask = cv2.cvtColor(
-            self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
-        )
+        if self.masks[mask_idx].mask is not None:
+            self.mask_visualizations.mask = cv2.cvtColor(
+                self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
+            )
+        elif self.masks[mask_idx].bbox is not None:
+            self.mask_visualizations.bbox = self.masks[mask_idx].bbox
 
     def add_masks(self, masks, decision=False):
         self.masks.extend(masks)
@@ -86,13 +93,14 @@ class AnnotationObject:
         return self.features, self.original_size, self.input_size
 
     def load_masks_from_dir(self, masks_dir: Path, mid_handler: MaskIdHandler):
+        # TODO adapt for bounding boxes
         mask_files = sorted(masks_dir.glob("*.png"))
         for mask_file in mask_files:
             if not mask_file.is_file():
                 raise FileNotFoundError(f"File {mask_file} not found")
             mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
             mask_data = MaskData(
-                mid=mid_handler.set_id(),
+                mid=mid_handler.get_id(),
                 mask=mask,
                 origin="",
             )
@@ -114,10 +122,12 @@ class MaskVisualization:
 
         self.cnt_color = cnt_color
         self.masked_img: np.ndarray = None
+        self.bbox_img: np.ndarray = None
         self.maskinrgb: np.ndarray = None
         self.mask_collection: np.ndarray = None
         self._mask_coll_bin: np.ndarray = None
         self.masked_img_cnt: np.ndarray = None
+        self.bbox_img_cnt: np.ndarray = None
         self.mask_collection_cnt: np.ndarray = None
         self.img_man_preview: np.ndarray = None
 
@@ -201,7 +211,7 @@ class MaskVisualization:
         if self.masked_img is None or self.mask_ids_to_remove:
             self.masked_img = self.img.copy()
 
-        self._set_mask_centers()
+        self._set_obj_centers()
         self._assign_mask_colors()
 
         for m in self.mask_objs:
@@ -211,16 +221,25 @@ class MaskVisualization:
                 and m.mid not in self.mask_ids_to_add
             ):
                 continue
-            cnts = self.set_contour(m)
-            r, g, b = self.colormap[m.color_idx]
-            self.masked_img = cv2.drawContours(
-                self.masked_img,
-                cnts,
-                -1,
-                (int(b), int(g), int(r)),
-                -1,
-                lineType=cv2.LINE_8,
-            )
+            if m.mask is not None:
+                cnts = self.set_contour(m)
+                r, g, b = self.colormap[m.color_idx]
+                self.masked_img = cv2.drawContours(
+                    self.masked_img,
+                    cnts,
+                    -1,
+                    (int(b), int(g), int(r)),
+                    -1,
+                    lineType=cv2.LINE_8,
+                )
+
+            elif m.bbox is not None:
+                x1, y1, x2, y2 = m.bbox
+                r, g, b = 0, 0, 255  # TODO: Implement color based on class
+                self.masked_img = cv2.rectangle(
+                    self.masked_img, (x1, y1), (x2, y2), (int(b), int(g), int(r)), 2
+                )
+
             cv2.putText(
                 self.masked_img,
                 str(m.mid),
@@ -233,6 +252,39 @@ class MaskVisualization:
             )
 
         return self.masked_img
+
+    def get_bbox_img(self) -> np.ndarray:
+        if self.no_collection_to_update:
+            return self.bbox_img
+        if self.bbox_img is None or self.mask_ids_to_remove:
+            self.bbox_img = self.img.copy()
+
+        self._set_obj_centers()
+        # self._assign_mask_colors() #TODO: Implement color based on class
+        self._assign_bbox()
+
+        for m in self.mask_objs:
+            if (
+                self.mask_ids_to_add
+                and not self.mask_ids_to_remove
+                and m.mid not in self.mask_ids_to_add
+            ):
+                continue
+
+            x1, y1, x2, y2 = m.bbox
+            r, g, b = 255, 0, 0  # TODO: Implement color based on class
+            self.bbox_img = cv2.rectangle(
+                self.bbox_img, (x1, y1), (x2, y2), (int(b), int(g), int(r)), 1
+            )
+        return self.bbox_img
+
+    def get_bbox_img_cnt(self) -> np.ndarray:
+        if self.bbox_img is None:
+            self.get_masked_img()
+        self.bbox_img_cnt = self.bbox_img.copy()
+        if self.preview_mask is not None:
+            self.bbox_img_cnt[self.preview_mask == 255] = 222, 52, 235
+        return self.bbox_img_cnt
 
     def get_masked_img_cnt(self, cnt: np.ndarray) -> np.ndarray:
         if self.masked_img is None:
@@ -248,7 +300,7 @@ class MaskVisualization:
                 lineType=cv2.LINE_8,
             )
         if self.preview_mask is not None:
-            self.masked_img_cnt[self.preview_mask == 255] = 255, 255, 255
+            self.masked_img_cnt[self.preview_mask == 255] = 222, 52, 235
         return self.masked_img_cnt
 
     def get_mask_collection(self) -> np.ndarray:
@@ -268,10 +320,12 @@ class MaskVisualization:
                 and m.mid not in self.mask_ids_to_add
             ):
                 continue
-            m = m.mask
-            overlap = cv2.bitwise_and(m, self._mask_coll_bin)
-            self._mask_coll_bin = np.where(m == 255, 255, self._mask_coll_bin)
-            self.mask_collection[np.where(m == 255)] = [255, 255, 255]
+            if m.mask is None:
+                return self.mask_collection
+            mask = m.mask
+            overlap = cv2.bitwise_and(mask, self._mask_coll_bin)
+            self._mask_coll_bin = np.where(mask == 255, 255, self._mask_coll_bin)
+            self.mask_collection[np.where(mask == 255)] = [255, 255, 255]
             self.mask_collection[np.where(overlap == 255)] = [0, 0, 255]
 
         return self.mask_collection
@@ -300,6 +354,8 @@ class MaskVisualization:
 
     def get_maskinrgb(self, mask_obj: MaskData) -> np.ndarray:
         img = self.img.copy()
+        if mask_obj.mask is None:
+            return img
         mask = mask_obj.mask
         self.maskinrgb = cv2.bitwise_and(img, img, mask=mask)
 
@@ -333,6 +389,14 @@ class MaskVisualization:
 
                 m.color_idx = coli
 
+    def _assign_bbox(self):
+        for m in self.mask_objs:
+            if m.bbox is None and m.mask is not None:
+                yindcs, xindcs = np.where(m.mask == 255)
+                xmin, xmax = np.amin(xindcs), np.amax(xindcs)
+                ymin, ymax = np.amin(yindcs), np.amax(yindcs)
+                m.bbox = (xmin, ymin, xmax, ymax)
+
     def _find_nearest_neighbors(self, points: np.ndarray, k: int) -> np.ndarray:
         """
         Find the k nearest neighbors for each point in a 2D space.
@@ -355,17 +419,20 @@ class MaskVisualization:
         # Exclude the first neighbor (the point itself)
         return indices[:, 1:]
 
-    def _set_mask_centers(self):
+    def _set_obj_centers(self):
         for m in self.mask_objs:
             if m.center is None:
-                try:
+                if m.mask is not None:
                     yindcs, xindcs = np.where(m.mask == 255)
-                except ValueError:
-                    print("error")
-                xmin, xmax = np.amin(xindcs), np.amax(xindcs)
-                ymin, ymax = np.amin(yindcs), np.amax(yindcs)
-                cx, cy = (xmin + xmax) // 2, (ymin + ymax) // 2
-                m.center = (cx, cy)
+
+                    xmin, xmax = np.amin(xindcs), np.amax(xindcs)
+                    ymin, ymax = np.amin(yindcs), np.amax(yindcs)
+                    cx, cy = (xmin + xmax) // 2, (ymin + ymax) // 2
+                    m.center = (cx, cy)
+                elif m.bbox is not None:
+                    x1, y1, x2, y2 = m.bbox
+                    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                    m.center = (cx, cy)
 
     def _weighted_mask(self, alpha=1):
         if self.preview_mask is None:

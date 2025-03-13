@@ -104,7 +104,11 @@ class PanoImageAligner:
                 tracked_masks, self.matching_masks[1]
             )
             print(len(selected_masks), "masks selected in panorama tracking")
-            return [MaskData(mask, "Panorama_tracking") for mask in selected_masks]
+            # TODO: Chck whether mask id should be added here
+            return [
+                MaskData(mask=mask, origin="Panorama_tracking")
+                for mask in selected_masks
+            ]
 
         elif len(self.matching_masks) == 1:
             bboxes_np = self._masks_to_bboxes_np(tracked_masks)

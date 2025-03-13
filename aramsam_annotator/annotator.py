@@ -8,6 +8,7 @@ import time
 import glob
 
 from aramsam_annotator.run_sam import SamInference, Sam2Inference
+from aramsam_annotator.run_yolo import YoloInference
 from aramsam_annotator.tracker import PanoImageAligner
 from aramsam_annotator.mask_visualizations import (
     MaskData,
@@ -15,17 +16,16 @@ from aramsam_annotator.mask_visualizations import (
     AnnotationObject,
     MaskIdHandler,
 )
+from aramsam_annotator.configs import AramsamConfigs
 
 
 class Annotator:
-    def __init__(
-        self,
-        gen: int = None,
-        model_ckpt_p: str = None,
-        model_type: str = None,
-    ) -> None:
-        self.sam_ckpt = model_ckpt_p
-        self.sam_model_type = model_type
+    def __init__(self, configs: AramsamConfigs) -> None:
+        self.configs = configs
+        self.sam_ckpt = self.configs.sam_configs.model_ckpt_p
+        self.sam_model_type = self.configs.sam_configs.model_type
+        self.sam = None
+        self.yolo = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.mask_id_handler = MaskIdHandler()
 
@@ -48,6 +48,7 @@ class Annotator:
             "Polygon_drawing": "plg",
             "Sam2_tracking": "s2t",
             "Panorama_tracking": "pat",
+            "Yolo_prediction": "yol",
         }
         self.time_stamp = None  # in deciseconds (1/10th of a second)
 
@@ -205,6 +206,16 @@ class Annotator:
             input_size=self.annotation.input_size,
         )
 
+    def prepare_yolo(self):
+        if self.annotation is None:
+            raise ValueError("No annotation object found.")
+
+        self.mask_idx = 0
+        if self.yolo is None:
+            self.yolo = YoloInference(self.mask_id_handler)
+            self.yolo.load_checkpoint(self.configs.yolo_model_ckpt_p)
+        self.yolo.set_img(self.annotation.img)
+
     def prepare_amg(self, bbox_tracker: PanoImageAligner = None):
         if self.annotation is None:
             raise ValueError("No annotation object found.")
@@ -221,7 +232,7 @@ class Annotator:
             prop_mask_out = self.sam._torch_to_npmasks(prop_mask_out_torch)
             prop_mask_objs = [
                 MaskData(
-                    mid=self.mask_id_handler.set_id(),
+                    mid=self.mask_id_handler.get_id(),
                     mask=mask,
                     origin="Panorama_tracking",
                     time_stamp=1,
@@ -271,6 +282,12 @@ class Annotator:
         self.preselect_mask()
         print(f"Preselect time: {time.time() - start_preselect}")
 
+    def process_yolo_bboxes(self, bboxes: list[MaskData]):
+        self.annotation.add_masks(bboxes, decision=True)
+        self.update_mask_idx(self.mask_idx)
+        self.preselect_mask()
+        self.update_collections(self.annotation)
+
     def convey_color_to_next_annot(self, next_mask_objs: list[MaskData]):
         for mobj in self.annotation.good_masks:
             mid = mobj.mid
@@ -291,7 +308,7 @@ class Annotator:
                 return "Mask not ready"
 
             mask_to_store = MaskData(
-                mid=self.mask_id_handler.set_id(),
+                mid=self.mask_id_handler.get_id(),
                 mask=annot.preview_mask,
                 origin=origin,
                 time_stamp=self._get_time_stamp(),
@@ -304,7 +321,7 @@ class Annotator:
             if annot.preview_mask is None:
                 return "No polygon provided"
             mask_to_store = MaskData(
-                mid=self.mask_id_handler.set_id(),
+                mid=self.mask_id_handler.get_id(),
                 mask=annot.preview_mask,
                 origin="Polygon_drawing",
                 time_stamp=self._get_time_stamp(),
@@ -319,11 +336,12 @@ class Annotator:
                 time_stamp = self._get_time_stamp()
             mask_to_store = MaskData(
                 mid=(
-                    self.mask_id_handler.set_id()
+                    self.mask_id_handler.get_id()
                     if mask_obj.mid is None
                     else mask_obj.mid
                 ),
                 mask=mask_obj.mask,
+                bbox=mask_obj.bbox,
                 origin=mask_obj.origin,
                 color_idx=mask_obj.color_idx,
                 center=mask_obj.center,
@@ -334,7 +352,7 @@ class Annotator:
 
         else:
             return None
-        if mask_to_store.mask is None:
+        if mask_to_store.mask is None and mask_to_store.bbox is None:
             print("No mask to store")
             return (0, 0)
 
@@ -377,22 +395,23 @@ class Annotator:
         mask = mask_obj.mask
         maskorigin = mask_obj.origin
         mcenter = ""
+        if mask is not None:
+            mask_coll_bin = (
+                np.any(
+                    annot.mask_visualizations.mask_collection != [0, 0, 0], axis=-1
+                ).astype(np.uint8)
+                * 255
+            )
 
-        mask_coll_bin = (
-            np.any(
-                annot.mask_visualizations.mask_collection != [0, 0, 0], axis=-1
-            ).astype(np.uint8)
-            * 255
-        )
-        mask_overlap = cv2.bitwise_and(mask_coll_bin, mask)
-        mask_size = np.count_nonzero(mask)
-        mask_overlap_size = np.count_nonzero(mask_overlap)
-        overlap_ratio = mask_overlap_size / mask_size
+            mask_overlap = cv2.bitwise_and(mask_coll_bin, mask)
+            mask_size = np.count_nonzero(mask)
+            mask_overlap_size = np.count_nonzero(mask_overlap)
+            overlap_ratio = mask_overlap_size / mask_size
 
-        if overlap_ratio > max_overlap_ratio:
-            mcenter = self.bad_mask()
+            if overlap_ratio > max_overlap_ratio:
+                mcenter = self.bad_mask()
 
-        if "tracking" in maskorigin:
+        if "tracking" in maskorigin or maskorigin == "Yolo_prediction":
             mcenter = self.good_mask(time_stamp=1)
         return mcenter
 
@@ -441,6 +460,20 @@ class Annotator:
             self.mask_idx -= 1
             return annot.masks[self.mask_idx].center
 
+    def _point_in_bbox(self, point: tuple[int], bbox: list[int]) -> bool:
+        # Unpack the bounding box parameters
+        x1, y1, x2, y2 = bbox
+
+        # Define the four corners of the bounding box as a polygon.
+        pts = np.array([[x1, y2], [x2, y1], [x2, y2], [x1, y2]], dtype=np.int32)
+
+        # Use cv2.pointPolygonTest:
+        # It returns +1 if the point is inside, 0 if on the edge, and -1 if outside.
+        result = cv2.pointPolygonTest(pts, point, False)
+
+        # Return True if the point is inside or on the edge.
+        return result >= 0
+
     def highlight_mask_at_point(self, position: tuple[int]):
         xindx, yindx = position
         if (
@@ -453,9 +486,19 @@ class Annotator:
             return None
 
         for mobj in self.annotation.good_masks:
-            if mobj.mask[yindx, xindx] > 0:
-                self.annotation.preview_mask = mobj.mask
-                break
+            if mobj.mask is not None:
+                if mobj.mask[yindx, xindx] > 0:
+                    self.annotation.preview_mask = mobj.mask
+                    break
+            elif mobj.bbox is not None:
+                if self._point_in_bbox(position, mobj.bbox):
+                    self.annotation.preview_mask = np.zeros(
+                        self.annotation.img.shape[:2], dtype=np.uint8
+                    )
+                    self.annotation.preview_mask[
+                        mobj.bbox[1] : mobj.bbox[3], mobj.bbox[0] : mobj.bbox[2]
+                    ] = 255
+                    break
         self.update_collections(self.annotation)
         return mobj.mid
 
@@ -505,9 +548,9 @@ class Annotator:
 
         mask_objs = [
             MaskData(
-                self.mask_id_handler.set_id(),
-                cv2.imread(mask_p, cv2.IMREAD_GRAYSCALE),
-                origin,
+                mid=self.mask_id_handler.get_id(),
+                mask=cv2.imread(mask_p, cv2.IMREAD_GRAYSCALE),
+                origin=origin,
             )
             for mask_p in masks_paths
         ]
@@ -541,8 +584,10 @@ class Annotator:
             img_sam_preview = mask_vis.get_mask_deletion_preview()
             mvis_data.img_sam_preview = img_sam_preview
 
+        # TODO only compute visualizations that are currently selecetd in the UI
         masked_img = mask_vis.get_masked_img()  # masks get contours
         mask_collection = mask_vis.get_mask_collection()
+        bbox_img = mask_vis.get_bbox_img()
 
         if (
             len(annot.masks) > self.mask_idx
@@ -563,6 +608,7 @@ class Annotator:
 
         masked_img_cnt = mask_vis.get_masked_img_cnt(cnt)
         mask_collection_cnt = mask_vis.get_mask_collection_cnt(cnt)
+        bbox_img_cnt = mask_vis.get_bbox_img_cnt()
 
         if len(annot.masks) > self.mask_idx:
             self.annotation.set_current_mask(self.mask_idx)
@@ -571,10 +617,69 @@ class Annotator:
         mvis_data.mask_collection = mask_collection
         mvis_data.masked_img_cnt = masked_img_cnt
         mvis_data.mask_collection_cnt = mask_collection_cnt
+        mvis_data.bbox_img = bbox_img
+        mvis_data.bbox_img_cnt = bbox_img_cnt
 
         self.annotation.good_masks = mask_vis.mask_objs
 
     def save_annotations(self, save_path: Path, save_suffix: str = None) -> bool:
+
+        if self.configs.save_data.save_masks:
+            return self.save_masks_and_logs(save_path, save_suffix)
+        elif (
+            self.configs.save_data.save_bboxes
+            and self.configs.save_data.style == "yolo"
+        ):
+            return self.save_bboxes_yolo(save_path)
+        else:
+            return NotImplementedError(
+                "This combination of settings is not implemented"
+            )
+
+    def save_bboxes_yolo(self, save_path: Path, class_id: int = 0):
+        img_id = os.path.splitext(self.annotation.img_name)[0]
+        # Ensure the output directories exist
+        image_dir = os.path.join(save_path, "images")
+        labels_dir = os.path.join(save_path, "labels")
+        control_dir = os.path.join(save_path, "control_images")
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
+        if not os.path.exists(labels_dir):
+            os.makedirs(labels_dir)
+        if not os.path.exists(control_dir):
+            os.makedirs(control_dir)
+
+        # Save the image into the 'image' folder
+        image_path = os.path.join(image_dir, self.annotation.img_name)
+        cv2.imwrite(image_path, self.annotation.img)
+        control_img_p = os.path.join(control_dir, f"{img_id}_control.jpg")
+        cv2.imwrite(control_img_p, self.annotation.mask_visualizations.bbox_img)
+
+        # Get image dimensions (height, width)
+        height, width = self.annotation.img.shape[:2]
+
+        # Convert each absolute bounding box to YOLO format:
+        # YOLO format: class_id, x_center, y_center, bbox_width, bbox_height (all normalized to [0,1])
+        yolo_lines = []
+        for good_obj in self.annotation.good_masks:
+            x_min, y_min, x_max, y_max = good_obj.bbox
+            x_center = ((x_min + x_max) / 2) / width
+            y_center = ((y_min + y_max) / 2) / height
+            bbox_width = (x_max - x_min) / width
+            bbox_height = (y_max - y_min) / height
+
+            # Format each line with six decimal places for consistency
+            line = f"{class_id} {x_center:.6f} {y_center:.6f} {bbox_width:.6f} {bbox_height:.6f}"
+            yolo_lines.append(line)
+
+        # Save the YOLO formatted bounding boxes into a text file in the 'labels' folder.
+        # The label file will have the same base filename as the image.
+        label_filename = f"{img_id}.txt"
+        label_path = os.path.join(labels_dir, label_filename)
+        with open(label_path, "w") as f:
+            f.write("\n".join(yolo_lines))
+
+    def save_masks_and_logs(self, save_path: Path, save_suffix: str = None):
         output_masks_exist = False
         if self.annotation is None:
             return output_masks_exist

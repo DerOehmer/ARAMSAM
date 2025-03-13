@@ -8,7 +8,11 @@ import json
 from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 from segment_anything.modeling import Sam
 
-from aramsam_annotator.mask_visualizations import MaskVisualization, MaskData, MaskIdHandler
+from aramsam_annotator.mask_visualizations import (
+    MaskVisualization,
+    MaskData,
+    MaskIdHandler,
+)
 
 
 class SAM2AutomaticMaskGenerator:
@@ -383,7 +387,9 @@ class Sam2Inference:
                 for i, out_mid in enumerate(out_obj_ids):
                     np_mask = self._logits_to_npmask(out_mask_logits[i])
                     if np_mask is not None:
-                        prop_masks.append(MaskData(out_mid, np_mask, "Sam2_tracking"))
+                        prop_masks.append(
+                            MaskData(mid=out_mid, mask=np_mask, origin="Sam2_tracking")
+                        )
         return prop_masks
 
     def prop_thread_func(self, mask_objs: list[MaskData]):
@@ -454,7 +460,11 @@ class CustomAMG:
                     else "Sam2_proposed"
                 )
                 mask_objs.append(
-                    MaskData(self.sam_cls.mask_id_handler.set_id(), kernelmask, origin)
+                    MaskData(
+                        mid=self.sam_cls.mask_id_handler.get_id(),
+                        mask=kernelmask,
+                        origin=origin,
+                    )
                 )
 
                 ycords, xcords = np.where(kernelmask == 255)
@@ -576,7 +586,11 @@ class DefaultAMG:
                     else "Sam2_proposed"
                 )
                 mask_objs.append(
-                    MaskData(self.sam_cls.mask_id_handler.set_id(), kernelmask, origin)
+                    MaskData(
+                        mid=self.sam_cls.mask_id_handler.get_id(),
+                        mask=kernelmask,
+                        orignin=origin,
+                    )
                 )
 
                 ycords, xcords = np.where(kernelmask == 255)

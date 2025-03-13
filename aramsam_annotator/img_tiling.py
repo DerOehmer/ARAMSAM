@@ -9,6 +9,8 @@ def split_image_into_tiles(img_path: str, temp_dir: str, config: ImgTiles) -> li
         return [img_path]
 
     img = cv2.imread(img_path)
+    img_file_name = os.path.basename(img_path)
+    img_name = os.path.splitext(img_file_name)[0]
     height, width = img.shape[:2]
 
     stride = int(config.tile_size * (1 - config.tile_overlap))
@@ -28,7 +30,7 @@ def split_image_into_tiles(img_path: str, temp_dir: str, config: ImgTiles) -> li
             top, left = max(0, top), max(0, left)
             tile = img[top:bottom, left:right]
 
-            tile_filename = os.path.join(temp_dir, f"tile_{top}_{left}.jpg")
+            tile_filename = os.path.join(temp_dir, f"{img_name}_{top}_{left}.jpg")
             cv2.imwrite(tile_filename, tile)
             tile_paths.append(tile_filename)
 

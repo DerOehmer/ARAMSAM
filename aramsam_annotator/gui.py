@@ -303,9 +303,10 @@ class UserInterface(QMainWindow):
             QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            print("Quitting application")
+            print("Quitting application and cleaning up temp files...")
             self.shutdown_signal.emit(1)
             event.accept()  # Proceed with closing
+            QApplication.instance().quit()  # Exit the event loop
         else:
             event.ignore()  # Cancel the close
 
