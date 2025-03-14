@@ -210,7 +210,15 @@ class App:
             img_name = Path(img_name)
 
         if self.img_fnames:
-            next_img_name = Path(self.img_fnames[-1])
+            next_img_name = self.img_fnames[-1]
+            if self.configs.img_tiles.do_tiling and self.temp_dir not in next_img_name:
+                self.img_fnames.extend(
+                    split_image_into_tiles(
+                        self.img_fnames.pop(), self.temp_dir, self.configs.img_tiles
+                    )
+                )
+                next_img_name = self.img_fnames[-1]
+            next_img_name = Path(next_img_name)
         else:
             next_img_name = None
         return img_name, next_img_name
