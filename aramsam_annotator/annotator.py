@@ -434,6 +434,48 @@ class Annotator:
     def step_back(self):
         annot = self.annotation
 
+        # If a polygon is being drawn or interactive propmting is active
+        # and there are manual points, clear the points.
+        point_annotation_condition = (
+            self.manual_annotation_enabled or self.polygon_drawing_enabled
+        )
+        if point_annotation_condition and len(self.manual_mask_points) > 0:
+            self._clear_unfinished_polygon()
+            return
+
+        # If there are no previous masks, exit early.
+        if self.mask_idx == 0:
+            return
+
+        # Get the origin of the last "good" mask.
+        last_mask_origin = annot.good_masks[-1].origin
+
+        # Define conditions for manual annotation and polygon drawing.
+        manual_condition = self.manual_annotation_enabled and (
+            "interactive" not in last_mask_origin
+        )
+        polygon_condition = self.polygon_drawing_enabled and (
+            "Polygon" not in last_mask_origin
+        )
+
+        # Proceed only if neither condition is met.
+        if not (manual_condition or polygon_condition):
+            # If the previous mask decision was positive and a good mask exists,
+            # remove the last mask and recycle its metadata.
+            if annot.mask_decisions[self.mask_idx - 1] and annot.good_masks:
+                popped_mobj = annot.good_masks.pop()
+                self._recycle_mask_meta_data(popped_mobj)
+
+            # Mark the mask decision as undone and update the index.
+            annot.mask_decisions[self.mask_idx - 1] = False
+            self.mask_idx -= 1
+
+            # Return the center of the updated current mask.
+            return annot.masks[self.mask_idx].center
+
+    """def step_back(self):
+        annot = self.annotation
+
         if self.polygon_drawing_enabled and len(self.manual_mask_points) > 0:
             self._clear_unfinished_polygon()
             return
@@ -458,7 +500,7 @@ class Annotator:
 
             annot.mask_decisions[self.mask_idx - 1] = False
             self.mask_idx -= 1
-            return annot.masks[self.mask_idx].center
+            return annot.masks[self.mask_idx].center"""
 
     def _point_in_bbox(self, point: tuple[int], bbox: list[int]) -> bool:
         # Unpack the bounding box parameters
