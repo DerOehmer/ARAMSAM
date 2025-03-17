@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -26,18 +26,18 @@ class SaveData:
 
     def __post_init__(self):
         if self.save_masks and self.save_bboxes:
-            self.save_boxes = False
+            self.save_bboxes = False  # Fixed variable name
             print("Not implemented yet. Only saving masks")
 
 
 @dataclass
 class AramsamConfigs:
-    sam_configs: SamConfigs = SamConfigs()
+    sam_configs: SamConfigs = field(default_factory=SamConfigs)
     sam_backround_embedding: bool = False
     sam_amg: bool = False
-    img_tiles: ImgTiles = ImgTiles()
+    img_tiles: ImgTiles = field(default_factory=ImgTiles)
     yolo_model_ckpt_p: str = "KernelYOLO8x.pt"
-    save_data: SaveData = SaveData()
+    save_data: SaveData = field(default_factory=SaveData)
 
     def __post_init__(self):
         if self.sam_amg and self.yolo_model_ckpt_p is not None:

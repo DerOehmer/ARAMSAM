@@ -485,3 +485,45 @@ class MaskVisualization:
             cv2.drawContours(result_img, [cnt], -1, (0, 0, 255), 1)
         self.img_man_preview = result_img
         return self.img_man_preview
+
+    def _point_in_bbox(self, point: tuple[int], bbox: list[int]) -> bool:
+        # Unpack the bounding box parameters
+        x1, y1, x2, y2 = bbox
+
+        # Define the four corners of the bounding box as a polygon.
+        pts = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.int32)
+
+        # Use cv2.pointPolygonTest:
+        # It returns +1 if the point is inside, 0 if on the edge, and -1 if outside.
+        result = cv2.pointPolygonTest(pts, point, False)
+        # Return True if the point is inside or on the edge.
+        return result >= 0
+
+    def highlight_mask_at_point(self, point: tuple[int]):
+        xindx, yindx = point
+
+        # Compute distances from each object's center to the given point.
+        centers = np.array([mobj.center for mobj in self.mask_objs])
+        distances = np.linalg.norm(centers - np.array(point), axis=1)
+
+        # Identify the nearest object based on Euclidean distance.
+        nearest_obj = self.mask_objs[np.argmin(distances)]
+
+        # Check if the point lies in the mask (if available).
+        if nearest_obj.mask is not None:
+            if nearest_obj.mask[yindx, xindx] > 0:
+                self.preview_mask = nearest_obj.mask
+                return nearest_obj.mid, self.preview_mask
+
+        # Otherwise, check if the point lies in the bounding box.
+        if nearest_obj.bbox is not None:
+            if self._point_in_bbox(point, nearest_obj.bbox):
+                self.preview_mask = np.zeros(self.img.shape[:2], dtype=np.uint8)
+                self.preview_mask[
+                    nearest_obj.bbox[1] : nearest_obj.bbox[3],
+                    nearest_obj.bbox[0] : nearest_obj.bbox[2],
+                ] = 255
+                return nearest_obj.mid, self.preview_mask
+
+        # If the point is not inside the nearest object's mask or bbox.
+        return None, self.preview_mask

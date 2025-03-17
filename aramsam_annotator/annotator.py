@@ -32,6 +32,7 @@ class Annotator:
         self.annotation: AnnotationObject = None
         self.next_annotation: AnnotationObject = None
         self.mask_idx = 0
+        self.preview_obj_id = None
 
         self.manual_annotation_enabled = False
         self.polygon_drawing_enabled = False
@@ -439,7 +440,7 @@ class Annotator:
         point_annotation_condition = (
             self.manual_annotation_enabled or self.polygon_drawing_enabled
         )
-        if point_annotation_condition and len(self.manual_mask_points) > 0:
+        if point_annotation_condition and self.manual_mask_points:
             self._clear_unfinished_polygon()
             return
 
@@ -466,7 +467,7 @@ class Annotator:
                 popped_mobj = annot.good_masks.pop()
                 self._recycle_mask_meta_data(popped_mobj)
 
-            # Mark the mask decision as undone and update the index.
+            # Mark the mask decision as False and update the index.
             annot.mask_decisions[self.mask_idx - 1] = False
             self.mask_idx -= 1
 
@@ -502,21 +503,7 @@ class Annotator:
             self.mask_idx -= 1
             return annot.masks[self.mask_idx].center"""
 
-    def _point_in_bbox(self, point: tuple[int], bbox: list[int]) -> bool:
-        # Unpack the bounding box parameters
-        x1, y1, x2, y2 = bbox
-
-        # Define the four corners of the bounding box as a polygon.
-        pts = np.array([[x1, y2], [x2, y1], [x2, y2], [x1, y2]], dtype=np.int32)
-
-        # Use cv2.pointPolygonTest:
-        # It returns +1 if the point is inside, 0 if on the edge, and -1 if outside.
-        result = cv2.pointPolygonTest(pts, point, False)
-
-        # Return True if the point is inside or on the edge.
-        return result >= 0
-
-    def highlight_mask_at_point(self, position: tuple[int]):
+    def get_preview_object_id(self, position: tuple[int]):
         xindx, yindx = position
         if (
             xindx >= self.annotation.img.shape[1]
@@ -527,22 +514,13 @@ class Annotator:
             self.annotation.preview_mask = None
             return None
 
-        for mobj in self.annotation.good_masks:
-            if mobj.mask is not None:
-                if mobj.mask[yindx, xindx] > 0:
-                    self.annotation.preview_mask = mobj.mask
-                    break
-            elif mobj.bbox is not None:
-                if self._point_in_bbox(position, mobj.bbox):
-                    self.annotation.preview_mask = np.zeros(
-                        self.annotation.img.shape[:2], dtype=np.uint8
-                    )
-                    self.annotation.preview_mask[
-                        mobj.bbox[1] : mobj.bbox[3], mobj.bbox[0] : mobj.bbox[2]
-                    ] = 255
-                    break
-        self.update_collections(self.annotation)
-        return mobj.mid
+        obj_id, self.annotation.preview_mask = (
+            self.annotation.mask_visualizer.highlight_mask_at_point(position)
+        )
+        if obj_id != self.preview_obj_id:
+            self.update_collections(self.annotation)
+        self.preview_obj_id = obj_id
+        return obj_id
 
     def delete_mask(self, midtopop: int):
         startdeltime = time.time()
@@ -560,7 +538,6 @@ class Annotator:
                 self.annotation.mask_decisions[mask_dec_idx[0]] = False
                 self.annotation.preview_mask = None
                 break
-        print(f"Delete mask time: {time.time() - startdeltime}")
 
     def _get_mask_id(self, mask_path: str):
         mask_name = os.path.basename(mask_path).split(".")[0]
@@ -608,7 +585,6 @@ class Annotator:
         self.preselect_mask()
 
     def update_collections(self, annot: AnnotationObject):
-
         mask_vis = self.annotation.mask_visualizer
         mask_vis.set_annotation(annotation=annot)
 

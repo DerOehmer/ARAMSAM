@@ -256,6 +256,7 @@ class App:
                 "Wait for embedding calculation to be finished before skipping to next img"
             )
             self.threadpool.waitForDone(-1)
+        self.ui.reset_buttons()
         img_name, next_img_name = self._pop_img_fnames()
 
         # check if img_name is already annotated in output_dir
@@ -857,7 +858,7 @@ class App:
             if self.annotator.manual_annotation_enabled:
                 self.annotator.predict_sam_manually(point)
             elif self.annotator.mask_deletion_enabled:
-                self.annotator.highlight_mask_at_point(point)
+                self.annotator.get_preview_object_id(point)
             else:
                 return
 
@@ -898,7 +899,7 @@ class App:
         self.update_ui_imgs()
 
     def delete_mask_at_point(self, label: int):
-        mid = self.annotator.highlight_mask_at_point(self.mouse_pos)
+        mid = self.annotator.get_preview_object_id(self.mouse_pos)
         if mid is None:
             return
         elif label == 1:

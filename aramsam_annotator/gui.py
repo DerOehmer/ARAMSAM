@@ -310,6 +310,11 @@ class UserInterface(QMainWindow):
         else:
             event.ignore()  # Cancel the close
 
+    def reset_buttons(self):
+        self.manual_annotation_button.setChecked(False)
+        self.draw_poly_button.setChecked(False)
+        self.delete_button.setChecked(False)
+
     def save(self):
         self.save_signal.emit(1)
 
