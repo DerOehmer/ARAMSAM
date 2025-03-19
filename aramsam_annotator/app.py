@@ -257,6 +257,7 @@ class App:
             )
             self.threadpool.waitForDone(-1)
         self.ui.reset_buttons()
+        self.annotator.reset_toggles(toggles_only=True)
         img_name, next_img_name = self._pop_img_fnames()
 
         # check if img_name is already annotated in output_dir

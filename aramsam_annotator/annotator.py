@@ -91,10 +91,13 @@ class Annotator:
         current_ts = round(time.time() * 10)
         return current_ts - self.time_stamp
 
-    def reset_toggles(self):
-        self.reset_manual_annotation()
+    def reset_toggles(self, toggles_only=False):
         self.manual_annotation_enabled = False
         self.polygon_drawing_enabled = False
+        self.mask_deletion_enabled = False
+        if toggles_only:
+            return
+        self.reset_manual_annotation()
 
     def toggle_manual_annotation(self):
         self.reset_manual_annotation()
@@ -284,6 +287,8 @@ class Annotator:
         print(f"Preselect time: {time.time() - start_preselect}")
 
     def process_yolo_bboxes(self, bboxes: list[MaskData]):
+        if len(bboxes) == 0:
+            return
         self.annotation.add_masks(bboxes, decision=True)
         self.update_mask_idx(self.mask_idx)
         self.preselect_mask()
