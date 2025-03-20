@@ -256,7 +256,8 @@ class App:
                 "Wait for embedding calculation to be finished before skipping to next img"
             )
             self.threadpool.waitForDone(-1)
-        self.ui.reset_buttons()
+        
+        self.ui.reset_ui()
         self.annotator.reset_toggles(toggles_only=True)
         img_name, next_img_name = self._pop_img_fnames()
 

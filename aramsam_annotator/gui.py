@@ -315,6 +315,12 @@ class UserInterface(QMainWindow):
         self.draw_poly_button.setChecked(False)
         self.delete_button.setChecked(False)
 
+    def reset_ui(self):
+        self.reset_buttons()
+        self.zoom_level = 0
+        self.zoom_factor = 1.25
+        self.fit_annotation_visualizers_to_view()
+
     def save(self):
         self.save_signal.emit(1)
 
