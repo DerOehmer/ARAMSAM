@@ -436,7 +436,7 @@ class MaskVisualization:
 
     def _weighted_mask(self, alpha=1):
         if self.preview_mask is None:
-            return self.img
+            return self.img.copy()
         else:
             red_img = np.zeros(self.img.shape, dtype="uint8")
             red_img[:, :] = (0, 255, 0)
@@ -458,7 +458,15 @@ class MaskVisualization:
             )
         return self.img_man_preview
 
-    def get_polygon_preview(self, manual_mask_points: list[Tuple[int]]) -> np.ndarray:
+    def get_drawing_preview(
+        self, manual_mask_points: list[Tuple[int]], mouse_pos=None
+    ) -> np.ndarray:
+        if mouse_pos is not None and len(manual_mask_points) == 1:
+            return self._get_bbox_preview(manual_mask_points, mouse_pos)
+        else:
+            return self._get_polygon_preview(manual_mask_points)
+
+    def _get_polygon_preview(self, manual_mask_points: list[Tuple[int]]) -> np.ndarray:
         self.img_man_preview = self._weighted_mask(alpha=0.1)
         for p in manual_mask_points:
             self.img_man_preview = cv2.circle(
@@ -468,6 +476,15 @@ class MaskVisualization:
                 color=(255, 255, 255),
                 thickness=-1,
             )
+        return self.img_man_preview
+
+    def _get_bbox_preview(
+        self, manual_mask_points: list[Tuple[int]], mouse_pos
+    ) -> np.ndarray:
+        self.img_man_preview = self.img.copy()
+        self.img_man_preview = cv2.rectangle(
+            self.img_man_preview, manual_mask_points[0], mouse_pos, (0, 255, 0), 1
+        )
         return self.img_man_preview
 
     def get_mask_deletion_preview(self) -> np.ndarray:

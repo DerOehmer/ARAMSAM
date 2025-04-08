@@ -79,7 +79,6 @@ class UserInterface(QMainWindow):
         self.menu_settings = self.menuBar().addMenu("Settings")
         self.menu.addAction("Save", self.save)
         self.menu.addAction("Save As", self.save_as)
-        self.menu.addAction("Exit", self.closeEvent)
         self.menu_open.addAction("Load Image", self.load_img)
         self.menu_open.addAction("Load Folder", self.load_img_folder)
         self.menu_settings.addAction("Change Layout", self.open_layout_settings_box)
@@ -176,13 +175,13 @@ class UserInterface(QMainWindow):
         )
         self.manual_annotation_button.setMinimumWidth(self.buttons_min_width)
 
-        self.draw_poly_button = QPushButton(text="draw polygon", parent=self)
-        self.draw_poly_button.setCheckable(True)
-        self.draw_poly_button.move(
+        self.draw_button = QPushButton(text="Polygon/Bbox", parent=self)
+        self.draw_button.setCheckable(True)
+        self.draw_button.move(
             5 * self.buttons_spacing + 4 * self.buttons_min_width,
             int(self.height_offset / 2),
         )
-        self.draw_poly_button.setStyleSheet(
+        self.draw_button.setStyleSheet(
             """
             QPushButton {
                 background-color: #455364;   /* Set the background color */
@@ -202,7 +201,7 @@ class UserInterface(QMainWindow):
 
             """
         )
-        self.draw_poly_button.setMinimumWidth(self.buttons_min_width)
+        self.draw_button.setMinimumWidth(self.buttons_min_width)
 
         self.delete_button = QPushButton(text="delete", parent=self)
         self.delete_button.setCheckable(True)
@@ -241,6 +240,14 @@ class UserInterface(QMainWindow):
             self.buttons_min_width * 6,
         )
         if self.experiment_mode is None:
+
+            self.auto_save_box = QCheckBox(text="Auto Save", parent=self)
+            self.auto_save_box.move(
+                10 * self.buttons_spacing + 9 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.auto_save_box.setChecked(True)
+            self.auto_save_box.show()
 
             self.next_img_button = QPushButton(text="next image", parent=self)
             self.next_img_button.move(
@@ -312,7 +319,7 @@ class UserInterface(QMainWindow):
 
     def reset_buttons(self):
         self.manual_annotation_button.setChecked(False)
-        self.draw_poly_button.setChecked(False)
+        self.draw_button.setChecked(False)
         self.delete_button.setChecked(False)
 
     def reset_ui(self):

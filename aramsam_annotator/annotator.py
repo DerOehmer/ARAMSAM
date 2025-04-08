@@ -151,17 +151,32 @@ class Annotator:
             )
             self.update_collections(self.annotation)
 
-    def mask_from_polygon(self):
-        if self.polygon_drawing_enabled:
+    def mask_from_drawing(self, mouse_pos: tuple[int] = None):
+        if not self.polygon_drawing_enabled:
+            return
+
+        # bounding box should only be drawn if there is already exactly one point
+        if mouse_pos is not None and len(self.manual_mask_points) != 1:
+            return
+
+        if len(self.manual_mask_points) > 1:
             self.annotation.preview_mask = np.zeros(
                 self.annotation.img.shape[:2], dtype=np.uint8
             )
-            if len(self.manual_mask_points) > 2:
-                polypts = np.array(self.manual_mask_points, np.int32).reshape(
-                    (-1, 1, 2)
-                )
-                cv2.fillPoly(self.annotation.preview_mask, [polypts], 255)
-            self.update_collections(self.annotation)
+
+        if len(self.manual_mask_points) == 2:
+            self.annotation.preview_mask = cv2.rectangle(
+                self.annotation.preview_mask,
+                tuple(self.manual_mask_points[0]),
+                tuple(self.manual_mask_points[1]),
+                255,
+                1,
+            )
+
+        elif len(self.manual_mask_points) > 2:
+            polypts = np.array(self.manual_mask_points, np.int32).reshape((-1, 1, 2))
+            cv2.fillPoly(self.annotation.preview_mask, [polypts], 255)
+        self.update_collections(self.annotation, current_mouse_pos=mouse_pos)
 
     def update_mask_idx(self, new_idx: int = 0):
         if new_idx < 0:
@@ -479,35 +494,6 @@ class Annotator:
             # Return the center of the updated current mask.
             return annot.masks[self.mask_idx].center
 
-    """def step_back(self):
-        annot = self.annotation
-
-        if self.polygon_drawing_enabled and len(self.manual_mask_points) > 0:
-            self._clear_unfinished_polygon()
-            return
-
-        if self.mask_idx == 0:
-            return
-
-        # if len(annot.good_masks) == 0:
-        # return
-
-        if not (
-            self.manual_annotation_enabled
-            and not "interactive" in annot.good_masks[-1].origin
-        ) and not (
-            self.polygon_drawing_enabled
-            and not "Polygon" in annot.good_masks[-1].origin
-        ):
-
-            if annot.mask_decisions[self.mask_idx - 1] and len(annot.good_masks) > 0:
-                popped_mobj = annot.good_masks.pop()
-                self._recycle_mask_meta_data(popped_mobj)
-
-            annot.mask_decisions[self.mask_idx - 1] = False
-            self.mask_idx -= 1
-            return annot.masks[self.mask_idx].center"""
-
     def get_preview_object_id(self, position: tuple[int]):
         xindx, yindx = position
         if (
@@ -528,7 +514,6 @@ class Annotator:
         return obj_id
 
     def delete_mask(self, midtopop: int):
-        startdeltime = time.time()
         annot = self.annotation
         for i, mobj in enumerate(annot.good_masks):
             if mobj.mid == midtopop:
@@ -589,7 +574,7 @@ class Annotator:
         self.update_collections(self.annotation)
         self.preselect_mask()
 
-    def update_collections(self, annot: AnnotationObject):
+    def update_collections(self, annot: AnnotationObject, current_mouse_pos=None):
         mask_vis = self.annotation.mask_visualizer
         mask_vis.set_annotation(annotation=annot)
 
@@ -601,7 +586,9 @@ class Annotator:
             )
             mvis_data.img_sam_preview = img_sam_preview
         elif self.polygon_drawing_enabled:
-            img_sam_preview = mask_vis.get_polygon_preview(self.manual_mask_points)
+            img_sam_preview = mask_vis.get_drawing_preview(
+                self.manual_mask_points, current_mouse_pos
+            )
             mvis_data.img_sam_preview = img_sam_preview
         elif self.mask_deletion_enabled:
             img_sam_preview = mask_vis.get_mask_deletion_preview()

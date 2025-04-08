@@ -59,8 +59,9 @@ class App:
         self.ui.bad_mask_button.clicked.connect(self.add_bad_mask)
         self.ui.back_button.clicked.connect(self.previous_mask)
         self.ui.manual_annotation_button.clicked.connect(self.manual_annotation)
-        self.ui.draw_poly_button.clicked.connect(self.draw_polygon)
+        self.ui.draw_button.clicked.connect(self.draw_polygon)
         self.ui.delete_button.clicked.connect(self.select_masks_to_delete)
+        self.ui.auto_save_box.checkStateChanged.connect(self.auto_save_changed)
 
         if self.experiment_mode == "structured":
             self.ui.next_method_button.clicked.connect(self.next_method)
@@ -122,6 +123,13 @@ class App:
             sam_gen=self.sam_gen, background_embedding=background_embedding
         )
 
+    def auto_save_changed(self):
+        box_checked = self.ui.auto_save_box.isChecked()
+        if box_checked:
+            self.configs.save_data.auto_save = True
+        else:
+            self.configs.save_data.auto_save = False
+
     def save_output(self, _=None):
         if self.experiment_mode == "tutorial" or self.tutorial_flag == True:
             return
@@ -156,6 +164,7 @@ class App:
         self.output_dir = out_dir
 
     def changed_sam_model(self, model_path: str):
+        # TODO: implement loading of SAM weights via UI
         if "vit_b" in model_path:
             model_type = "vit_b"
         elif "vit_h" in model_path:
@@ -240,6 +249,14 @@ class App:
                     )
 
                 self.ui.close()
+            elif self.configs.save_data.auto_save:
+                reply = self.ui.create_message_box(
+                    False,
+                    "No more images left in current directory. Load a new folder to proceed",
+                    wait_for_user=True,
+                )
+                self.ui.save()
+
             else:
                 reply = self.ui.create_message_box(
                     False,
@@ -256,7 +273,7 @@ class App:
                 "Wait for embedding calculation to be finished before skipping to next img"
             )
             self.threadpool.waitForDone(-1)
-        
+
         self.ui.reset_ui()
         self.annotator.reset_toggles(toggles_only=True)
         img_name, next_img_name = self._pop_img_fnames()
@@ -283,13 +300,18 @@ class App:
             img_name, next_img_name = self._pop_img_fnames()
 
         elif self.annotator.annotation is not None:
-            if (
+            """if (
                 self.experiment_mode is None
                 and len(self.annotator.annotation.good_masks) > 0
             ):
                 self.ui.open_save_annots_box()
             elif len(self.annotator.annotation.good_masks) > 0:
                 self.ui.save()
+            """
+            if self.configs.save_data.auto_save:
+                self.ui.save()
+            else:
+                self.ui.open_save_annots_box()
 
         self.propagate_good_masks()
 
@@ -796,7 +818,7 @@ class App:
 
     def manual_annotation(self):
         self.annotator.toggle_manual_annotation()
-        self.ui.draw_poly_button.setChecked(False)
+        self.ui.draw_button.setChecked(False)
         self.ui.delete_button.setChecked(False)
         self.ui.set_cursor(self.annotator.manual_annotation_enabled)
         if (
@@ -834,7 +856,7 @@ class App:
         else:
             man_state, poly_state = False, False
         self.ui.manual_annotation_button.setChecked(man_state)
-        self.ui.draw_poly_button.setChecked(poly_state)
+        self.ui.draw_button.setChecked(poly_state)
         self.annotator.toggle_mask_deletion()
         if self.annotator.mask_deletion_enabled and self.experiment_mode is not None:
             self.ui.experiment_instructions_label.setText(
@@ -861,6 +883,8 @@ class App:
                 self.annotator.predict_sam_manually(point)
             elif self.annotator.mask_deletion_enabled:
                 self.annotator.get_preview_object_id(point)
+            elif self.annotator.polygon_drawing_enabled:
+                self.annotator.mask_from_drawing(point)
             else:
                 return
 
@@ -896,7 +920,7 @@ class App:
                 self.annotator.predict_sam_manually(self.mouse_pos)
                 self.mutex.unlock()
         elif self.annotator.polygon_drawing_enabled:
-            self.annotator.mask_from_polygon()
+            self.annotator.mask_from_drawing()
 
         self.update_ui_imgs()
 
@@ -916,9 +940,9 @@ class App:
             return
         self.select_next_img()
         # reset
-        self.ui.draw_poly_button.setDisabled(False)
-        self.ui.draw_poly_button.click()
-        self.ui.draw_poly_button.setDisabled(True)
+        self.ui.draw_button.setDisabled(False)
+        self.ui.draw_button.click()
+        self.ui.draw_button.setDisabled(True)
         if self.tutorial_flag and self.experiment_step == 1:
             self.ui.start_tutorial("polygon_drawing_texts")
             self.experiment_step += 1
@@ -956,9 +980,9 @@ class App:
             self.ui.performing_embedding_label.setText(
                 f"Step 3/3: Draw polygon masks for remaining objects"
             )
-            self.ui.draw_poly_button.setDisabled(False)
-            self.ui.draw_poly_button.click()
-            self.ui.draw_poly_button.setDisabled(True)
+            self.ui.draw_button.setDisabled(False)
+            self.ui.draw_button.click()
+            self.ui.draw_button.setDisabled(True)
             if self.tutorial_flag:
                 self.ui.start_tutorial("polygon_drawing_texts")
         elif self.experiment_step == 3:

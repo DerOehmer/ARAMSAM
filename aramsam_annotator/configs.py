@@ -19,6 +19,7 @@ class ImgTiles:
 @dataclass
 class SaveData:
     do_save: bool = True
+    auto_save: bool = True
     save_dir: str = None
     save_masks: bool = False
     save_bboxes: bool = True
@@ -28,6 +29,9 @@ class SaveData:
         if self.save_masks and self.save_bboxes:
             self.save_bboxes = False  # Fixed variable name
             print("Not implemented yet. Only saving masks")
+        if self.auto_save and not self.do_save:
+            self.do_save = True
+            print("Auto save is enabled. Saving data will be enabled as well.")
 
 
 @dataclass

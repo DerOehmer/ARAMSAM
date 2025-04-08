@@ -56,7 +56,7 @@ def mock_main(
     ui.menu_open.setDisabled(True)
     ui.menu_settings.setDisabled(True)
     ui.manual_annotation_button.setDisabled(True)
-    ui.draw_poly_button.setDisabled(True)
+    ui.draw_button.setDisabled(True)
 
     ui.performing_embedding_label.setText(f"Step 1/3: Select the good proposed masks")
     img_paths = glob.glob(f"{img_pair_folder_p}/*")

@@ -7,7 +7,6 @@ from aramsam_annotator.app import App
 from PyQt6.QtTest import QTest
 
 
-
 def mock_open_load_folder_dialog():
     # return "UserExperiment/TutorialImages"
     return ""
@@ -35,7 +34,7 @@ def mock_main():
     ui.menu_open.setDisabled(True)
     ui.menu_settings.setDisabled(True)
     ui.manual_annotation_button.setDisabled(True)
-    ui.draw_poly_button.setDisabled(True)
+    ui.draw_button.setDisabled(True)
     ui.performing_embedding_label.setText(f"Find experiment steps here")
 
     # set path

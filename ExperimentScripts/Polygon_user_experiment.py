@@ -82,8 +82,8 @@ def mock_main(
     load_folder_action.trigger()
     set_vis(app.annotator)
     app.update_ui_imgs()
-    ui.draw_poly_button.click()
-    ui.draw_poly_button.setDisabled(True)
+    ui.draw_button.click()
+    ui.draw_button.setDisabled(True)
     return app.application.exec()
 
 
