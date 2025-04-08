@@ -2,7 +2,7 @@ import sys
 import time
 import qdarkstyle
 import shutil
-
+import json
 from os import listdir, getcwd
 from os.path import isfile, join, basename, isdir, splitext, basename
 import tempfile
@@ -45,6 +45,7 @@ class App:
         self.temp_dir = tempfile.mkdtemp(dir=getcwd())
         self.application = QApplication([])
         self.application.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
+        ui_options["class"] = self.read_json(self.configs.class_json_p)
         self.ui = UserInterface(ui_options=ui_options, experiment_mode=experiment_mode)
         self.annotator = Annotator(self.configs)
         self.threadpool = QThreadPool.globalInstance()
@@ -97,6 +98,11 @@ class App:
         self.mask_track_batch_size: int = 10
         self.propagated_mids: set[int] = set()
         self.mutex = QMutex()
+
+    def read_json(self, path: str) -> dict:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return data
 
     def run(self) -> None:
         self.ui.run()

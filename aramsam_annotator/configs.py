@@ -42,6 +42,7 @@ class AramsamConfigs:
     img_tiles: ImgTiles = field(default_factory=ImgTiles)
     yolo_model_ckpt_p: str = "KernelYOLO8x.pt"
     save_data: SaveData = field(default_factory=SaveData)
+    class_json_p: str = "class.json"
 
     def __post_init__(self):
         if self.sam_amg and self.yolo_model_ckpt_p is not None:

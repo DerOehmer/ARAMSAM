@@ -23,6 +23,8 @@ from PyQt6.QtGui import (
     QPainterPath,
     QPolygonF,
     QCloseEvent,
+    QActionGroup,
+    QAction,
 )
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -93,11 +95,46 @@ class UserInterface(QMainWindow):
 
         self.loading_window = None
         self.basic_loading_window = None
-
         self.construct_ui()
         self.showMaximized()
 
+    def construct_class_selection(self):
+        class_dict = self.ui_options.get("class")
+        if not class_dict:
+            return
+
+        self.class_select = self.menuBar().addMenu("Classes")
+
+        # Create an action group and set it to exclusive
+        self.action_group = QActionGroup(self)
+        self.action_group.setExclusive(True)
+
+        self.class_actions = {}  # Dictionary to hold actions for later access
+
+        for i, (key, value) in enumerate(class_dict.items()):
+            button_label = f"{key}: {value}"
+            action = QAction(button_label, self)
+            action.setCheckable(True)
+            action.setChecked(i == 0)
+
+            # Add the action to the menu and action group
+            self.class_select.addAction(action)
+            self.action_group.addAction(action)
+
+            # Store the action for later use if needed
+            self.class_actions[key] = action
+
+        # Optionally, connect the triggered signal on the group or each action
+        self.action_group.triggered.connect(self.on_action_triggered)
+
+    def on_action_triggered(self, action):
+        # This slot is called whenever any action in the group is triggered.
+        for key, act in self.class_actions.items():
+            if act == action:
+                print(f"Action {key} is now selected.")
+
     def construct_ui(self):
+        self.construct_class_selection()
         vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         self.annotation_visualizers: list[InteractiveGraphicsView] = []
