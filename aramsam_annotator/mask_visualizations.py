@@ -29,6 +29,7 @@ class MaskData:
     center: tuple = None
     color_idx: int = None
     contour: np.ndarray = None
+    class_id: int = None
 
 
 @dataclass
@@ -152,6 +153,18 @@ class MaskVisualization:
             dtype=np.uint8,
         )
 
+    def get_color(self, idx: int | None) -> tuple[int]:
+        if idx is None:
+            return tuple([255, 0, 0])  # default color when no class is assigned
+        if idx >= len(self.colormap):
+            print(
+                Warning(
+                    f"Not enough colors in the colormap for index {idx}. Reusing colors"
+                )
+            )
+            idx = idx % len(self.colormap)
+        return tuple(self.colormap[idx])
+
     def set_annotation(
         self,
         annotation: AnnotationObject = None,
@@ -260,7 +273,6 @@ class MaskVisualization:
             self.bbox_img = self.img.copy()
 
         self._set_obj_centers()
-        # self._assign_mask_colors() #TODO: Implement color based on class
         self._assign_bbox()
 
         for m in self.mask_objs:
@@ -272,7 +284,7 @@ class MaskVisualization:
                 continue
 
             x1, y1, x2, y2 = m.bbox
-            r, g, b = 255, 0, 0  # TODO: Implement color based on class
+            r, g, b = self.get_color(m.class_id)
             self.bbox_img = cv2.rectangle(
                 self.bbox_img, (x1, y1), (x2, y2), (int(b), int(g), int(r)), 1
             )

@@ -780,7 +780,7 @@ class App:
     def add_good_mask(self):
         if self.sam_gen == 2 and self.annotator.next_annotation is not None:
             self.start_mask_batch_thread()
-        new_center = self.annotator.good_mask()
+        new_center = self.annotator.good_mask(class_id=self.ui.get_selected_class())
         if new_center is None:
             if (
                 self.experiment_mode == "structured"

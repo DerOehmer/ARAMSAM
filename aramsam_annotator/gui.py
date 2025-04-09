@@ -98,41 +98,6 @@ class UserInterface(QMainWindow):
         self.construct_ui()
         self.showMaximized()
 
-    def construct_class_selection(self):
-        class_dict = self.ui_options.get("class")
-        if not class_dict:
-            return
-
-        self.class_select = self.menuBar().addMenu("Classes")
-
-        # Create an action group and set it to exclusive
-        self.action_group = QActionGroup(self)
-        self.action_group.setExclusive(True)
-
-        self.class_actions = {}  # Dictionary to hold actions for later access
-
-        for i, (key, value) in enumerate(class_dict.items()):
-            button_label = f"{key}: {value}"
-            action = QAction(button_label, self)
-            action.setCheckable(True)
-            action.setChecked(i == 0)
-
-            # Add the action to the menu and action group
-            self.class_select.addAction(action)
-            self.action_group.addAction(action)
-
-            # Store the action for later use if needed
-            self.class_actions[key] = action
-
-        # Optionally, connect the triggered signal on the group or each action
-        self.action_group.triggered.connect(self.on_action_triggered)
-
-    def on_action_triggered(self, action):
-        # This slot is called whenever any action in the group is triggered.
-        for key, act in self.class_actions.items():
-            if act == action:
-                print(f"Action {key} is now selected.")
-
     def construct_ui(self):
         self.construct_class_selection()
         vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
@@ -280,7 +245,7 @@ class UserInterface(QMainWindow):
 
             self.auto_save_box = QCheckBox(text="Auto Save", parent=self)
             self.auto_save_box.move(
-                10 * self.buttons_spacing + 9 * self.buttons_min_width,
+                11 * self.buttons_spacing + 10 * self.buttons_min_width,
                 int(self.height_offset / 2),
             )
             self.auto_save_box.setChecked(True)
@@ -332,6 +297,60 @@ class UserInterface(QMainWindow):
             self.experiment_instructions_label.setMinimumWidth(
                 self.width() - instruction_x,
             )
+
+    def construct_class_selection(self):
+        class_dict = self.ui_options.get("class")
+        if not class_dict:
+            self.class_select = None
+            self.class_action_group = None
+            self.class_actions = None
+            return
+
+        initial_label = self._get_current_class_text(class_dict)
+        self.current_class_label = QLabel(text=initial_label, parent=self)
+        self.current_class_label.move(
+            13 * self.buttons_spacing + 14 * self.buttons_min_width,
+            int(self.height_offset / 2),
+        )
+        self.current_class_label.setMinimumWidth(
+            self.buttons_min_width * 6,
+        )
+
+        self.class_select = self.menuBar().addMenu("Classes")
+
+        # Create an action group and set it to exclusive
+        self.class_action_group = QActionGroup(self)
+        self.class_action_group.setExclusive(True)
+
+        self.class_actions = {}  # Dictionary to hold actions for later access
+
+        for i, (key, value) in enumerate(class_dict.items()):
+            button_label = f"{key}: {value}"
+            action = QAction(button_label, self)
+            action.setCheckable(True)
+            action.setChecked(i == 0)
+
+            # Add the action to the menu and action group
+            self.class_select.addAction(action)
+            self.class_action_group.addAction(action)
+
+            # Store the action for later use if needed
+            self.class_actions[key] = action
+
+        self.class_action_group.triggered.connect(self.class_toggle)
+
+    def class_toggle(self, _):
+        # This slot is called whenever any action in the group is triggered.
+        self.current_class_label.setText(self._get_current_class_text())
+
+    def _get_current_class_text(self, class_dict=None) -> str:
+        if class_dict is None:
+            selected_action = self.class_action_group.checkedAction()
+            return selected_action.text()
+        elif not "0" in class_dict.keys():
+            return "Invalid class json"
+        else:
+            return f'0: {class_dict["0"]}'
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int(self.width() / 2)
@@ -431,6 +450,19 @@ class UserInterface(QMainWindow):
         self.ui_options["layout_settings_options"]["current"] = layout_options
         self.layout_options_signal.emit(layout_options)
 
+    def get_selected_class(self) -> int:
+        if self.class_action_group is None:
+            return None
+
+        selected_action = self.class_action_group.checkedAction()
+        if selected_action is None:
+            return None
+
+        for i, action in enumerate(self.class_actions.values()):
+            if action == selected_action:
+                return i
+        return None
+
     def handleCoords(self, point: QPoint):
         if point.isNull():
             if self.experiment_mode is None:
@@ -439,6 +471,15 @@ class UserInterface(QMainWindow):
         if self.experiment_mode is None:
             self.labelCoords.setText(f"{point.x()}, {point.y()}")
         self.mouse_position.emit((point.x(), point.y()))
+
+    def _toggle_class_id(self, class_id: str):
+        if self.class_actions is None:
+            return
+        if not class_id in self.class_actions.keys():
+            return
+        action = self.class_actions[class_id]
+        action.trigger()
+        self.good_mask_button.click()
 
     def keyPressEvent(self, event: QKeyEvent):
         if isinstance(event, QKeyEvent):
@@ -458,6 +499,27 @@ class UserInterface(QMainWindow):
             self.preview_annotation_point_signal.emit(0)
         elif event.text() == "d":
             self.preview_annotation_point_signal.emit(-1)
+
+        elif event.text() == "0":
+            self._toggle_class_id("0")
+        elif event.text() == "1":
+            self._toggle_class_id("1")
+        elif event.text() == "2":
+            self._toggle_class_id("2")
+        elif event.text() == "3":
+            self._toggle_class_id("3")
+        elif event.text() == "4":
+            self._toggle_class_id("4")
+        elif event.text() == "5":
+            self._toggle_class_id("5")
+        elif event.text() == "6":
+            self._toggle_class_id("6")
+        elif event.text() == "7":
+            self._toggle_class_id("7")
+        elif event.text() == "8":
+            self._toggle_class_id("8")
+        elif event.text() == "9":
+            self._toggle_class_id("9")
 
     def childMousePressEvent(self, event: QMouseEvent):
         if event.button().name == "RightButton":

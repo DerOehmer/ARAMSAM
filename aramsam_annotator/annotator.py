@@ -317,7 +317,7 @@ class Annotator:
                     next_mobj.color_idx = mobj.color_idx
         return next_mask_objs
 
-    def good_mask(self, time_stamp: int | None = None):
+    def good_mask(self, time_stamp: int | None = None, class_id: int = None):
         annot = self.annotation
         if self.manual_annotation_enabled:
             origin = (
@@ -377,6 +377,7 @@ class Annotator:
             print("No mask to store")
             return (0, 0)
 
+        mask_to_store.class_id = class_id
         annot.good_masks.append(mask_to_store)
         self.mask_idx += 1
 
@@ -646,7 +647,7 @@ class Annotator:
                 "This combination of settings is not implemented"
             )
 
-    def save_bboxes_yolo(self, save_path: Path, class_id: int = 0):
+    def save_bboxes_yolo(self, save_path: Path):
         img_id = os.path.splitext(self.annotation.img_name)[0]
         # Ensure the output directories exist
         image_dir = os.path.join(save_path, "images")
@@ -672,6 +673,7 @@ class Annotator:
         # YOLO format: class_id, x_center, y_center, bbox_width, bbox_height (all normalized to [0,1])
         yolo_lines = []
         for good_obj in self.annotation.good_masks:
+            class_id = good_obj.class_id if good_obj.class_id is not None else 0
             x_min, y_min, x_max, y_max = good_obj.bbox
             x_center = ((x_min + x_max) / 2) / width
             y_center = ((y_min + y_max) / 2) / height
