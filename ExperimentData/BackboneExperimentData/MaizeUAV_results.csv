@@ -1,0 +1,12 @@
+Mean Dice,Generalized Dice,Mean IoU,Sam generation,Weights path,Dataset
+0.769122302532196,0.5421967506408691,0.7021089792251587,1,sam_vit_b_01ec64.pth,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7891233563423157,0.5810844302177429,0.7220780849456787,1,sam_vit_l_0b3195.pth,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7569043040275574,0.518180787563324,0.6926392316818237,1,sam_vit_h_4b8939.pth,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7102488875389099,0.4323514997959137,0.6478487253189087,2,sam2_hiera_tiny.pt,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7247341871261597,0.45612481236457825,0.6594318151473999,2,sam2_hiera_small.pt,ExperimentData/BackboneExperimentData/MaizeUAV
+0.743134081363678,0.4931935966014862,0.6778340339660645,2,sam2_hiera_base_plus.pt,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7250438928604126,0.46358275413513184,0.663048505783081,2,sam2_hiera_large.pt,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7068260908126831,0.42255932092666626,0.6446636915206909,2,sam2.1_hiera_tiny.pt,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7471609711647034,0.5006285309791565,0.6790986061096191,2,sam2.1_hiera_small.pt,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7407693266868591,0.48748546838760376,0.6753215193748474,2,sam2.1_hiera_base_plus.pt,ExperimentData/BackboneExperimentData/MaizeUAV
+0.7822887897491455,0.5700134038925171,0.7124337553977966,2,sam2.1_hiera_large.pt,ExperimentData/BackboneExperimentData/MaizeUAV

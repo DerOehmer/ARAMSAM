@@ -1,0 +1,26 @@
+[
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Polygon drawing (3/3)\n\nIf there are any good kernels left which you were not able to annotate with the previous tools,\nyou should annotate the remaining kernels manually by polygon drawing.\n",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Drawing a polygon is done by adding multiple points around a kernel through right-clicking or pressing 'a'\nat the current cursor location. Try to use multiple points to approximate a round shape.",
+        "arrow_position": "none"
+    },   
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "To undo a point press 'd'. To undo the entire mask press 'b'.\nYour collected mask points will be visible in the bottom left image.\nOnce your are happy with one mask press 'n' or click the GOOD MASK button to save the mask.\n\nNOTE: The algorithm will connect the points in the order they are clicked.\nThis means you should add polygon points only in one direction around the maize kernel.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Now during the tutorial, feel free to test all the functionalities you have been introduced to.\nDuring the tutorial there is no need to annotate all GOOD kernels. Once you feel\ncomfortable with the current tool, click the green 'Next' button.\nIf anything is unclear, do not hesitate to ask any questions.\n\nClick 'Close' to start trying the tool.",
+        "arrow_position": "none"
+    }
+]

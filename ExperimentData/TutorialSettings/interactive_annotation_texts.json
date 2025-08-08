@@ -1,0 +1,32 @@
+[
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Interactive prompting(2/3)\n\nDuring interactive prompting, you can use the mouse to move over kernels,\nwhich you want to annotate. The software will then propose a mask visible in white\n color at the top-right view and in light-blue color at the bottom-right view.",
+        "arrow_position": "none"
+    },
+    {
+        "widget": null,
+        "object_index": null,
+        "text":  "To improve the proposed mask, you can add positive points, in the area which should be included in the mask,\nand negative points, in the area which should not be included in the mask.",
+        "arrow_position": "none"
+    },   
+    {
+        "widget": null,
+        "object_index": null,
+        "text":  "Add a postive point by right-clicking or pressing button 'a'\nAdd a negative point by pressing button 's'\nTo undo the last point, press button 'd'\n\nThe prompting points will be visible in the bottom-left view.\n\nPress 'n' once you are satisfied with the mask.",
+        "arrow_position": "none"
+    },   
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "In order to navigate in the images, you can left-click, drag and zoom whith the mouse wheel.\nThis can be done in any of the four views, they will all move synchronously.\nZooming in will help you to judge the maize kernels.",
+        "arrow_position": "none"
+    },   
+    {
+        "widget": null,
+        "object_index": null,
+        "text": "Now during the tutorial, feel free to test all the functionalities you have been introduced to.\nDuring the tutorial there is no need to annotate all GOOD kernels. Once you feel\ncomfortable with the current tool, click the green 'Next' button.\nIf anything is unclear, do not hesitate to ask any questions.\n\nClick 'Close' to start trying the tool.",
+        "arrow_position": "none"
+    }
+]

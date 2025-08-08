@@ -1,0 +1,23 @@
+{
+    "All_masks": {
+        "Sam1_proposed": 0,
+        "Sam2_proposed": 179,
+        "Sam1_interactive": 0,
+        "Sam2_interactive": 0,
+        "Polygon_drawing": 11,
+        "Sam2_tracking": 5,
+        "Panorama_tracking": 0,
+        "Total_masks": 195
+    },
+    "Selected_masks": {
+        "Sam1_proposed": 0,
+        "Sam2_proposed": 0,
+        "Sam1_interactive": 0,
+        "Sam2_interactive": 0,
+        "Polygon_drawing": 10,
+        "Sam2_tracking": 0,
+        "Panorama_tracking": 0,
+        "Total_masks": 10
+    },
+    "Total_time": 6024
+}
