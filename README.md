@@ -7,9 +7,8 @@ ARAMSAM is an interactive annotation UI designed to accelerate image labeling fo
 ## Prerequisites
 - Python >= 3.10
 
-To reproduce the encoder experiment all SAM1, SAM2.0 and SAM2.1 weights are required. For reproducing the AMG experiment and the user experiment, only `sam_vit_h_4b8939.pth` and `sam2.1_hiera_small.pt` are required.
-The weights of SAM1 can be downloaded from `https://github.com/facebookresearch/segment-anything` and the weights of both SAM2.0 and SAM2.1 can be downloaded from `https://github.com/facebookresearch/sam2`.
-All experiments were run on a RTX 3090 with 24GB Vram. Less VRAM might cause the scripts to not work properly.
+The weights of SAM1 can be downloaded from `https://github.com/facebookresearch/segment-anything` and the weights of both SAM2.0 and SAM2.1 can be downloaded from `https://github.com/facebookresearch/sam2`. A CUDA GPU is recommended but using the `vit-b` backbone also gives a sufficient user experience on a CPU-only system.
+
 
 ## Installation
 Inside activated virtual environmment run:
@@ -18,8 +17,16 @@ pip install -r requirements.txt
 cd segment-anything-21
 pip install -e ./sam2
 ```
-## Run the experiments
-- Encoder experiment: Run `Backbone_evaluation_experiment.py` for each dataset (modify dataset in main function)
-- AMG experiment: Run `Amg_evaluation_experiment.py` for each encoder (modify sam_gen, weights_path and config in main function)
-- User experiment: Run `COMPLETE_EXPERIMENT.py` per user. `COMPLETE_TUTORIAL.py` is giving instructions.
 
+## Run ARAMSAM
+```
+python -m aramsam_annotator.main
+```
+
+Modify `aramsam_annotator/configs.py' to: 
+- Load different SAM encoders
+- Enable/disable the automatic mask generator
+- Define classes (currently only supported with saving bboxes in yolo format)
+- Load a YOLO network for bounding box proposals
+
+A more user friendly way to modify the settings is coming in the future.
