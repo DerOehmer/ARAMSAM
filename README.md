@@ -18,6 +18,17 @@ cd segment-anything-21
 pip install -e ./sam2
 ```
 
+### Installation using Docker
+Use VS Code Dev Containers Extension
+
+or
+
+build and run .devcontainer/Dockerfile. After starting the container run:
+```
+wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth
+./install_sam_2.sh
+```
+
 ## Run ARAMSAM
 ```
 python -m aramsam_annotator.main

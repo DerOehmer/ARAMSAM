@@ -38,9 +38,5 @@
             ]
         }
     },
-    // "mounts": ["source=c/development/kinera_sam_annotation/datasets/soil010623_1_images,target=/workspaces/SequenceSAM-Annotator/data,type=bind,consistency=cached"],
-    // Use 'forwardPorts' to make a list of ports inside the container available locally.
-    // "forwardPorts": [],
-    // Use 'postCreateCommand' to run commands after the container is created.
-    "postCreateCommand": "./install_sam_2.sh"
+    "postCreateCommand": "wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth && ./install_sam_2.sh"
 }
