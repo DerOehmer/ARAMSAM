@@ -761,7 +761,7 @@ class Annotator:
             log_dict[m.origin] += 1
             mask_code = self.origin_codes[m.origin]
 
-            if mask_dir is not None:
+            if mask_dir is not None and m.mask is not None:
                 mask_ts = m.time_stamp
                 if mask_ts > latest_ts:
                     latest_ts = mask_ts

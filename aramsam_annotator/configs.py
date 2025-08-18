@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 class SamConfigs:
     do_sam: bool = True
     gen: int = 1 #2 #
-    model_ckpt_p: str ="sam_vit_b_01ec64.pth"  #'sam2.1_hiera_small.pt'#
-    model_type: str = "vit_b"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
+    model_ckpt_p: str ="sam_vit_l_0b3195.pth"  #'sam2.1_hiera_small.pt'#
+    model_type: str = "vit_l"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
 
 
 @dataclass
@@ -23,8 +23,8 @@ class SaveData:
     do_save: bool = True
     auto_save: bool = True
     save_dir: str = None
-    save_masks: bool = True
-    save_bboxes: bool = False
+    save_masks: bool = False
+    save_bboxes: bool = True
     bbox_style: str = "yolo"
 
     def __post_init__(self):
@@ -47,7 +47,7 @@ class AramsamConfigs:
 
     img_tiles: ImgTiles = field(default_factory=ImgTiles)
 
-    yolo_model_ckpt_p: str = None#"yolov8x.pt"
+    yolo_model_ckpt_p: str = "plant_count_yolo11x.pt"  #None#"yolov8x.pt"
 
     save_data: SaveData = field(default_factory=SaveData)
     class_dict: dict = field(default_factory=lambda: {
