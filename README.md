@@ -41,3 +41,12 @@ Modify `aramsam_annotator/configs.py' to:
 - Load a YOLO network for bounding box proposals
 
 A more user friendly way to modify the settings is coming in the future.
+
+## Supporting Companies
+
+This project is supported by:
+
+- [NPZ Innovation GmbH](https://www.npz-innovation.de/)
+
+## License
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
