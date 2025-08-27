@@ -6,14 +6,14 @@ from dataclasses import dataclass, field
 @dataclass
 class SamConfigs:
     do_sam: bool = True
-    gen: int = 1 #2 #
-    model_ckpt_p: str ="sam_vit_l_0b3195.pth"  #'sam2.1_hiera_small.pt'#
-    model_type: str = "vit_l"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
+    gen: int = 2 #2 #
+    model_ckpt_p: str = "sam2.1_hiera_base_plus.pt"#"sam_vit_l_0b3195.pth"  #'sam2.1_hiera_small.pt'#
+    model_type: str = "configs/sam2.1/sam2.1_hiera_b+.yaml" #"vit_l"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
 
 
 @dataclass
 class ImgTiles:
-    do_tiling: bool = True
+    do_tiling: bool = False
     tile_size: int = 640
     tile_overlap: float = 0.2
 
@@ -22,9 +22,9 @@ class ImgTiles:
 class SaveData:
     do_save: bool = True
     auto_save: bool = True
-    save_dir: str = None
-    save_masks: bool = False
-    save_bboxes: bool = True
+    save_dir: str | None = "output"
+    save_masks: bool = True
+    save_bboxes: bool = False
     bbox_style: str = "yolo"
 
     def __post_init__(self):
@@ -42,12 +42,12 @@ class SaveData:
 @dataclass
 class AramsamConfigs:
     sam_configs: SamConfigs = field(default_factory=SamConfigs)
-    sam_background_embedding: bool = False
-    do_amg: bool = False
+    sam_background_embedding: bool = True
+    do_amg: bool = True
 
     img_tiles: ImgTiles = field(default_factory=ImgTiles)
 
-    yolo_model_ckpt_p: str = "plant_count_yolo11x.pt"  #None#"yolov8x.pt"
+    yolo_model_ckpt_p: str | None = None #"plant_count_yolo11x.pt"  #None#"yolov8x.pt"
 
     save_data: SaveData = field(default_factory=SaveData)
     class_dict: dict = field(default_factory=lambda: {

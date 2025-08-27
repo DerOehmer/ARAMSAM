@@ -194,6 +194,11 @@ class App:
         self.img_fnames.append(img_fpath)
         self.select_next_img()
 
+    def _is_img_file(self, path: str) -> bool:
+        if not isfile(path):
+            return False
+        return path.lower().endswith((".png", ".jpg", ".jpeg"))
+
     def load_img_folder(self, _) -> None:
         self.set_sam()
         print("loading folder")
@@ -202,7 +207,7 @@ class App:
             if img_dir == "":
                 return
             img_fnames = [
-                join(img_dir, f) for f in listdir(img_dir) if isfile(join(img_dir, f))
+                join(img_dir, f) for f in listdir(img_dir) if self._is_img_file(join(img_dir, f))
             ]
             self.img_fnames.extend(img_fnames)
             self.img_fnames = natsorted(self.img_fnames)

@@ -50,11 +50,8 @@ class MaskVisualizationData:
 class AnnotationObject:
     def __init__(self, filepath: Path) -> None:
         self.filepath: str = str(filepath)
-        self.img: np.ndarray = cv2.imread(self.filepath)
+        self.img: np.ndarray = self._load_img(self.filepath)
         self.img_name = basename(filepath)
-        if self.img.shape[2] == 4:
-            print("Loaded image with 4 channels - ignoring last")
-            self.img = self.img[:, :, :3]
         self.masks: list[MaskData] = []
         self.good_masks: list[MaskData] = []
         self.mask_decisions: list[bool] = []
@@ -69,9 +66,15 @@ class AnnotationObject:
         )
         self.preview_mask = None
 
-    """def set_masks(self, mask_objects: list[MaskData]):
-        self.masks = mask_objects
-        self.mask_decisions = [False for _ in range(len(self.masks))]"""
+    def _load_img(self, filepath: Path | str) -> np.ndarray:
+        img = cv2.imread(str(filepath))
+        if len(img.shape) == 2:
+            print("Loaded image is grayscale - converting to BGR")
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        if img.shape[2] == 4:
+            print("Loaded image with 4 channels - ignoring last")
+            img = img[:, :, :3]
+        return img
 
     def set_current_mask(self, mask_idx: int):
         if self.masks[mask_idx].mask is not None:
