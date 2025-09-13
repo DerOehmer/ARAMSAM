@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 @dataclass
 class SamConfigs:
     do_sam: bool = True
-    gen: int = 2 #2 #
-    model_ckpt_p: str = "sam2.1_hiera_base_plus.pt"#"sam_vit_l_0b3195.pth"  #'sam2.1_hiera_small.pt'#
-    model_type: str = "configs/sam2.1/sam2.1_hiera_b+.yaml" #"vit_l"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
+    gen: int = 1 #2 #
+    model_ckpt_p: str = "sam_vit_b_01ec64.pth"#"sam_vit_l_0b3195.pth"  #'sam2.1_hiera_small.pt'#
+    model_type: str = "vit_b" #"vit_l"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
 
 
 @dataclass
