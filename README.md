@@ -7,13 +7,16 @@ ARAMSAM is an interactive annotation UI designed to accelerate image labeling fo
 ## Prerequisites
 - Python >= 3.11
 
-The weights of SAM1 can be downloaded from `https://github.com/facebookresearch/segment-anything` and the weights of both SAM2.0 and SAM2.1 can be downloaded from `https://github.com/facebookresearch/sam2`. A CUDA GPU is recommended but using the `vit-b` backbone also gives a sufficient user experience on a CPU-only system.
+The weights of SAM1 can be downloaded from `https://github.com/facebookresearch/segment-anything` and the weights of both SAM2.0 and SAM2.1 can be downloaded from `https://github.com/facebookresearch/sam2`. A CUDA GPU is recommended but simply using SAM 1 and the `vit-b` backbone also gives a sufficient user experience on a CPU-only system.
 
 
 ## Installation
 Inside activated virtual environmment run:
 ```
 pip install -r requirements.txt
+```
+To install SAM2 run the commands below. These steps are not necessary if you only want to use SAM1 (e.g. for CPU-only systems).:
+```
 cd segment-anything-21
 pip install -e ./sam2
 ```

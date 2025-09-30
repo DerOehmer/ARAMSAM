@@ -13,7 +13,7 @@ class SamConfigs:
 
 @dataclass
 class ImgTiles:
-    do_tiling: bool = False
+    do_tiling: bool = True
     tile_size: int = 640
     tile_overlap: float = 0.2
 
@@ -23,18 +23,22 @@ class SaveData:
     do_save: bool = True
     auto_save: bool = True
     save_dir: str | None = "output"
-    save_masks: bool = True
+    save_masks: bool = True # 
+    mask_style: str = "yolo" # default, yolo, 
     save_bboxes: bool = False
-    bbox_style: str = "yolo"
+    bbox_style: str = "yolo" # default, yolo, ""
 
     def __post_init__(self):
         if self.save_masks and self.save_bboxes:
             self.save_bboxes = False  # Fixed variable name
             print("Not implemented yet. Only saving masks")
+
+        if not self.save_bboxes:
+            self.bbox_style = ""
         if self.auto_save and not self.do_save:
             self.do_save = True
             print("Auto save is enabled. Saving data will be enabled as well.")
-        if self.bbox_style != "yolo":
+        if self.save_bboxes and self.bbox_style != "yolo":
             self.bbox_style = "yolo"
             print("Only YOLO bbox style is currently supported. Setting to 'yolo'.")
 
@@ -43,7 +47,7 @@ class SaveData:
 class AramsamConfigs:
     sam_configs: SamConfigs = field(default_factory=SamConfigs)
     sam_background_embedding: bool = True
-    do_amg: bool = True
+    do_amg: bool = False
 
     img_tiles: ImgTiles = field(default_factory=ImgTiles)
 
@@ -51,9 +55,7 @@ class AramsamConfigs:
 
     save_data: SaveData = field(default_factory=SaveData)
     class_dict: dict = field(default_factory=lambda: {
-        "0": "ValidPlant",
-        "1": "InvalidPlant",
-        "2": "Shark"
+        "0": "Larvae",
     })
 
     def __post_init__(self):

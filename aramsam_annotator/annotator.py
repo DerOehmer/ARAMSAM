@@ -88,6 +88,8 @@ class Annotator:
         self.time_stamp = round(time.time() * 10)
 
     def _get_time_stamp(self):
+        if self.time_stamp is None:
+            self.init_time_stamp()
         current_ts = round(time.time() * 10)
         return current_ts - self.time_stamp
 
@@ -646,7 +648,12 @@ class Annotator:
     def save_annotations(self, save_path: Path, save_suffix: str = None) -> bool:
 
         if self.configs.save_data.save_masks:
-            return self.save_masks_and_logs(save_path, save_suffix)
+                
+            if self.configs.save_data.mask_style == "yolo":
+                return self.save_masks_yolo(save_path)
+            elif self.configs.save_data.mask_style == "default":
+                return self.save_masks_and_logs(save_path, save_suffix)
+        
         elif (
             self.configs.save_data.save_bboxes
             and self.configs.save_data.bbox_style == "yolo"
@@ -695,6 +702,80 @@ class Annotator:
             yolo_lines.append(line)
 
         # Save the YOLO formatted bounding boxes into a text file in the 'labels' folder.
+        # The label file will have the same base filename as the image.
+        label_filename = f"{img_id}.txt"
+        label_path = os.path.join(labels_dir, label_filename)
+        with open(label_path, "w") as f:
+            f.write("\n".join(yolo_lines))
+
+    def save_masks_yolo(self, save_path: Path):
+        """
+        Save masks in YOLO segmentation format (polygon coordinates).
+        YOLO segmentation format: class_id x1 y1 x2 y2 x3 y3 ... (all normalized to [0,1])
+        """
+        img_id = os.path.splitext(self.annotation.img_name)[0]
+        # Ensure the output directories exist
+        image_dir = os.path.join(save_path, "images")
+        labels_dir = os.path.join(save_path, "labels")
+        control_dir = os.path.join(save_path, "control_images")
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
+        if not os.path.exists(labels_dir):
+            os.makedirs(labels_dir)
+        if not os.path.exists(control_dir):
+            os.makedirs(control_dir)
+
+        # Save the image into the 'images' folder
+        image_path = os.path.join(image_dir, self.annotation.img_name)
+        cv2.imwrite(image_path, self.annotation.img)
+        control_img_p = os.path.join(control_dir, f"{img_id}_control.jpg")
+        cv2.imwrite(control_img_p, self.annotation.mask_visualizations.masked_img)
+
+        # Get image dimensions (height, width)
+        height, width = self.annotation.img.shape[:2]
+
+        # Convert each mask to YOLO segmentation format:
+        # YOLO segmentation format: class_id x1 y1 x2 y2 x3 y3 ... (all normalized to [0,1])
+        yolo_lines = []
+        for good_obj in self.annotation.good_masks:
+            if good_obj.mask is None:
+                continue
+                
+            class_id = good_obj.class_id if good_obj.class_id is not None else 0
+            
+            # Find contours from the mask
+            contours, _ = cv2.findContours(
+                good_obj.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            
+            # Only process the largest contour
+            if contours:
+                # Find the largest contour by area
+                largest_contour = max(contours, key=cv2.contourArea)
+                
+                # Simplify contour to reduce number of points
+                epsilon = 0.002 * cv2.arcLength(largest_contour, True)
+                approx_contour = cv2.approxPolyDP(largest_contour, epsilon, True)
+                
+                # Skip if contour is too small (less than 3 points)
+                if len(approx_contour) >= 3:
+                    # Flatten contour points and normalize to [0,1]
+                    normalized_points = []
+                    for point in approx_contour:
+                        x, y = point[0]
+                        x_norm = x / width
+                        y_norm = y / height
+                        # Clamp values to [0,1] range
+                        x_norm = max(0.0, min(1.0, x_norm))
+                        y_norm = max(0.0, min(1.0, y_norm))
+                        normalized_points.extend([f"{x_norm:.6f}", f"{y_norm:.6f}"])
+                    
+                    # Create YOLO line: class_id followed by normalized coordinates
+                    if normalized_points:  # Only add if we have valid points
+                        line = f"{class_id} " + " ".join(normalized_points)
+                        yolo_lines.append(line)
+
+        # Save the YOLO formatted segmentation masks into a text file in the 'labels' folder.
         # The label file will have the same base filename as the image.
         label_filename = f"{img_id}.txt"
         label_path = os.path.join(labels_dir, label_filename)

@@ -63,6 +63,7 @@ class App:
         self.ui.draw_button.clicked.connect(self.draw_polygon)
         self.ui.delete_button.clicked.connect(self.select_masks_to_delete)
         self.ui.auto_save_box.checkStateChanged.connect(self.auto_save_changed)
+        self.ui.auto_embed_box.checkStateChanged.connect(self.auto_embed_changed)
 
         if self.experiment_mode == "structured":
             self.ui.next_method_button.clicked.connect(self.next_method)
@@ -130,6 +131,18 @@ class App:
             self.configs.save_data.auto_save = True
         else:
             self.configs.save_data.auto_save = False
+
+    def auto_embed_changed(self):
+        box_checked = self.ui.auto_embed_box.isChecked()
+        
+        if box_checked:
+            self.ui.manual_annotation_button.setEnabled(True)
+            self.embed_img(self.annotator.get_annotation_img_name())
+        else:
+            self.ui.manual_annotation_button.setChecked(False)
+            if self.annotator.manual_annotation_enabled:
+                self.manual_annotation()
+            self.ui.manual_annotation_button.setEnabled(False)
 
     def save_output(self, _=None):
         if self.experiment_mode == "tutorial" or self.tutorial_flag == True:
@@ -390,7 +403,10 @@ class App:
         img_id = splitext(img_file_name)[0]
         annot_id = f"{img_id}_annots"
         annot_path = join(self.output_dir, annot_id)
-        if self.configs.save_data.bbox_style == "yolo":
+        is_yolostyle = (
+            self.configs.save_data.bbox_style == "yolo" or self.configs.save_data.mask_style == "yolo"
+            )
+        if is_yolostyle:
             yolo_img_path = join(self.output_dir, "images", img_file_name)
             if isfile(yolo_img_path):
                 return True
@@ -464,6 +480,9 @@ class App:
         self.threadpool.start(img_embed_worker)
 
     def embed_img(self, img_name: str):
+        if self.ui.auto_embed_box.isChecked() is False:
+            self.start_user_annotation()
+            return
         current_ann_name = self.annotator.get_annotation_img_name()
         next_ann_name = self.annotator.get_next_annotation_img_name()
 
@@ -660,6 +679,8 @@ class App:
             self.start_amg_worker()
         elif self.configs.yolo_model_ckpt_p is not None:
             self.start_yolo_worker()
+        else:
+            self.start_user_annotation()
         return
 
     def start_yolo_worker(self):

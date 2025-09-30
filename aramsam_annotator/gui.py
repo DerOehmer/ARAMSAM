@@ -251,6 +251,14 @@ class UserInterface(QMainWindow):
             self.auto_save_box.setChecked(True)
             self.auto_save_box.show()
 
+            self.auto_embed_box = QCheckBox(text="Auto Embed", parent=self)
+            self.auto_embed_box.move(
+                12 * self.buttons_spacing + 11 * self.buttons_min_width,
+                int(self.height_offset / 2),
+            )
+            self.auto_embed_box.setChecked(True)
+            self.auto_embed_box.show()
+
             self.next_img_button = QPushButton(text="next image", parent=self)
             self.next_img_button.move(
                 7 * self.buttons_spacing + 6 * self.buttons_min_width,
@@ -315,7 +323,10 @@ class UserInterface(QMainWindow):
     
     def enable_push_buttons(self):
         for button in self.push_buttons:
+            if self.auto_embed_box.isChecked() is False and button == self.manual_annotation_button:
+                continue
             button.setEnabled(True)
+        
 
     def construct_class_selection(self):
         class_dict = self.ui_options.get("class")
