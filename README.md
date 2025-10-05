@@ -53,3 +53,6 @@ This project is supported by:
 
 ## License
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+## References
+Leon H. Oehme, Jonas Boysen, Zhangkai Wu et al. Orchestrating segment anything models to accelerate segmentation annotation on agricultural image datasets, 03 October 2025, PREPRINT (Version 1) available at Research Square [https://doi.org/10.21203/rs.3.rs-7606794/v1]
