@@ -6,7 +6,7 @@ After specifying your input data location you will be asked to choose an output 
 ![Load Data](../assets/load.png)
 
 ## Step 2: Select object class
-If you have defined multiple classes in `aramsam_annotator/configs.py`, select the class you want to annotate from the dropdown menu next to the "Settings" button. The selected class will be used for all annotations you store until you select a different class.
+If you have defined multiple classes in `configs.yaml`, select the class you want to annotate from the dropdown menu next to the "Settings" button. The selected class will be used for all annotations you store until you select a different class.
 
 ![Select Class](../assets/classes.png)
 
@@ -15,7 +15,7 @@ Click the "interactive" button to start prompt-based annotation with SAM. Hover 
 
 To refine the suggested masks, add positive prompt points (white) by pressing `a` or by right-clicking. Add negative prompt points (red) by pressing `s`. To undo the last prompt point, press `d`. Once you are satisfied with a mask, press `n` to store it. To undo the last stored mask, press `b` or click the "back" button.
 
-Note: Stored annotations are not written to disk until you click "next image" while "Auto Save" is checked, or until you click "Save" under "Menu" in the top-left corner. The format of the saved annotations is defined in `aramsam_annotator/configs.py`.
+Note: Stored annotations are not written to disk until you click "next image" while "Auto Save" is checked, or until you click "Save" under "Menu" in the top-left corner. The format of the saved annotations is defined in `configs.yaml`.
 
 ![Interactive Prompting](../assets/interactive.png)
 

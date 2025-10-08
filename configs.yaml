@@ -1,0 +1,33 @@
+# ARAMSAM example configuration file
+# Only include the keys you want to override. Missing keys keep the defaults.
+
+sam_configs:
+  do_sam: true
+  gen: 1
+  model_ckpt_p: "sam_vit_b_01ec64.pth"
+  model_type: "vit_b"
+
+sam_background_embedding: true
+
+do_amg: false
+
+img_tiles:
+  do_tiling: true
+  tile_size: 640
+  tile_overlap: 0.2
+
+# Set to a YOLO weights path to enable YOLO predictions for AMG
+yolo_model_ckpt_p: null
+
+save_data:
+  do_save: true
+  auto_save: true
+  save_dir: "output"
+  save_masks: true
+  mask_style: "yolo"
+  save_bboxes: false
+  bbox_style: "yolo"
+
+class_dict:
+  "0": "Faba"
+  "1": "Weed"

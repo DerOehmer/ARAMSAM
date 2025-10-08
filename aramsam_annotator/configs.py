@@ -1,4 +1,8 @@
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+import os
+import yaml
 
 
 
@@ -69,4 +73,74 @@ class AramsamConfigs:
             print(
                 "Background embedding is currently not supported for SAM generation 1. Disabling background embedding."
             )
+
+
+def load_configs_from_yaml(yaml_path: str | Path) -> "AramsamConfigs":
+    """
+    Load configuration from a YAML file and return an AramsamConfigs instance.
+
+    The loader will only override keys provided in the YAML file and will keep
+    the dataclass defaults for any missing fields. Nested configuration
+    sections are supported for `sam_configs`, `img_tiles`, and `save_data`.
+
+    Raises:
+        ImportError: if PyYAML is not installed.
+        FileNotFoundError: if the yaml_path does not exist.
+        ValueError: if the YAML cannot be parsed into a dictionary.
+    """
+
+    p = Path(yaml_path)
+    if not p.exists():
+        raise FileNotFoundError(f"Configuration file not found: {p}")
+
+    with open(p, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+
+    if not isinstance(data, dict):
+        raise ValueError("Configuration file must contain a YAML mapping (dictionary) at the top level.")
+
+    # Build nested dataclasses using values from YAML where provided, else defaults
+    sam_cfg = SamConfigs(**(data.get("sam_configs") or {}))
+    img_tiles = ImgTiles(**(data.get("img_tiles") or {}))
+    save_data = SaveData(**(data.get("save_data") or {}))
+
+    # Top-level simple fields
+    sam_background_embedding = data.get("sam_background_embedding", True)
+    do_amg = data.get("do_amg", False)
+    yolo_model_ckpt_p = data.get("yolo_model_ckpt_p", None)
+    class_dict = data.get("class_dict", {"0": "Larvae"})
+
+    # Create the AramsamConfigs instance which will run its post-init checks
+    configs = AramsamConfigs(
+        sam_configs=sam_cfg,
+        sam_background_embedding=sam_background_embedding,
+        do_amg=do_amg,
+        img_tiles=img_tiles,
+        yolo_model_ckpt_p=yolo_model_ckpt_p,
+        save_data=save_data,
+        class_dict=class_dict,
+    )
+
+    return configs
+
+
+def find_and_load_configs(yaml_filename: str = "configs.yaml") -> "AramsamConfigs":
+    """
+    Helper that looks for a `configs.yaml` file in the current working directory
+    and the repository root (two levels up from this module), and loads it if
+    found. If not found, returns the default AramsamConfigs instance.
+    """
+    # check cwd first
+    cwd_path = Path(os.getcwd()) / yaml_filename
+    if cwd_path.exists():
+        return load_configs_from_yaml(cwd_path)
+
+    # check repo root (two levels up from this file)
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_path = repo_root / yaml_filename
+    if repo_path.exists():
+        return load_configs_from_yaml(repo_path)
+
+    # fallback to defaults
+    return AramsamConfigs()
         

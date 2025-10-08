@@ -2,17 +2,26 @@ import dataclasses
 
 from aramsam_annotator.app import App
 from aramsam_annotator.mask_visualizations import MaskVisualizationData
-from aramsam_annotator.configs import AramsamConfigs
+from aramsam_annotator.configs import AramsamConfigs, find_and_load_configs
 
 
-def create_vis_options() -> tuple[list[str]]:
+def create_vis_options(confs:AramsamConfigs ) -> tuple[list[str]]:
+    bbox_mode = confs.save_data.save_bboxes and not confs.save_data.save_masks
     vis_options = [field.name for field in dataclasses.fields(MaskVisualizationData)]
-    default_vis_options = [
-        "img",
-        "img_sam_preview",
-        "masked_img_cnt",
-        "mask_collection_cnt",
-    ]
+    if bbox_mode:
+        default_vis_options = [
+            "img",
+            "img_sam_preview",
+            "bbox_img_cnt",
+            "mask_collection_cnt",
+        ]
+    else:
+        default_vis_options = [
+            "img",
+            "img_sam_preview",
+            "masked_img_cnt",
+            "mask_collection_cnt",
+        ]
 
     for default_vis_option in default_vis_options:
         if default_vis_option not in vis_options:
@@ -27,7 +36,8 @@ def create_vis_options() -> tuple[list[str]]:
 
 
 def main():
-    vis_options, default_vis_options, current_options = create_vis_options()
+    confs = find_and_load_configs()  # will load configs.yaml if present, else defaults
+    vis_options, default_vis_options, current_options = create_vis_options(confs)
     ui_options = {
         "layout_settings_options": {
             "options": vis_options,
@@ -35,7 +45,6 @@ def main():
             "current": current_options,
         }
     }
-    confs = AramsamConfigs()
     app = App(ui_options=ui_options, configs=confs)
     print("app")
     app.run()
