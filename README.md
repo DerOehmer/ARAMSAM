@@ -45,6 +45,10 @@ Modify `aramsam_annotator/configs.py' to:
 
 A more user friendly way to modify the settings is coming in the future.
 
+## UI Workflow
+
+For instructions on how you can use ARAMSAM UI see [Example Workflow](docs/example_workflow.md).
+
 ## Supporting Companies
 
 This project is supported by:
