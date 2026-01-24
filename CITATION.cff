@@ -1,23 +1,24 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-type: article
-authors:
-- family-names: "Oehme"
-  given-names: "Leon H."
-- family-names: "Boysen"
-  given-names: "Jonas"
-- family-names: "Wu"
-  given-names: "Zhangkai"
-- family-names: "Stein"
-  given-names: "Anthony"
-- family-names: "Müller"
-  given-names: "Joachim"
-title: "Orchestrating segment anything models to accelerate segmentation annotation on agricultural image datasets"
-doi: 10.3389/frai.2025.1748468
-journal: "Frontiers in Artificial Intelligence"
-volume: "Volume 8 - 2025"
-year: 2026
-ISSN: "2624-8212"
-url: "https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1748468"
+preferred-citation:
+  type: article
+  authors:
+  - family-names: "Oehme"
+    given-names: "Leon H."
+  - family-names: "Boysen"
+    given-names: "Jonas"
+  - family-names: "Wu"
+    given-names: "Zhangkai"
+  - family-names: "Stein"
+    given-names: "Anthony"
+  - family-names: "Müller"
+    given-names: "Joachim"
+  title: "Orchestrating segment anything models to accelerate segmentation annotation on agricultural image datasets"
+  doi: 10.3389/frai.2025.1748468
+  journal: "Frontiers in Artificial Intelligence"
+  volume: "Volume 8 - 2025"
+  year: 2026
+  ISSN: "2624-8212"
+  url: "https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1748468"
 
  
