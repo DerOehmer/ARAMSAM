@@ -58,3 +58,6 @@ This project is supported by:
 ## License
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 
+## Citation
+See the citation metadata: [`CITATION.cff`](./CITATION.cff)
+
