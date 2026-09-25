@@ -3,16 +3,19 @@
 
 sam_configs:
   do_sam: true
-  gen: 1
-  model_ckpt_p: "sam_vit_b_01ec64.pth"
-  model_type: "vit_b"
+  gen: 2
+  model_ckpt_p: "sam2.1_hiera_tiny.pt" #"sam_vit_b_01ec64.pth"
+  model_type: "configs/sam2.1/sam2.1_hiera_t.yaml" #"vit_b"
+
+# Use CUDA when available; set false to force CPU for SAM and YOLO.
+use_gpu: true
 
 sam_background_embedding: true
 
 do_amg: false
 
 img_tiles:
-  do_tiling: true
+  do_tiling: false
   tile_size: 640
   tile_overlap: 0.2
 
@@ -22,12 +25,12 @@ yolo_model_ckpt_p: null
 save_data:
   do_save: true
   auto_save: true
-  save_dir: "output"
+  save_dir: "output2"
   save_masks: true
   mask_style: "yolo"
   save_bboxes: false
   bbox_style: "yolo"
 
 class_dict:
-  "0": "Faba"
-  "1": "Weed"
+  "0": "Seed"
+

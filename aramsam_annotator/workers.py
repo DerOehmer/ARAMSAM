@@ -43,10 +43,14 @@ class Sam1EmbeddingWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
-        try:
+        # Background embedding only reads model weights and returns local state.
+        # Keep interactive prediction available while the next image is encoded.
+        lock_predictor = not isinstance(self.sam_predictor, BackgroundThreadSamPredictor)
+        if lock_predictor:
             self.mutex.lock()
+        try:
             now = time.time()
-            embedding_result = self.sam_predictor.embed_img(self.img)
+            embedding_result = self.sam_predictor.embed_img(self.img, image_format="BGR")
             if embedding_result is not None:
                 features, original_size, input_size = embedding_result
                 result = (features, original_size, input_size, self.img_name)
@@ -54,7 +58,6 @@ class Sam1EmbeddingWorker(QRunnable):
                 result = (None, None, None, self.img_name)
             duration = time.time() - now
             print(f"embedding took {duration}")
-            self.mutex.unlock()
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
@@ -62,6 +65,8 @@ class Sam1EmbeddingWorker(QRunnable):
         else:
             self.signals.result.emit(result)
         finally:
+            if lock_predictor:
+                self.mutex.unlock()
             self.signals.finished.emit(self.img_name)
 
 

@@ -210,6 +210,7 @@ class BackgroundThreadSamPredictor(SamPredictor):
         )
         return features, original_size, input_size
 
+    @torch.no_grad()
     def to_torch_img(
         self,
         transformed_image: torch.Tensor,
@@ -243,25 +244,23 @@ class Sam2Inference:
         sam2_checkpoint: str = "sam2_hiera_small.pt",
         cfg_path: str = "sam2_hiera_s.yaml",
         background_embedding: bool = True,
-        amg_config_path: str | None = None
+        amg_config_path: str | None = None,
+        device: str | None = None,
     ):
         from sam2.build_sam import build_sam2_video_predictor
         from sam2.sam2_video_predictor import SAM2VideoPredictor
         from sam2.sam2_image_predictor import SAM2ImagePredictor
         from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-        if not torch.cuda.is_available():
-            raise RuntimeError(
-                "CUDA is not available. SAM2 requires a CUDA enabled GPU."
-            )
-
-        self.device = "cuda"
-
-        self._init_mixed_precision()
+        self.device = device if device is not None else (
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        if torch.device(self.device).type == "cuda":
+            self._init_mixed_precision()
 
         self.mask_id_handler = mask_id_handler
         self.predictor: SAM2VideoPredictor = build_sam2_video_predictor(
-            cfg_path, sam2_checkpoint, device="cuda"
+            cfg_path, sam2_checkpoint, device=self.device
         )
         # self.custom_amg = CustomAMG(self)
         amg_kwargs = load_amg_config(amg_config_path)

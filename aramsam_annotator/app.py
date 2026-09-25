@@ -349,6 +349,7 @@ class App:
                 return
             elif (
                 embed_current
+                or self.annotator.annotation.features is None
                 or (
                     current_img_done
                     and not next_img_done  # if previous annotations wer just loaded from disk, embedding is still required
@@ -516,6 +517,7 @@ class App:
         )
         worker.signals.result.connect(self.receive_embedding_from_thread)
         worker.signals.finished.connect(self.embedding_done)
+        worker.signals.error.connect(self.print_thread_error)
 
         self.threadpool.start(worker)
 
@@ -524,9 +526,10 @@ class App:
             self.ui.performing_embedding_label.setText(
                 f"Embedding {embedding_threads} images"
             )
-            self.ui.create_basic_loading_window(
-                text="Please wait... Processing image with SAM"
-            )
+            if img_name == current_ann_name:
+                self.ui.create_basic_loading_window(
+                    text="Please wait... Processing image with SAM"
+                )
 
     def start_mask_batch_thread(self, track_remaining: bool = False):
 
@@ -621,8 +624,7 @@ class App:
                 )
             else:
                 self.ui.performing_embedding_label.setText(f"Embeddings done!")
-                if self.experiment_mode is None:
-                    self.annotator.init_time_stamp()
+                # Prefetch completion must not reset the current annotation timer.
                 self.update_ui_imgs()
 
     def object_proposal_done(self, _):
@@ -634,9 +636,8 @@ class App:
             self.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
 
     def receive_embedding_from_thread(self, result: tuple):
-        self.ui.close_basic_loading_window()
-
         if result[0] is None:
+            self.ui.close_basic_loading_window()
             self.propose_masks()
 
             return
@@ -644,6 +645,7 @@ class App:
         current_ann_name = self.annotator.get_annotation_img_name()
         if current_ann_name:
             if current_ann_name == img_name:
+                self.ui.close_basic_loading_window()
                 self.annotator.annotation.set_sam_parameters(
                     features=features,
                     original_size=original_size,
@@ -653,6 +655,14 @@ class App:
                 self.annotator.update_sam_features_to_current_annotation()
 
                 self.propose_masks()
+                next_annotation = self.annotator.next_annotation
+                if (
+                    self.experiment_mode is None
+                    and self.configs.sam_background_embedding
+                    and next_annotation is not None
+                    and next_annotation.features is None
+                ):
+                    self.embed_img(next_annotation.img_name)
 
                 return
 

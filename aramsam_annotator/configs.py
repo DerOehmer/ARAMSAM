@@ -62,16 +62,14 @@ class AramsamConfigs:
         "0": "Larvae",
     })
 
+    # Prefer CUDA when available; disable to force CPU for all models.
+    use_gpu: bool = True
+
     def __post_init__(self):
         if self.do_amg and self.yolo_model_ckpt_p is not None:
             self.yolo_model_ckpt_p = None
             print(
                 "AMG and YOLO model cannot be activated at the same time. Disabling YOLO model."
-            )
-        if self.sam_background_embedding and self.sam_configs.gen != 2:
-            self.sam_background_embedding = False
-            print(
-                "Background embedding is currently not supported for SAM generation 1. Disabling background embedding."
             )
 
 
@@ -119,6 +117,7 @@ def load_configs_from_yaml(yaml_path: str | Path) -> "AramsamConfigs":
         yolo_model_ckpt_p=yolo_model_ckpt_p,
         save_data=save_data,
         class_dict=class_dict,
+        use_gpu=data.get("use_gpu", AramsamConfigs.__dataclass_fields__["use_gpu"].default),
     )
 
     return configs

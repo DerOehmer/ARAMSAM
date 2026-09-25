@@ -4,7 +4,8 @@ import numpy as np
 
 
 class YoloInference:
-    def __init__(self, object_id_handler: MaskIdHandler):
+    def __init__(self, object_id_handler: MaskIdHandler, device: str | None = None):
+        self.device = device
         self.model = None
         self.image = None
         self.obj_ident = object_id_handler
@@ -46,7 +47,7 @@ class YoloInference:
         if self.image is None:
             raise ValueError("No image set. Please set an image using set_img().")
 
-        results = self.model(self.image)
+        results = self.model(self.image, device=self.device)
         n_boxes = len(results[0].boxes)
 
         bboxes = [self._get_mask_data_instance(results, i) for i in range(n_boxes)]

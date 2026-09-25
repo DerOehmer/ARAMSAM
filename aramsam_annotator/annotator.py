@@ -26,7 +26,7 @@ class Annotator:
         self.sam_model_type = self.configs.sam_configs.model_type
         self.sam = None
         self.yolo = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda" if configs.use_gpu and torch.cuda.is_available() else "cpu"
         self.mask_id_handler = MaskIdHandler()
 
         self.annotation: AnnotationObject = None
@@ -68,6 +68,7 @@ class Annotator:
                 self.mask_id_handler,
                 sam2_checkpoint=sam2_ckpt,
                 cfg_path=sam2_model_type,
+                device=self.device,
                 background_embedding=background_embedding,
             )
         elif sam_gen == 1:
@@ -190,6 +191,7 @@ class Annotator:
     def create_new_annotation(
         self, filepath: Path, next_filepath: Path | None = None
     ) -> tuple[bool]:
+        self.mask_idx = 0
         embed_current = False
         embed_next = False
         if self.next_annotation is None:
@@ -233,7 +235,7 @@ class Annotator:
 
         self.mask_idx = 0
         if self.yolo is None:
-            self.yolo = YoloInference(self.mask_id_handler)
+            self.yolo = YoloInference(self.mask_id_handler, device=self.device)
             self.yolo.load_checkpoint(self.configs.yolo_model_ckpt_p)
         self.yolo.set_img(self.annotation.img)
 
@@ -477,35 +479,29 @@ class Annotator:
             self._clear_unfinished_polygon()
             return
 
-        # If there are no previous masks, exit early.
-        if self.mask_idx == 0 or len(annot.good_masks) == 0:
+        # Keep the cursor within this image's decision history, including when
+        # recovering an annotation created before the image-transition reset.
+        self.mask_idx = max(0, min(self.mask_idx, len(annot.masks), len(annot.mask_decisions)))
+        if self.mask_idx == 0:
             return
 
-        # Get the origin of the last "good" mask.
-        last_mask_origin = annot.good_masks[-1].origin
+        previous_idx = self.mask_idx - 1
+        previous_mask = annot.masks[previous_idx]
+        if self.manual_annotation_enabled and "interactive" not in previous_mask.origin:
+            return
+        if self.polygon_drawing_enabled and "Polygon" not in previous_mask.origin:
+            return
 
-        # Define conditions for manual annotation and polygon drawing.
-        manual_condition = self.manual_annotation_enabled and (
-            "interactive" not in last_mask_origin
-        )
-        polygon_condition = self.polygon_drawing_enabled and (
-            "Polygon" not in last_mask_origin
-        )
+        if annot.mask_decisions[previous_idx]:
+            for idx in range(len(annot.good_masks) - 1, -1, -1):
+                if annot.good_masks[idx].mid == previous_mask.mid:
+                    popped_mobj = annot.good_masks.pop(idx)
+                    self._recycle_mask_meta_data(popped_mobj)
+                    break
 
-        # Proceed only if neither condition is met.
-        if not (manual_condition or polygon_condition):
-            # If the previous mask decision was positive and a good mask exists,
-            # remove the last mask and recycle its metadata.
-            if annot.mask_decisions[self.mask_idx - 1] and annot.good_masks:
-                popped_mobj = annot.good_masks.pop()
-                self._recycle_mask_meta_data(popped_mobj)
-
-            # Mark the mask decision as False and update the index.
-            annot.mask_decisions[self.mask_idx - 1] = False
-            self.mask_idx -= 1
-
-            # Return the center of the updated current mask.
-            return annot.masks[self.mask_idx].center
+        annot.mask_decisions[previous_idx] = False
+        self.mask_idx = previous_idx
+        return previous_mask.center
 
     def get_preview_object_id(self, position: tuple[int]):
         xindx, yindx = position
