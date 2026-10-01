@@ -51,9 +51,15 @@ class PanoImageAligner:
         kp1, des1 = orb.detectAndCompute(img_gray1, None)
         kp2, des2 = orb.detectAndCompute(img_gray2, None)
 
+        if des1 is None or des2 is None:
+            return []
+
         # Match descriptors.
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
         matches = bf.match(des1, des2)
+
+        if len(matches) < 4:
+            return []
 
         # Sort matches by distance.
         matches = sorted(matches, key=lambda x: x.distance)
@@ -73,6 +79,9 @@ class PanoImageAligner:
         src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
         self.h_matrix, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+        if self.h_matrix is None:
+            return []
 
         # Warp image using homography.
         height, width = img_gray2.shape

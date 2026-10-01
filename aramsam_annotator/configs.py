@@ -21,6 +21,9 @@ class ImgTiles:
     tile_size: int = 640
     tile_overlap: float = 0.2
 
+    def __post_init__(self):
+        self.tile_size = min(self.tile_size, 1024)
+
 
 @dataclass
 class SaveData:

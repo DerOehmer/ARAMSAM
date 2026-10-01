@@ -1,9 +1,13 @@
+from aramsam_annotator.backend.session import AnnotationSession
+from aramsam_annotator.backend.storage import AnnotationRepository, ORIGIN_CODES
+from functools import cached_property
+from aramsam_annotator.backend.editing import AnnotationEditor
+from aramsam_annotator.backend.rendering import AnnotationRenderer
 import numpy as np
 import torch
 import cv2
 from pathlib import Path
 import os
-import json
 import time
 import glob
 
@@ -20,6 +24,11 @@ from aramsam_annotator.configs import AramsamConfigs
 
 
 class Annotator:
+    """Annotation state and backwards-compatible editing/model API.
+
+    Editing and rendering operate on this state; session transitions and storage
+    have independent, testable services. Model wrappers retain their public API.
+    """
     def __init__(self, configs: AramsamConfigs) -> None:
         self.configs = configs
         self.sam_ckpt = self.configs.sam_configs.model_ckpt_p
@@ -41,16 +50,7 @@ class Annotator:
         self.manual_mask_point_labels = []
         self.previoius_toggle_state: dict[str, bool] | None = None
 
-        self.origin_codes = {
-            "Sam1_proposed": "s1p",
-            "Sam2_proposed": "s2p",
-            "Sam1_interactive": "s1i",
-            "Sam2_interactive": "s2i",
-            "Polygon_drawing": "plg",
-            "Sam2_tracking": "s2t",
-            "Panorama_tracking": "pat",
-            "Yolo_prediction": "yol",
-        }
+        self.origin_codes = dict(ORIGIN_CODES)
         self.time_stamp = None  # in deciseconds (1/10th of a second)
 
     def set_sam_version(self, sam_gen: int = 1, background_embedding: bool = True):
@@ -95,119 +95,45 @@ class Annotator:
         return current_ts - self.time_stamp
 
     def reset_toggles(self, toggles_only=False):
-        self.manual_annotation_enabled = False
-        self.polygon_drawing_enabled = False
-        self.mask_deletion_enabled = False
-        if toggles_only:
-            return
-        self.reset_manual_annotation()
+        return self.editing.reset_toggles(toggles_only)
 
     def toggle_manual_annotation(self):
-        self.reset_manual_annotation()
-        if not self.manual_annotation_enabled and not self.sam.predictor.is_image_set:
-            print("Embed image before manually annotation")
-            return
-        self.manual_annotation_enabled = not self.manual_annotation_enabled
-        if self.manual_annotation_enabled:
-            self.polygon_drawing_enabled = False
-            self.mask_deletion_enabled = False
+        return self.editing.toggle_manual_annotation()
 
     def toggle_polygon_drawing(self):
-        self.reset_manual_annotation()
-        self.polygon_drawing_enabled = not self.polygon_drawing_enabled
-        if self.polygon_drawing_enabled:
-            self.manual_annotation_enabled = False
-            self.mask_deletion_enabled = False
+        return self.editing.toggle_polygon_drawing()
 
     def toggle_mask_deletion(self):
-        self.reset_manual_annotation()
-        self.mask_deletion_enabled = not self.mask_deletion_enabled
-        if self.mask_deletion_enabled:
-            self.previoius_toggle_state = {
-                "manual": self.manual_annotation_enabled,
-                "polygon": self.polygon_drawing_enabled,
-            }
-            self.manual_annotation_enabled = False
-            self.polygon_drawing_enabled = False
-        else:
-            self.manual_annotation_enabled = self.previoius_toggle_state["manual"]
-            self.polygon_drawing_enabled = self.previoius_toggle_state["polygon"]
-            self.previoius_toggle_state = None
+        return self.editing.toggle_mask_deletion()
 
     def reset_manual_annotation(self):
-        self.annotation.preview_mask = None
-        self.annotation.mask_visualizations.img_sam_preview = None
-        self.manual_mask_points = []
-        self.manual_mask_point_labels = []
+        return self.editing.reset_manual_annotation()
 
     def predict_sam_manually(self, position: tuple[int]):
-        if self.manual_annotation_enabled:
-            # create live mask preview
-            self.annotation.preview_mask = self.sam.predict(
-                pts=np.array(
-                    [[position[0], position[1]], *self.manual_mask_points],
-                    dtype=np.float32,
-                ),
-                pts_labels=np.array(
-                    [1, *self.manual_mask_point_labels], dtype=np.int32
-                ),
-            )
-            self.update_collections(self.annotation)
+        return self.editing.predict_sam_manually(position)
 
     def mask_from_drawing(self, mouse_pos: tuple[int] = None):
-        if not self.polygon_drawing_enabled:
-            return
-
-        # bounding box should only be drawn if there is already exactly one point
-        if mouse_pos is not None and len(self.manual_mask_points) != 1:
-            return
-
-        if len(self.manual_mask_points) > 1:
-            self.annotation.preview_mask = np.zeros(
-                self.annotation.img.shape[:2], dtype=np.uint8
-            )
-
-        if len(self.manual_mask_points) == 2:
-            self.annotation.preview_mask = cv2.rectangle(
-                self.annotation.preview_mask,
-                tuple(self.manual_mask_points[0]),
-                tuple(self.manual_mask_points[1]),
-                255,
-                1,
-            )
-
-        elif len(self.manual_mask_points) > 2:
-            polypts = np.array(self.manual_mask_points, np.int32).reshape((-1, 1, 2))
-            cv2.fillPoly(self.annotation.preview_mask, [polypts], 255)
-        self.update_collections(self.annotation, current_mouse_pos=mouse_pos)
+        return self.editing.mask_from_drawing(mouse_pos)
 
     def update_mask_idx(self, new_idx: int = 0):
-        if new_idx < 0:
-            new_idx = 0
-            print("Mask index cannot be negative. Setting to 0.")
-        self.mask_idx = new_idx
-        self.annotation.set_current_mask(self.mask_idx)
+        return self.editing.update_mask_idx(new_idx)
 
-    def create_new_annotation(
-        self, filepath: Path, next_filepath: Path | None = None
-    ) -> tuple[bool]:
+    def create_new_annotation(self, filepath: Path, next_filepath: Path | None = None) -> tuple[bool, bool]:
+        pair = self.session.prepare_pair(self.annotation, self.next_annotation, filepath, next_filepath)
+        self.annotation, self.next_annotation, embed_current, embed_next = pair
+        accepted_ids = {mask.mid for mask in self.annotation.good_masks}
+        for mask, decision in zip(self.annotation.masks, self.annotation.mask_decisions):
+            if decision and mask.mid not in accepted_ids:
+                self.annotation.good_masks.append(mask)
+                accepted_ids.add(mask.mid)
         self.mask_idx = 0
-        embed_current = False
-        embed_next = False
-        if self.next_annotation is None:
-            self.annotation = AnnotationObject(filepath=filepath)
-            embed_current = True
-        else:
-            # TODO: check for bugs of shallow copies
-            self.annotation = self.next_annotation
-            self.reset_toggles()
-
-        if next_filepath is None:
-            self.next_annotation = None
-        else:
-            self.next_annotation = AnnotationObject(filepath=next_filepath)
-            embed_next = True
-
+        while (self.mask_idx < len(self.annotation.mask_decisions)
+               and self.annotation.mask_decisions[self.mask_idx]):
+            self.mask_idx += 1
+        self.preview_obj_id = None
+        self.time_stamp = None
+        self.previoius_toggle_state = None
+        self.reset_toggles()
         return embed_current, embed_next
 
     def get_annotation_img_name(self):
@@ -248,21 +174,16 @@ class Annotator:
 
         if bbox_tracker is not None:
             self._propagate_bboxes(bbox_tracker)
-            
-        start_setting_masks = time.time()
-        if self.annotation.masks:
-            for dec, mobj in zip(self.annotation.mask_decisions, self.annotation.masks):
-                if dec:
-                    mobj.time_stamp = 1
-                    self.annotation.good_masks.append(mobj)
-                    if self.mask_id_handler._id == mobj.mid:
-                        raise ValueError("Mask ID is not unique and set correctly")
-                    self.mask_idx += 1
-                else:
-                    raise ValueError(
-                        "Tracked annotations have not been annotated Correctly. Mask decision 'False' received"
-                    )
-        print(f"Setting masks time: {time.time() - start_setting_masks}")
+
+        accepted_ids = {mask.mid for mask in self.annotation.good_masks}
+        for decision, mask in zip(self.annotation.mask_decisions, self.annotation.masks):
+            if decision and mask.mid not in accepted_ids:
+                mask.time_stamp = mask.time_stamp or 1
+                self.annotation.good_masks.append(mask)
+                accepted_ids.add(mask.mid)
+        while (self.mask_idx < len(self.annotation.mask_decisions)
+               and self.annotation.mask_decisions[self.mask_idx]):
+            self.mask_idx += 1
 
     def _propagate_bboxes(self, bbox_tracker: PanoImageAligner):
         tracked_bboxes = bbox_tracker.track(self.annotation)
@@ -332,211 +253,28 @@ class Annotator:
         return next_mask_objs
 
     def good_mask(self, time_stamp: int | None = None, class_id: int = None):
-        annot = self.annotation
-        if self.manual_annotation_enabled:
-            origin = (
-                "Sam1_interactive"
-                if isinstance(self.sam, SamInference)
-                else "Sam2_interactive"
-            )
-            if annot.preview_mask is None:
-                return "Mask not ready"
-
-            mask_to_store = MaskData(
-                mid=self.mask_id_handler.get_id(),
-                mask=annot.preview_mask,
-                origin=origin,
-                time_stamp=self._get_time_stamp(),
-            )
-            annot.masks.insert(self.mask_idx, mask_to_store)
-            annot.mask_decisions.insert(self.mask_idx, True)
-            self.reset_manual_annotation()
-
-        elif self.polygon_drawing_enabled:
-            if annot.preview_mask is None:
-                return "No polygon provided"
-            mask_to_store = MaskData(
-                mid=self.mask_id_handler.get_id(),
-                mask=annot.preview_mask,
-                origin="Polygon_drawing",
-                time_stamp=self._get_time_stamp(),
-            )
-            annot.masks.insert(self.mask_idx, mask_to_store)
-            annot.mask_decisions.insert(self.mask_idx, True)
-            self.reset_manual_annotation()
-
-        elif len(annot.masks) > self.mask_idx:
-            mask_obj = annot.masks[self.mask_idx]
-            if time_stamp is None:
-                time_stamp = self._get_time_stamp()
-            mask_to_store = MaskData(
-                mid=(
-                    self.mask_id_handler.get_id()
-                    if mask_obj.mid is None
-                    else mask_obj.mid
-                ),
-                mask=mask_obj.mask,
-                bbox=mask_obj.bbox,
-                origin=mask_obj.origin,
-                color_idx=mask_obj.color_idx,
-                center=mask_obj.center,
-                contour=mask_obj.contour,
-                time_stamp=time_stamp,
-            )
-            annot.mask_decisions[self.mask_idx] = True
-
-        else:
-            return None
-        if mask_to_store.mask is None and mask_to_store.bbox is None:
-            print("No mask to store")
-            return (0, 0)
-
-        mask_to_store.class_id = class_id
-        annot.good_masks.append(mask_to_store)
-        self.mask_idx += 1
-
-        self.update_collections(annot)
-        if self.mask_idx >= len(annot.masks):
-            next_mask_center = None  # all masks have been labeled
-        elif self.manual_annotation_enabled or self.polygon_drawing_enabled:
-            next_mask_center = ""
-        else:
-            self.annotation.set_current_mask(self.mask_idx)
-            if self.preselect_mask() is None:
-                return None
-            next_mask_center = self.annotation.masks[self.mask_idx].center
-        return next_mask_center
+        return self.editing.good_mask(time_stamp, class_id)
 
     def bad_mask(self):
-        annot = self.annotation
-        if self.mask_idx >= len(annot.masks):
-            return None
-
-        annot.mask_decisions[self.mask_idx] = False
-        self.mask_idx += 1
-
-        self.update_collections(annot)
-        if self.mask_idx >= len(annot.masks):
-            next_mask_center = None  # all masks have been labeled
-        else:
-            self.annotation.set_current_mask(self.mask_idx)
-            if self.preselect_mask() is None:
-                return None
-            next_mask_center = self.annotation.masks[self.mask_idx].center
-        return next_mask_center
+        return self.editing.bad_mask()
 
     def preselect_mask(self, max_overlap_ratio: float = 0.4):
-        annot = self.annotation
-        mask_obj: MaskData = annot.masks[self.mask_idx]
-        mask = mask_obj.mask
-        maskorigin = mask_obj.origin
-        mcenter = ""
-        if mask is not None:
-            mask_coll_bin = (
-                np.any(
-                    annot.mask_visualizations.mask_collection != [0, 0, 0], axis=-1
-                ).astype(np.uint8)
-                * 255
-            )
-
-            mask_overlap = cv2.bitwise_and(mask_coll_bin, mask)
-            mask_size = np.count_nonzero(mask)
-            mask_overlap_size = np.count_nonzero(mask_overlap)
-            overlap_ratio = mask_overlap_size / mask_size
-
-            if overlap_ratio > max_overlap_ratio:
-                mcenter = self.bad_mask()
-
-        if "tracking" in maskorigin or maskorigin == "Yolo_prediction":
-            mcenter = self.good_mask(time_stamp=1)
-        return mcenter
+        return self.editing.preselect_mask(max_overlap_ratio)
 
     def _recycle_mask_meta_data(self, popped_mobj: MaskData):
-        for i, mobj in enumerate(self.annotation.masks):
-            if mobj.mid == popped_mobj.mid:
-                if mobj.center is None:
-                    mobj.center = popped_mobj.center
-                if mobj.contour is None:
-                    mobj.contour = popped_mobj.contour
-                if mobj.color_idx is None:
-                    mobj.color_idx = popped_mobj.color_idx
+        return self.editing._recycle_mask_meta_data(popped_mobj)
 
     def _clear_unfinished_polygon(self):
-        self.manual_mask_points = []
-        self.manual_mask_point_labels = []
-        self.annotation.preview_mask = None
-        pass
+        return self.editing._clear_unfinished_polygon()
 
     def step_back(self):
-        annot = self.annotation
-
-        # If a polygon is being drawn or interactive propmting is active
-        # and there are manual points, clear the points.
-        point_annotation_condition = (
-            self.manual_annotation_enabled or self.polygon_drawing_enabled
-        )
-        if point_annotation_condition and self.manual_mask_points:
-            self._clear_unfinished_polygon()
-            return
-
-        # Keep the cursor within this image's decision history, including when
-        # recovering an annotation created before the image-transition reset.
-        self.mask_idx = max(0, min(self.mask_idx, len(annot.masks), len(annot.mask_decisions)))
-        if self.mask_idx == 0:
-            return
-
-        previous_idx = self.mask_idx - 1
-        previous_mask = annot.masks[previous_idx]
-        if self.manual_annotation_enabled and "interactive" not in previous_mask.origin:
-            return
-        if self.polygon_drawing_enabled and "Polygon" not in previous_mask.origin:
-            return
-
-        if annot.mask_decisions[previous_idx]:
-            for idx in range(len(annot.good_masks) - 1, -1, -1):
-                if annot.good_masks[idx].mid == previous_mask.mid:
-                    popped_mobj = annot.good_masks.pop(idx)
-                    self._recycle_mask_meta_data(popped_mobj)
-                    break
-
-        annot.mask_decisions[previous_idx] = False
-        self.mask_idx = previous_idx
-        return previous_mask.center
+        return self.editing.step_back()
 
     def get_preview_object_id(self, position: tuple[int]):
-        xindx, yindx = position
-        if (
-            xindx >= self.annotation.img.shape[1]
-            or yindx >= self.annotation.img.shape[0]
-        ):
-            return None
-        elif len(self.annotation.good_masks) == 0:
-            self.annotation.preview_mask = None
-            return None
-
-        obj_id, self.annotation.preview_mask = (
-            self.annotation.mask_visualizer.highlight_mask_at_point(position)
-        )
-        if obj_id != self.preview_obj_id:
-            self.update_collections(self.annotation)
-        self.preview_obj_id = obj_id
-        return obj_id
+        return self.editing.get_preview_object_id(position)
 
     def delete_mask(self, midtopop: int):
-        annot = self.annotation
-        for i, mobj in enumerate(annot.good_masks):
-            if mobj.mid == midtopop:
-                popped_mobj = annot.good_masks.pop(i)
-                self._recycle_mask_meta_data(popped_mobj)
-                mask_dec_idx = [
-                    i for i, m in enumerate(annot.masks) if m.mid == midtopop
-                ]
-                assert len(mask_dec_idx) <= 1
-                if len(mask_dec_idx) == 0:
-                    return
-                self.annotation.mask_decisions[mask_dec_idx[0]] = False
-                self.annotation.preview_mask = None
-                break
+        return self.editing.delete_mask(midtopop)
 
     def _get_mask_id(self, mask_path: str):
         mask_name = os.path.basename(mask_path).split(".")[0]
@@ -584,272 +322,35 @@ class Annotator:
         self.preselect_mask()
 
     def update_collections(self, annot: AnnotationObject, current_mouse_pos=None):
-        mask_vis = self.annotation.mask_visualizer
-        mask_vis.set_annotation(annotation=annot)
-
-        mvis_data: MaskVisualizationData = self.annotation.mask_visualizations
-
-        if self.manual_annotation_enabled:
-            img_sam_preview = mask_vis.get_sam_preview(
-                self.manual_mask_points, self.manual_mask_point_labels
-            )
-            mvis_data.img_sam_preview = img_sam_preview
-        elif self.polygon_drawing_enabled:
-            img_sam_preview = mask_vis.get_drawing_preview(
-                self.manual_mask_points, current_mouse_pos
-            )
-            mvis_data.img_sam_preview = img_sam_preview
-        elif self.mask_deletion_enabled:
-            img_sam_preview = mask_vis.get_mask_deletion_preview()
-            mvis_data.img_sam_preview = img_sam_preview
-
-        # TODO only compute visualizations that are currently selecetd in the UI
-        masked_img = mask_vis.get_masked_img()  # masks get contours
-        mask_collection = mask_vis.get_mask_collection()
-        bbox_img = mask_vis.get_bbox_img()
-
-        if (
-            len(annot.masks) > self.mask_idx
-            and not self.manual_annotation_enabled
-            and not self.polygon_drawing_enabled
-            and not self.mask_deletion_enabled
-        ):
-            mask_obj = annot.masks[self.mask_idx]
-            if mask_obj.contour is None:
-                mask_vis.set_contour(mask_obj)
-            cnt = mask_obj.contour
-            maskinrgb = mask_vis.get_maskinrgb(mask_obj)
-
-        else:
-            # after all proposed masks have been labeled
-            maskinrgb = mvis_data.img
-            cnt = None
-
-        masked_img_cnt = mask_vis.get_masked_img_cnt(cnt)
-        mask_collection_cnt = mask_vis.get_mask_collection_cnt(cnt)
-        bbox_img_cnt = mask_vis.get_bbox_img_cnt()
-
-        if len(annot.masks) > self.mask_idx:
-            self.annotation.set_current_mask(self.mask_idx)
-        mvis_data.maskinrgb = maskinrgb
-        mvis_data.masked_img = masked_img
-        mvis_data.mask_collection = mask_collection
-        mvis_data.masked_img_cnt = masked_img_cnt
-        mvis_data.mask_collection_cnt = mask_collection_cnt
-        mvis_data.bbox_img = bbox_img
-        mvis_data.bbox_img_cnt = bbox_img_cnt
-
-        self.annotation.good_masks = mask_vis.mask_objs
+        return self.rendering.update_collections(annot, current_mouse_pos)
 
     def save_annotations(self, save_path: Path, save_suffix: str = None) -> bool:
-
-        if self.configs.save_data.save_masks:
-                
-            if self.configs.save_data.mask_style == "yolo":
-                return self.save_masks_yolo(save_path)
-            elif self.configs.save_data.mask_style == "default":
-                return self.save_masks_and_logs(save_path, save_suffix)
-        
-        elif (
-            self.configs.save_data.save_bboxes
-            and self.configs.save_data.bbox_style == "yolo"
-        ):
-            return self.save_bboxes_yolo(save_path)
-        else:
-            return NotImplementedError(
-                "This combination of settings is not implemented"
-            )
+        return self.repository.save(self.annotation, save_path, save_suffix)
 
     def save_bboxes_yolo(self, save_path: Path):
-        img_id = os.path.splitext(self.annotation.img_name)[0]
-        # Ensure the output directories exist
-        image_dir = os.path.join(save_path, "images")
-        labels_dir = os.path.join(save_path, "labels")
-        control_dir = os.path.join(save_path, "control_images")
-        if not os.path.exists(image_dir):
-            os.makedirs(image_dir)
-        if not os.path.exists(labels_dir):
-            os.makedirs(labels_dir)
-        if not os.path.exists(control_dir):
-            os.makedirs(control_dir)
-
-        # Save the image into the 'image' folder
-        image_path = os.path.join(image_dir, self.annotation.img_name)
-        cv2.imwrite(image_path, self.annotation.img)
-        control_img_p = os.path.join(control_dir, f"{img_id}_control.jpg")
-        cv2.imwrite(control_img_p, self.annotation.mask_visualizations.bbox_img)
-
-        # Get image dimensions (height, width)
-        height, width = self.annotation.img.shape[:2]
-
-        # Convert each absolute bounding box to YOLO format:
-        # YOLO format: class_id, x_center, y_center, bbox_width, bbox_height (all normalized to [0,1])
-        yolo_lines = []
-        for good_obj in self.annotation.good_masks:
-            class_id = good_obj.class_id if good_obj.class_id is not None else 0
-            x_min, y_min, x_max, y_max = good_obj.bbox
-            x_center = ((x_min + x_max) / 2) / width
-            y_center = ((y_min + y_max) / 2) / height
-            bbox_width = (x_max - x_min) / width
-            bbox_height = (y_max - y_min) / height
-
-            # Format each line with six decimal places for consistency
-            line = f"{class_id} {x_center:.6f} {y_center:.6f} {bbox_width:.6f} {bbox_height:.6f}"
-            yolo_lines.append(line)
-
-        # Save the YOLO formatted bounding boxes into a text file in the 'labels' folder.
-        # The label file will have the same base filename as the image.
-        label_filename = f"{img_id}.txt"
-        label_path = os.path.join(labels_dir, label_filename)
-        with open(label_path, "w") as f:
-            f.write("\n".join(yolo_lines))
+        return self.repository.save_yolo(self.annotation, save_path, segmentation=False)
 
     def save_masks_yolo(self, save_path: Path):
-        """
-        Save masks in YOLO segmentation format (polygon coordinates).
-        YOLO segmentation format: class_id x1 y1 x2 y2 x3 y3 ... (all normalized to [0,1])
-        """
-        img_id = os.path.splitext(self.annotation.img_name)[0]
-        # Ensure the output directories exist
-        image_dir = os.path.join(save_path, "images")
-        labels_dir = os.path.join(save_path, "labels")
-        control_dir = os.path.join(save_path, "control_images")
-        if not os.path.exists(image_dir):
-            os.makedirs(image_dir)
-        if not os.path.exists(labels_dir):
-            os.makedirs(labels_dir)
-        if not os.path.exists(control_dir):
-            os.makedirs(control_dir)
-
-        # Save the image into the 'images' folder
-        image_path = os.path.join(image_dir, self.annotation.img_name)
-        cv2.imwrite(image_path, self.annotation.img)
-        control_img_p = os.path.join(control_dir, f"{img_id}_control.jpg")
-        cv2.imwrite(control_img_p, self.annotation.mask_visualizations.masked_img)
-
-        # Get image dimensions (height, width)
-        height, width = self.annotation.img.shape[:2]
-
-        # Convert each mask to YOLO segmentation format:
-        # YOLO segmentation format: class_id x1 y1 x2 y2 x3 y3 ... (all normalized to [0,1])
-        yolo_lines = []
-        for good_obj in self.annotation.good_masks:
-            if good_obj.mask is None:
-                continue
-                
-            class_id = good_obj.class_id if good_obj.class_id is not None else 0
-            
-            # Find contours from the mask
-            contours, _ = cv2.findContours(
-                good_obj.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-            
-            # Only process the largest contour
-            if contours:
-                # Find the largest contour by area
-                largest_contour = max(contours, key=cv2.contourArea)
-                
-                # Simplify contour to reduce number of points
-                epsilon = 0.002 * cv2.arcLength(largest_contour, True)
-                approx_contour = cv2.approxPolyDP(largest_contour, epsilon, True)
-                
-                # Skip if contour is too small (less than 3 points)
-                if len(approx_contour) >= 3:
-                    # Flatten contour points and normalize to [0,1]
-                    normalized_points = []
-                    for point in approx_contour:
-                        x, y = point[0]
-                        x_norm = x / width
-                        y_norm = y / height
-                        # Clamp values to [0,1] range
-                        x_norm = max(0.0, min(1.0, x_norm))
-                        y_norm = max(0.0, min(1.0, y_norm))
-                        normalized_points.extend([f"{x_norm:.6f}", f"{y_norm:.6f}"])
-                    
-                    # Create YOLO line: class_id followed by normalized coordinates
-                    if normalized_points:  # Only add if we have valid points
-                        line = f"{class_id} " + " ".join(normalized_points)
-                        yolo_lines.append(line)
-
-        # Save the YOLO formatted segmentation masks into a text file in the 'labels' folder.
-        # The label file will have the same base filename as the image.
-        label_filename = f"{img_id}.txt"
-        label_path = os.path.join(labels_dir, label_filename)
-        with open(label_path, "w") as f:
-            f.write("\n".join(yolo_lines))
+        return self.repository.save_yolo(self.annotation, save_path, segmentation=True)
 
     def save_masks_and_logs(self, save_path: Path, save_suffix: str = None):
-        output_masks_exist = False
-        if self.annotation is None:
-            return output_masks_exist
-        img_id = os.path.splitext(self.annotation.img_name)[0]
-        annots_path = os.path.join(save_path, f"{img_id}_annots")
-        if save_suffix is not None:
-            annots_path = f"{annots_path}_{save_suffix}"
-
-        if not os.path.exists(annots_path):
-            os.makedirs(annots_path)
-
-        cv2.imwrite(
-            os.path.join(annots_path, "img.jpg"),
-            self.annotation.img,
-        )
-        if self.annotation.mask_visualizations.masked_img is not None:
-            cv2.imwrite(
-                os.path.join(annots_path, "annotations.jpg"),
-                self.annotation.mask_visualizations.masked_img,
-            )
-
-        mask_dir = os.path.join(annots_path, "masks")
-
-        if not os.path.exists(mask_dir):
-            os.makedirs(mask_dir)
-        else:
-            output_masks_exist = True
-            return output_masks_exist
-
-        good_masks_log_dict, total_time = self._log_and_save_masks(
-            self.annotation.good_masks, mask_dir
-        )
-
-        all_masks_log_dict, _ = self._log_and_save_masks(self.annotation.masks)
-        log_dict = {
-            "All_masks": all_masks_log_dict,
-            "Selected_masks": good_masks_log_dict,
-            "Total_time": total_time,
-        }
-
-        log_path = os.path.join(annots_path, "log.json")
-
-        with open(log_path, "w") as json_file:
-            json.dump(log_dict, json_file, indent=4)
-
-        print(f"Annotations saved to {annots_path}")
-        return output_masks_exist
+        return self.repository.save_native(self.annotation, save_path, save_suffix)
 
     def _log_and_save_masks(self, mask_objs: list[MaskData], mask_dir: str = None):
-        """Masks are only saved if mask_dir is provided"""
-        log_dict = {key: 0 for key in self.origin_codes.keys()}
-        latest_ts = 0
-        for i, m in enumerate(mask_objs):
+        return self.repository.log_masks(mask_objs, mask_dir)
 
-            if m.origin not in self.origin_codes.keys():
-                raise ValueError(f"Origin code not found for {m.origin}")
-            log_dict[m.origin] += 1
-            mask_code = self.origin_codes[m.origin]
+    @cached_property
+    def editing(self):
+        return AnnotationEditor(self)
 
-            if mask_dir is not None and m.mask is not None:
-                mask_ts = m.time_stamp
-                if mask_ts > latest_ts:
-                    latest_ts = mask_ts
-                mask_name = f"mask_{mask_code}_{mask_ts}_{i}.png"
-                mask_dest_path = os.path.join(mask_dir, mask_name)
-                cv2.imwrite(mask_dest_path, m.mask)
+    @cached_property
+    def rendering(self):
+        return AnnotationRenderer(self)
 
-        total_mask_n = len(mask_objs)
-        log_dict["Total_masks"] = total_mask_n
+    @cached_property
+    def session(self):
+        return AnnotationSession()
 
-        if mask_dir:
-            return log_dict, latest_ts
-        else:
-            return log_dict, None
+    @property
+    def repository(self):
+        return AnnotationRepository(self.configs.save_data, self.origin_codes)

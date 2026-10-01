@@ -264,7 +264,15 @@ class UserInterface(QMainWindow):
                 7 * self.buttons_spacing + 6 * self.buttons_min_width,
                 int(self.height_offset / 2),
             )
-            self.next_img_button.setMinimumWidth(self.buttons_min_width)
+            self.next_img_button.setFixedWidth(self.buttons_min_width - 10)
+            self.next_img_button.move(
+                self.next_img_button.x() + 10, self.next_img_button.y())
+            self.previous_img_button = QPushButton("‹", self)
+            self.previous_img_button.setToolTip("Previous image")
+            self.previous_img_button.setFixedWidth(18)
+            self.previous_img_button.move(
+                self.next_img_button.x() - 10, self.next_img_button.y())
+            self.previous_img_button.setEnabled(False)
 
             self.labelCoords = QLabel(self, text="Pixel Pos.")
             self.labelCoords.move(
@@ -274,6 +282,14 @@ class UserInterface(QMainWindow):
             self.labelCoords.show()
 
         if self.experiment_mode in ["structured", "polygon", "tutorial"]:
+            self.auto_save_box = QCheckBox(parent=self)
+            self.auto_save_box.setChecked(True)
+            self.auto_save_box.hide()
+            self.auto_embed_box = QCheckBox(parent=self)
+            self.auto_embed_box.setChecked(self.experiment_mode != "polygon")
+            self.auto_embed_box.hide()
+            self.labelCoords = QLabel(parent=self)
+            self.labelCoords.hide()
             self.next_method_button = QPushButton("Next", self)
             self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
             self.next_method_button.move(
@@ -313,7 +329,7 @@ class UserInterface(QMainWindow):
             self.manual_annotation_button,
             self.draw_button,
             self.delete_button,
-            self.next_img_button,
+            self.next_img_button if self.experiment_mode is None else self.next_method_button,
         ]
         self.disable_push_buttons()
 
