@@ -14,6 +14,8 @@ class NavigationController:
         self.image_history = []
         self.revisit_images = set()
 
+        self.pending_annotation_mode = None
+
     @property
     def repository(self):
         return AnnotationRepository(self.context.configs.save_data)
@@ -112,11 +114,52 @@ class NavigationController:
     def select_next_img(self):
         if self.changing_image:
             return
+
+        self._remember_annotation_mode()
+
         self.changing_image = True
         try:
             return self._select_next_img()
         finally:
             self.changing_image = False
+
+    def _remember_annotation_mode(self):
+        app = self.context
+
+        # Only persist modes during normal annotation,
+        # not during structured experiments/tutorials.
+        if app.experiment_mode is not None:
+            self.pending_annotation_mode = None
+            return
+
+        if app.annotator.manual_annotation_enabled:
+            self.pending_annotation_mode = "interactive"
+        elif app.annotator.polygon_drawing_enabled:
+            self.pending_annotation_mode = "polygon"
+        else:
+            self.pending_annotation_mode = None
+
+
+    def restore_annotation_mode(self):
+        app = self.context
+        mode = self.pending_annotation_mode
+        if mode is None:
+            return
+
+        interactive = mode == "interactive"
+        polygon = mode == "polygon"
+
+        app.annotator.manual_annotation_enabled = interactive
+        app.annotator.polygon_drawing_enabled = polygon
+        app.annotator.mask_deletion_enabled = False
+
+        app.ui.manual_annotation_button.setChecked(interactive)
+        app.ui.draw_button.setChecked(polygon)
+        app.ui.delete_button.setChecked(False)
+
+        app.ui.set_cursor(interactive or polygon)
+
+        self.pending_annotation_mode = None
 
     def _select_next_img(self):
         app = self.context

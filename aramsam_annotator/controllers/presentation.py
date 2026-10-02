@@ -11,6 +11,8 @@ class PresentationController:
             return
         if context.experiment_mode is None:
             context.ui.manual_annotation_button.setEnabled(context.ui.auto_embed_box.isChecked())
+            # Restore the mode that was active on the previous image
+            context.navigation.restore_annotation_mode()
         context.annotator.init_time_stamp()
         context.annotator.update_collections(context.annotator.annotation)
         context.update_ui_imgs()

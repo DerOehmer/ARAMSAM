@@ -3,12 +3,12 @@
 
 sam_configs:
   do_sam: true
-  gen: 2
-  model_ckpt_p: "sam2.1_hiera_tiny.pt"  #"sam_vit_b_01ec64.pth" #"sam2.1_hiera_tiny.pt" 
-  model_type: "configs/sam2.1/sam2.1_hiera_t.yaml"  # "vit_b" #
+  gen: 1
+  model_ckpt_p: "sam_vit_b_01ec64.pth" #"sam2.1_hiera_tiny.pt"  #"sam_vit_b_01ec64.pth" #"sam2.1_hiera_tiny.pt" 
+  model_type: "vit_b" #"configs/sam2.1/sam2.1_hiera_t.yaml"  # "vit_b" #
 
 # Use CUDA when available; set false to force CPU for SAM and YOLO.
-use_gpu: true
+use_gpu: false
 
 sam_background_embedding: true
 
