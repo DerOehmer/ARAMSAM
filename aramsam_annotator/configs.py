@@ -23,6 +23,7 @@ class ImgTiles:
     do_tiling: bool = True
     tile_size: int = 640
     tile_overlap: float = 0.2
+    allow_smaller_border_tiles: bool = True
 
     def __post_init__(self):
         self.tile_size = min(self.tile_size, 1024)

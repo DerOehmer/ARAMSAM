@@ -1,40 +1,28 @@
-# ARAMSAM example configuration file
-# Only include the keys you want to override. Missing keys keep the defaults.
-
 sam_configs:
   do_sam: true
-  gen: 3  # 1, 2, or 3
-  model_ckpt_p: "sam3.pt"
-  model_type: null  # SAM3 does not need a model type/config.
-  # bpe_path: "sam3/sam3/assets/bpe_simple_vocab_16e6.txt.gz"  # autodetected
-  confidence_threshold: 0.5  # SAM3 text prompting; also adjustable in the UI
-
-# Use CUDA when available; set false to force CPU for SAM and YOLO.
+  gen: 3
+  model_ckpt_p: sam3.pt
+  model_type: null
+  bpe_path: null
+  confidence_threshold: 0.5
 use_gpu: true
-
 sam_background_embedding: true
-
-# Carry accepted masks to the next image. Also available in Settings.
-mask_propagation: true
-
+mask_propagation: false
 do_amg: false
-
 img_tiles:
-  do_tiling: false
-  tile_size: 640
+  do_tiling: true
+  tile_size: 1024
   tile_overlap: 0.2
-
-# Set to a YOLO weights path to enable YOLO predictions for AMG
+  allow_smaller_border_tiles: true
 yolo_model_ckpt_p: null
-
 save_data:
   do_save: true
   auto_save: true
-  save_dir: "output2"
+  save_dir: output
   save_masks: true
-  mask_style: "yolo"
+  mask_style: yolo
   save_bboxes: false
-  bbox_style: "yolo"
-
+  bbox_style: ''
 class_dict:
-  "0": "Seed"
+  '0': crop
+  '1': weed
