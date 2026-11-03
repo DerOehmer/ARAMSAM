@@ -10,7 +10,7 @@ sam_configs:
   confidence_threshold: 0.5  # SAM3 text prompting; also adjustable in the UI
 
 # Use CUDA when available; set false to force CPU for SAM and YOLO.
-use_gpu: false
+use_gpu: true
 
 sam_background_embedding: true
 
