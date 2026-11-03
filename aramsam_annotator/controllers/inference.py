@@ -13,6 +13,8 @@ class InferenceController:
 
     def propagate_good_masks(self):
         context = self.context
+        if not context.configs.mask_propagation:
+            return
         if (context.annotator.annotation is None
                 or not context.annotator.annotation.good_masks
                 or context.annotator.next_annotation is None):
@@ -24,7 +26,10 @@ class InferenceController:
         elif context.sam_gen == 1:
             if context.bbox_tracker is None:
                 context.bbox_tracker = PanoImageAligner()
-            context.bbox_tracker.add_annotation(context.annotator.annotation)
+            context.run_backend_task(
+                lambda: context.bbox_tracker.add_annotation(context.annotator.annotation),
+                "Preparing mask propagation...",
+            )
 
         if context.sam_gen in (2, 3):
             context.annotator.convey_color_to_next_annot(
@@ -96,57 +101,43 @@ class InferenceController:
                 )
 
     def start_mask_batch_thread(self, track_remaining: bool = False):
-
         context = self.context
-        if context.sam_gen == 3:
-            if context.annotator.sam.device == "cpu":
-                context.ui.performing_embedding_label.setText("SAM3 tracking requires CUDA")
-                return
-            context.annotator.sam.set_tracking_pair(
-                context.annotator.annotation, context.annotator.next_annotation)
-        if context.mask_track_batch_size is None:
-            print("Propagating masks in main thread")
-            context.annotator.sam.set_masks(context.annotator.annotation.good_masks)
-            prop_mask_objs: list[MaskData] = context.annotator.sam.propagate_to_next_img()
-            prop_mask_objs = context.annotator.convey_color_to_next_annot(prop_mask_objs)
-            context.annotator.next_annotation.add_masks(prop_mask_objs, decision=True)
-        else:
-            # Batching of masks for propagation to next image
-            unpropagated_masks = [
-                mobj
-                for mobj in context.annotator.annotation.good_masks
-                if mobj.mid not in context.propagated_mids
-            ]
+        if not context.configs.mask_propagation:
+            return
+        if context.annotator.next_annotation is None:
+            return
+        if context.sam_gen == 3 and context.annotator.sam.device == "cpu":
+            context.ui.performing_embedding_label.setText("SAM3 tracking requires CUDA")
+            return
+        masks = [mask for mask in context.annotator.annotation.good_masks
+                 if mask.mid not in context.propagated_mids]
+        batch_size = context.mask_track_batch_size
+        ready = bool(masks) and (batch_size is None or track_remaining or len(masks) >= batch_size)
+        if ready:
+            ids = {int(mask.mid) for mask in masks}
+            context.propagated_mids.update(ids)
+            worker = Sam2PropagationWorker(
+                sam2_predictor=context.annotator.sam,
+                next_annotation=context.annotator.next_annotation,
+                unpropagated_masks=masks,
+                batch_size=batch_size or len(masks),
+                track_remaining=track_remaining,
+                mutex=context.mutex,
+                current_annotation=context.annotator.annotation if context.sam_gen == 3 else None,
+            )
 
-            if len(unpropagated_masks) >= context.mask_track_batch_size or (
-                track_remaining and len(unpropagated_masks) > 0
-            ):
-                context.threadpool.waitForDone(-1)
-                context.propagated_mids.update(
-                    {int(mobj.mid) for mobj in unpropagated_masks}
-                )
-                s2p_worker = Sam2PropagationWorker(
-                    sam2_predictor=context.annotator.sam,
-                    next_annotation=context.annotator.next_annotation,
-                    unpropagated_masks=unpropagated_masks,
-                    batch_size=context.mask_track_batch_size,
-                    track_remaining=track_remaining,
-                    mutex=context.mutex,
-                )
-                if context.experiment_mode is None:
-                    context.ui.performing_embedding_label.setText(
-                        f"Propagating {len(unpropagated_masks)} masks"
-                    )
-                self._submit(s2p_worker, None, context.propagation_done)
+            def failed(error):
+                context.propagated_mids.difference_update(ids)
+                context.print_thread_error(error)
 
-            if track_remaining:
-                context.ui.create_loading_window("Propagating masks")
-
-                context.wait_for_workers()
-                context.ui.update_loading_window(100)
-                context.ui.loading_window = None
-                context._purge_falsely_propagated_masks()
-                context.propagated_mids = set()
+            if context.experiment_mode is None:
+                context.ui.performing_embedding_label.setText(f"Propagating {len(masks)} masks")
+            self._submit(worker, None, context.propagation_done, error=failed)
+        if ready or track_remaining:
+            context.wait_for_workers(message="Propagating masks to the next image...")
+        if track_remaining:
+            context._purge_falsely_propagated_masks()
+            context.propagated_mids = set()
 
     def print_thread_error(self, error: tuple):
         context = self.context
@@ -246,7 +237,7 @@ class InferenceController:
 
     def start_yolo_worker(self):
         context = self.context
-        context.annotator.prepare_yolo()
+        context.run_backend_task(context.annotator.prepare_yolo, "Preparing YOLO...")
         worker = YoloPredicitonWorker(context.annotator.yolo, context.mutex)
         self._submit(worker, context.receive_yolo_results, context.object_proposal_done)
         context.ui.create_basic_loading_window(
@@ -263,7 +254,8 @@ class InferenceController:
 
     def start_amg_worker(self):
         context = self.context
-        context.annotator.prepare_amg(context.bbox_tracker)
+        context.run_backend_task(lambda: context.annotator.prepare_amg(context.bbox_tracker),
+                                 "Preparing mask proposals and propagation...")
         worker = AMGWorker(context.annotator.sam, context.mutex)
         self._submit(worker, context.receive_amg_results, context.object_proposal_done)
         context.ui.create_basic_loading_window(
@@ -273,7 +265,8 @@ class InferenceController:
     def receive_amg_results(self, result: tuple):
         context = self.context
         mask_objs, annotated_image = result
-        context.annotator.process_amg_masks(mask_objs, annotated_image)
+        context.run_backend_task(lambda: context.annotator.process_amg_masks(mask_objs, annotated_image),
+                                 "Preparing proposed masks...")
         context.annotator.annotation.proposals_ready = True
 
         now = time.time()

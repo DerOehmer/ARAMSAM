@@ -21,7 +21,8 @@ class PresentationController:
                 "Ready. Enter a word or short phrase." if ready
                 else "Enable Auto Embed to use text prompts.")
         context.annotator.init_time_stamp()
-        context.annotator.update_collections(context.annotator.annotation)
+        context.run_backend_task(lambda: context.annotator.update_collections(context.annotator.annotation),
+                                 "Preparing annotation views...")
         context.update_ui_imgs()
 
     def _ui_config_changed(self, fields: list[str]):

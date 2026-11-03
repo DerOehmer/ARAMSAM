@@ -1,17 +1,19 @@
 import tempfile
 import unittest
+from threading import Event
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
-from PyQt6.QtCore import QMutex, QThreadPool
-from PyQt6.QtWidgets import QApplication, QPushButton
+from PyQt6.QtCore import QMutex, QThreadPool, Qt, QThread, QTimer
+from PyQt6.QtWidgets import QApplication, QPushButton, QWidget
 
 from aramsam_annotator.app import App
 from aramsam_annotator.annotator import Annotator
 from aramsam_annotator.backend.annotations import AnnotationObject, MaskData
 from aramsam_annotator.configs import AramsamConfigs, ImgTiles, SaveData
+from aramsam_annotator.gui import BasicLoadingWindow
 
 
 class NavigationTests(unittest.TestCase):
@@ -21,6 +23,7 @@ class NavigationTests(unittest.TestCase):
 
     def make_app(self):
         app = App.__new__(App)
+        app.run_backend_task = Mock(side_effect=lambda operation, *args, **kwargs: operation())
         app.configs = AramsamConfigs(img_tiles=ImgTiles(do_tiling=False))
         app.annotator = Mock()
         app.annotator.annotation = None
@@ -45,6 +48,7 @@ class NavigationTests(unittest.TestCase):
             app.img_fnames = ['keep.png']
             getattr(app, method)(None)
             app.set_sam.assert_not_called()
+            app.ui.create_basic_loading_window.assert_not_called()
             self.assertEqual(app.img_fnames, ['keep.png'])
 
     def test_cancelled_save_dialog_does_not_recurse(self):
@@ -91,12 +95,15 @@ class NavigationTests(unittest.TestCase):
 
     def test_model_reuse_and_switch_invalidates_embeddings(self):
         app = self.make_app()
+        app.threadpool = QThreadPool()
         app.annotator = Annotator(app.configs)
         app.sam_gen = 1
         app.annotator.set_sam_version = Mock(side_effect=lambda *a: setattr(app.annotator, 'sam', Mock()))
         app.set_sam()
         app.set_sam()
         self.assertEqual(app.annotator.set_sam_version.call_count, 1)
+        app.ui.create_basic_loading_window.assert_called_once()
+        app.ui.close_basic_loading_window.assert_called_once()
         app.annotator.annotation = Mock()
         app.embed_img = Mock()
         app.changed_sam_model('another_vit_b.pth')
@@ -150,6 +157,132 @@ class QtWorkflowTests(unittest.TestCase):
         self.addCleanup(cleanup)
         return app
 
+    def test_loading_dialog_wraps_long_messages_without_clipping_at_large_fonts(self):
+        parent = QWidget()
+        self.addCleanup(parent.deleteLater)
+        message = ('Loading SAM3 model from the selected checkpoint. Initial startup may take a while. ' * 4
+                   + '\nPlease keep this window open until processing finishes. <No percentage available>')
+        for point_size in (10, 24):
+            with self.subTest(point_size=point_size):
+                font = parent.font()
+                font.setPointSize(point_size)
+                parent.setFont(font)
+                dialog = BasicLoadingWindow(parent, message)
+                self.addCleanup(dialog.deleteLater)
+                dialog.show()
+                self.application.processEvents()
+                label = dialog.message_label
+                self.assertEqual(label.text(), message)
+                self.assertEqual(label.textFormat(), Qt.TextFormat.PlainText)
+                self.assertTrue(label.wordWrap())
+                self.assertGreaterEqual(label.height(), label.heightForWidth(label.width()))
+                self.assertTrue(dialog.rect().contains(label.geometry()))
+                self.assertLess(label.geometry().bottom(), dialog.progress_bar.y())
+                self.assertGreater(dialog.height(), 100)
+                self.assertLessEqual(dialog.width(), dialog.screen().availableGeometry().width())
+                self.assertEqual((dialog.progress_bar.minimum(), dialog.progress_bar.maximum()), (0, 0))
+                dialog.close()
+
+    def test_loading_dialog_height_grows_with_message(self):
+        short = BasicLoadingWindow(text='Loading SAM3 model...')
+        long = BasicLoadingWindow(text='Loading the selected image and preparing its embedding. ' * 12)
+        for dialog in (short, long):
+            self.addCleanup(dialog.deleteLater)
+            dialog.show()
+            self.application.processEvents()
+        self.assertGreater(long.height(), short.height())
+        short.close()
+        long.close()
+
+    def test_loading_dialog_stays_responsive_while_model_loads_in_another_thread(self):
+        image = self.root / 'input.png'
+        cv2.imwrite(str(image), np.zeros((32, 48, 3), np.uint8))
+        for generation in (1, 3):
+            for method in ('load_img', 'load_img_folder'):
+                with self.subTest(method=method, generation=generation):
+                    self._check_threaded_loading(image, method, generation)
+
+    def _check_threaded_loading(self, image, method, generation):
+        app = self.make_app()
+        app.configs.sam_configs.gen = generation
+        app.ui.open_img_load_file_dialog = Mock(return_value=str(image))
+        app.ui.open_load_folder_dialog = Mock(return_value=str(self.root))
+        app.select_next_img = Mock()
+        painted = []
+        started, release = Event(), Event()
+        worker_threads, ticks = [], []
+
+        class PaintedLoadingWindow(BasicLoadingWindow):
+            def paintEvent(self, event):
+                painted.append(True)
+                super().paintEvent(event)
+
+        def load_model(*args):
+            worker_threads.append(QThread.currentThread())
+            started.set()
+            if not release.wait(timeout=3):
+                raise RuntimeError('GUI did not process events while loading')
+            app.annotator.sam = Mock()
+
+        timer = QTimer()
+
+        def gui_tick():
+            if not started.is_set():
+                return
+            window = app.ui.basic_loading_window
+            ticks.append((QThread.currentThread(), window.isVisible(), window.text, bool(painted)))
+            if len(ticks) >= 2:
+                release.set()
+                timer.stop()
+
+        timer.timeout.connect(gui_tick)
+        timer.start(10)
+        app.annotator.set_sam_version = Mock(side_effect=load_model)
+        try:
+            with patch('aramsam_annotator.gui.BasicLoadingWindow', PaintedLoadingWindow):
+                getattr(app, method)(None)
+        finally:
+            release.set()
+            timer.stop()
+        self.assertGreaterEqual(len(ticks), 2)
+        self.assertNotEqual(worker_threads[0], self.application.thread())
+        for thread, visible, text, was_painted in ticks:
+            self.assertEqual(thread, self.application.thread())
+            self.assertTrue(visible)
+            self.assertIn(f'Loading SAM{generation} model', text)
+            self.assertTrue(was_painted)
+        app.annotator.set_sam_version.assert_called_once()
+        app.select_next_img.assert_called_once()
+        self.assertIsNone(app.ui.basic_loading_window)
+        self.assertFalse(app.tasks.pending)
+
+    def test_failed_model_load_closes_loading_dialog_for_image_and_folder(self):
+        image = self.root / 'input.png'
+        cv2.imwrite(str(image), np.zeros((32, 48, 3), np.uint8))
+        for method in ('load_img', 'load_img_folder'):
+            with self.subTest(method=method):
+                app = self.make_app()
+                app.ui.open_img_load_file_dialog = Mock(return_value=str(image))
+                app.ui.open_load_folder_dialog = Mock(return_value=str(self.root))
+                app.annotator.set_sam_version = Mock(side_effect=RuntimeError('model failed'))
+                app.select_next_img = Mock()
+                with self.assertRaisesRegex(RuntimeError, 'model failed'):
+                    getattr(app, method)(None)
+                self.assertIsNone(app.ui.basic_loading_window)
+                app.select_next_img.assert_not_called()
+                self.assertFalse(app.tasks.pending)
+
+    def test_sam2_restores_gui_thread_precision_after_background_initialization(self):
+        app = self.make_app()
+        app.configs.sam_configs.gen = 2
+        app.annotator.device = 'cuda'
+        model = Mock()
+        precision_threads = []
+        model._init_mixed_precision.side_effect = lambda: precision_threads.append(QThread.currentThread())
+        app.annotator.set_sam_version = Mock(side_effect=lambda *args: setattr(app.annotator, 'sam', model))
+        app.set_sam()
+        self.assertEqual(precision_threads, [self.application.thread()])
+
     def test_actual_ui_polygon_save_reload_delete_and_resave(self):
         app = self.make_app()
         self.assertEqual(app.ui.next_img_button.text(), 'next image')
@@ -190,6 +323,10 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertFalse(app.ui.previous_img_button.isEnabled())
         self.assertLessEqual(app.ui.previous_img_button.x() + app.ui.previous_img_button.width(),
                              app.ui.next_img_button.x())
+        previous, following = app.ui.previous_img_button, app.ui.next_img_button
+        self.assertEqual(previous.width(), previous.height())
+        self.assertLessEqual(following.x() - (previous.x() + previous.width()), 1)
+        self.assertLessEqual(abs(previous.geometry().center().y() - following.geometry().center().y()), 1)
         mask = np.zeros((32, 48), np.uint8)
         mask[4:12, 4:12] = 255
         app.annotator.annotation.add_masks([MaskData(mid=1, origin='Polygon_drawing', mask=mask)], decision=True)

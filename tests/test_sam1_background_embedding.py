@@ -52,6 +52,7 @@ def annotation(name):
 class BackgroundEmbeddingTests(unittest.TestCase):
     def make_app(self, enabled=True):
         app = App.__new__(App)
+        app.run_backend_task = Mock(side_effect=lambda operation, *args, **kwargs: operation())
         app.configs = AramsamConfigs(sam_background_embedding=enabled)
         app.experiment_mode = None
         app.ui = Mock()

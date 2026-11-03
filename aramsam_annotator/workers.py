@@ -69,6 +69,29 @@ class InferenceWorker(QRunnable):
             self.signals.finished.emit(self.completion)
 
 
+class BackendWorker(InferenceWorker):
+    """Execute a backend-only operation; return its value through a Qt signal."""
+    def __init__(self, operation):
+        super().__init__(WorkerSignals(), 'done')
+        self.operation = operation
+
+    def execute(self):
+        return (self.operation(),)
+
+
+class ModelLoadingWorker(InferenceWorker):
+    """Load model weights without running initialization on the GUI thread."""
+    def __init__(self, annotator, generation, background_embedding):
+        super().__init__(WorkerSignals(), 'done')
+        self.annotator = annotator
+        self.generation = generation
+        self.background_embedding = background_embedding
+
+    def execute(self):
+        self.annotator.set_sam_version(self.generation, self.background_embedding)
+        return ()
+
+
 class Sam1EmbeddingWorker(InferenceWorker):
     def __init__(self, sam_predictor, img, img_name, mutex, delay=0.0):
         super().__init__(WorkerSignals(), img_name)
@@ -103,7 +126,7 @@ class Sam2ImgPairEmbeddingWorker(InferenceWorker):
 
 class Sam2PropagationWorker(InferenceWorker):
     def __init__(self, sam2_predictor, next_annotation, unpropagated_masks,
-                 batch_size, track_remaining, mutex):
+                 batch_size, track_remaining, mutex, current_annotation=None):
         if batch_size <= 0:
             raise ValueError('Propagation batch size must be positive')
         super().__init__(Sam2PropagationWorkerSignals(), len(unpropagated_masks))
@@ -111,6 +134,7 @@ class Sam2PropagationWorker(InferenceWorker):
         self.next_annotation = next_annotation
         self.unpropagated_masks = list(unpropagated_masks)
         self.batch_size, self.track_remaining, self.mutex = batch_size, track_remaining, mutex
+        self.current_annotation = current_annotation
 
     def execute(self):
         for start in range(0, len(self.unpropagated_masks), self.batch_size):
@@ -118,6 +142,8 @@ class Sam2PropagationWorker(InferenceWorker):
             if any(mask.mask is None for mask in batch):
                 raise ValueError('SAM2 propagation requires segmentation masks')
             with locked(self.mutex):
+                if self.current_annotation is not None:
+                    self.sam2_predictor.set_tracking_pair(self.current_annotation, self.next_annotation)
                 masks = self.sam2_predictor.prop_thread_func(batch)
                 # Retain the captured destination; never look up the current image here.
                 self.next_annotation.add_masks(masks, decision=True)

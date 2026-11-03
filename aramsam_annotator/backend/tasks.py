@@ -1,5 +1,5 @@
 """Deliver worker callbacks on the GUI thread and reject stale image results."""
-from PyQt6.QtCore import QObject, QCoreApplication, QEvent, Qt, pyqtSlot
+from PyQt6.QtCore import QObject, QCoreApplication, QEvent, QEventLoop, Qt, pyqtSignal, pyqtSlot
 
 
 class TaskReceiver(QObject):
@@ -38,10 +38,13 @@ class TaskReceiver(QObject):
         finally:
             self.owner.pending.discard(self)
             self.deleteLater()
+            if not self.owner.pending:
+                self.owner.idle.emit()
 
 
 class TaskDispatcher(QObject):
     """Own receivers until completion, including results queued after worker exit."""
+    idle = pyqtSignal()
     def __init__(self, threadpool):
         super().__init__()
         self.threadpool = threadpool
@@ -59,6 +62,20 @@ class TaskDispatcher(QObject):
         worker.signals.finished.connect(receiver.finished, Qt.ConnectionType.QueuedConnection)
         self.threadpool.start(worker)
         return receiver
+
+    def wait(self):
+        """Wait for work and GUI callbacks while keeping paint/timer events alive."""
+        if not self.pending:
+            return
+        if QCoreApplication.instance() is None:
+            raise RuntimeError("A Qt application is required to deliver worker results")
+        loop = QEventLoop()
+        self.idle.connect(loop.quit)
+        try:
+            while self.pending:
+                loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        finally:
+            self.idle.disconnect(loop.quit)
 
     def drain(self):
         """Finish work and deliver callbacks without processing user input events.

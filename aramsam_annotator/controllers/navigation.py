@@ -35,7 +35,8 @@ class NavigationController:
             suffix = f'structured_sam{app.sam_gen}'
         elif app.experiment_mode == 'polygon':
             suffix = 'polygon'
-        app.annotator.save_annotations(app.output_dir, save_suffix=suffix)
+        app.run_backend_task(lambda: app.annotator.save_annotations(app.output_dir, save_suffix=suffix),
+                             "Saving annotations...")
 
     def change_output_dir(self, out_dir):
         if out_dir:
@@ -61,17 +62,24 @@ class NavigationController:
         if app.experiment_mode not in ('tutorial', 'structured', 'polygon'):
             if not folder:
                 return
-            images = [str(path) for path in Path(folder).iterdir() if self._is_img_file(path)]
+            def read_folder():
+                images = [str(path) for path in Path(folder).iterdir() if self._is_img_file(path)]
+                return natsorted([*app.img_fnames, *images]) if images else []
+
+            images = app.run_backend_task(read_folder, "Reading input folder...")
             if not images:
                 return
-            app.img_fnames = natsorted([*app.img_fnames, *images])
+            app.img_fnames = images
         app.wait_for_workers()
         app.set_sam()
         app.select_next_img()
 
     def _pop_img_fnames(self):
         app = self.context
-        return ImageQueue(app.img_fnames, app.temp_dir, app.configs.img_tiles).pop_pair()
+        return app.run_backend_task(
+            lambda: ImageQueue(app.img_fnames, app.temp_dir, app.configs.img_tiles).pop_pair(),
+            "Preparing images and tiles...",
+        )
 
     def select_previous_img(self):
         app = self.context
@@ -88,12 +96,17 @@ class NavigationController:
             current = self.image_history[-1]
             # Read a fresh record so disk annotations replace model proposals.
             from aramsam_annotator.backend.annotations import AnnotationObject
-            annotation = AnnotationObject(image)
-            if self.repository.exists(app.output_dir, image):
-                self.repository.load(annotation, app.output_dir, app.annotator.mask_id_handler)
+            def restore():
+                annotation = AnnotationObject(image)
+                if self.repository.exists(app.output_dir, image):
+                    self.repository.load(annotation, app.output_dir, app.annotator.mask_id_handler)
+                return annotation
+
+            annotation = app.run_backend_task(restore, "Loading previous annotations...")
             app.annotator.next_annotation = app.annotator.annotation
             app.annotator.annotation = annotation
-            embed_current, embed_next = app.annotator.create_new_annotation(image, current)
+            embed_current, embed_next = app.run_backend_task(
+                lambda: app.annotator.create_new_annotation(image, current), "Loading images...")
             app.img_fnames.append(str(current))
             self.revisit_images.add(image_key(current))
             self.image_history.pop()
@@ -197,10 +210,15 @@ class NavigationController:
                     app.propagate_good_masks()
                 else:
                     app.bbox_tracker = None
-                embed_current, embed_next = app.annotator.create_new_annotation(image, following)
-                if revisiting and self.repository.exists(app.output_dir, image):
-                    self.repository.load(app.annotator.annotation, app.output_dir, app.annotator.mask_id_handler)
-                    app.annotator.mask_idx = len(app.annotator.annotation.masks)
+                embed_current, embed_next = app.run_backend_task(
+                    lambda: app.annotator.create_new_annotation(image, following), "Loading images...")
+                if revisiting:
+                    def restore_saved():
+                        if self.repository.exists(app.output_dir, image):
+                            self.repository.load(app.annotator.annotation, app.output_dir, app.annotator.mask_id_handler)
+                            app.annotator.mask_idx = len(app.annotator.annotation.masks)
+
+                    app.run_backend_task(restore_saved, "Loading saved annotations...")
             except Exception:
                 app.img_fnames[:] = queue_before
                 raise
@@ -267,15 +285,21 @@ class NavigationController:
         app = self.context
         if app.output_dir is None:
             app.ui.open_ouput_dir_selection()
-        return app._annot_log_exists(img_name), app._annot_log_exists(next_img_name)
+        return app.run_backend_task(
+            lambda: (app._annot_log_exists(img_name), app._annot_log_exists(next_img_name)),
+            "Checking saved annotations...",
+        )
 
     def _annot_log_exists(self, img_name):
         return self.repository.exists(self.context.output_dir, img_name)
 
     def load_previous_annotations(self, img_name, next_img_name):
         app = self.context
-        app.annotator.create_new_annotation(img_name, next_img_name)
-        self.repository.load(app.annotator.annotation, app.output_dir, app.annotator.mask_id_handler)
+        def restore():
+            app.annotator.create_new_annotation(img_name, next_img_name)
+            self.repository.load(app.annotator.annotation, app.output_dir, app.annotator.mask_id_handler)
+
+        app.run_backend_task(restore, "Loading saved annotations...")
         app.annotator.mask_idx = len(app.annotator.annotation.masks)
         if app.sam_gen == 2:
             app.embed_img_pair(do_amg=False)

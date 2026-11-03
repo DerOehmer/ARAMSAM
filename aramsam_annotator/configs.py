@@ -69,6 +69,7 @@ class AramsamConfigs:
 
     # Prefer CUDA when available; disable to force CPU for all models.
     use_gpu: bool = True
+    mask_propagation: bool = True
 
     def __post_init__(self):
         if self.do_amg and self.yolo_model_ckpt_p is not None:
@@ -123,6 +124,7 @@ def load_configs_from_yaml(yaml_path: str | Path) -> "AramsamConfigs":
         save_data=save_data,
         class_dict=class_dict,
         use_gpu=data.get("use_gpu", AramsamConfigs.__dataclass_fields__["use_gpu"].default),
+        mask_propagation=data.get("mask_propagation", True),
     )
 
     return configs

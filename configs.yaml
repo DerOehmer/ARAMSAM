@@ -14,6 +14,9 @@ use_gpu: true
 
 sam_background_embedding: true
 
+# Carry accepted masks to the next image. Also available in Settings.
+mask_propagation: true
+
 do_amg: false
 
 img_tiles:

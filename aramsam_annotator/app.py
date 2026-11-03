@@ -13,12 +13,13 @@ import shutil
 import tempfile
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QThreadPool, QMutex
+from PyQt6.QtCore import QThreadPool, QMutex, QEventLoop, QTimer
 
 from aramsam_annotator.gui import UserInterface
 from aramsam_annotator.annotator import Annotator
 from aramsam_annotator.configs import AramsamConfigs
 from aramsam_annotator.backend.tasks import TaskDispatcher
+from aramsam_annotator.workers import BackendWorker, ModelLoadingWorker
 
 
 class App:
@@ -57,6 +58,7 @@ class App:
         self.tutorial_flag = False
 
         self.ui.auto_save_box.setChecked(self.configs.save_data.auto_save)
+        self.ui.mask_propagation_box.setChecked(self.configs.mask_propagation)
         self._connect_ui(self.ui.good_mask_button.clicked, self.add_good_mask)
         self._connect_ui(self.ui.bad_mask_button.clicked, self.add_bad_mask)
         self._connect_ui(self.ui.back_button.clicked, self.previous_mask)
@@ -65,6 +67,7 @@ class App:
         self._connect_ui(self.ui.delete_button.clicked, self.select_masks_to_delete)
         self._connect_ui(self.ui.auto_save_box.checkStateChanged, self.auto_save_changed)
         self._connect_ui(self.ui.auto_embed_box.checkStateChanged, self.auto_embed_changed)
+        self._connect_ui(self.ui.mask_propagation_box.checkStateChanged, self.mask_propagation_changed)
 
         if self.experiment_mode == "structured":
             self._connect_ui(self.ui.next_method_button.clicked, self.next_method)
@@ -127,11 +130,41 @@ class App:
     def tasks(self):
         return TaskDispatcher(self.threadpool)
 
-    def wait_for_workers(self):
+    def wait_for_workers(self, message="Processing images...", delay_ms=200):
         if "tasks" in self.__dict__:
-            self.tasks.drain()
+            self._wait_with_loading(message, delay_ms)
         else:
             self.threadpool.waitForDone(-1)
+
+    def _wait_with_loading(self, message, delay_ms):
+        window = None
+        timer = QTimer()
+        timer.setSingleShot(True)
+
+        def show_loading():
+            nonlocal window
+            if self.ui.basic_loading_window is None:
+                self.ui.create_basic_loading_window(text=message)
+                window = self.ui.basic_loading_window
+
+        timer.timeout.connect(show_loading)
+        timer.start(delay_ms)
+        try:
+            self.tasks.wait()
+        finally:
+            timer.stop()
+            if window is not None and self.ui.basic_loading_window is window:
+                self.ui.close_basic_loading_window()
+
+    def run_backend_task(self, operation, message="Processing images...", delay_ms=200):
+        """Run non-Qt work off the UI thread, preserving synchronous callers."""
+        results, errors = [], []
+        self.tasks.submit(BackendWorker(operation), result=lambda value: results.append(value[0]),
+                          error=lambda error: errors.append(error[1]))
+        self._wait_with_loading(message, delay_ms)
+        if errors:
+            raise errors[0]
+        return results[0] if results else None
 
     def shutdown(self, _=None) -> None:
         if "tasks" in self.__dict__:
@@ -153,7 +186,36 @@ class App:
         self.wait_for_workers()
         self.annotator.sam_ckpt = self.configs.sam_configs.model_ckpt_p
         self.annotator.sam_model_type = self.configs.sam_configs.model_type
-        self.annotator.set_sam_version(generation, background)
+        self.ui.create_basic_loading_window(
+            text=f"Loading SAM{generation} model. Initial startup may take a while...",
+        )
+        # Preserve set_sam's synchronous API for navigation and model switching,
+        # while Qt continues painting and animating the modal loading dialog.
+        loop = QEventLoop()
+        errors = []
+
+        def failed(error):
+            errors.append(error[1])
+            loop.quit()
+
+        try:
+            worker = ModelLoadingWorker(self.annotator, generation, background)
+            # Completion must also quit the local loop if shutdown invalidates
+            # the dispatcher's normal result callbacks during initialization.
+            worker.signals.finished.connect(loop.quit)
+            self.tasks.submit(worker, error=failed)
+            loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            # Release the receiver even when its error signal quit the loop
+            # before the worker's completion signal was delivered.
+            self.tasks.drain()
+            if errors:
+                raise errors[0]
+        finally:
+            self.ui.close_basic_loading_window()
+        if generation == 2 and self.annotator.device == "cuda":
+            # SAM2 establishes thread-local autocast during construction. Its UI
+            # predictions need the same precision context on the GUI thread.
+            self.annotator.sam._init_mixed_precision()
         self.sam_gen = generation
         self.ui.set_text_prompt_available(generation == 3)
         self._model_settings = settings
@@ -167,6 +229,27 @@ class App:
             self.configs.save_data.auto_save = True
         else:
             self.configs.save_data.auto_save = False
+
+    def mask_propagation_changed(self):
+        self.configs.mask_propagation = self.ui.mask_propagation_box.isChecked()
+        if self.configs.mask_propagation:
+            return
+        # Finish any running batch before removing its unvisited-image results.
+        # Keep masks that came from disk or another annotation source.
+        self.wait_for_workers()
+        self.bbox_tracker = None
+        target = self.annotator.next_annotation
+        if target is not None:
+            def generated(mask):
+                return (mask.mid in self.propagated_mids
+                        and mask.origin in ("Sam2_tracking", "Sam3_tracking"))
+
+            retained = [(mask, decision) for mask, decision in zip(target.masks, target.mask_decisions)
+                        if not generated(mask)]
+            target.masks = [mask for mask, _ in retained]
+            target.mask_decisions = [decision for _, decision in retained]
+            target.good_masks = [mask for mask in target.good_masks if not generated(mask)]
+        self.propagated_mids = set()
 
     def auto_embed_changed(self):
         if self.annotator.annotation is None:

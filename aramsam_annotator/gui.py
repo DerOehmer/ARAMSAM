@@ -8,7 +8,7 @@ import math
 import json
 import os
 
-from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QRect, QPointF
+from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QRect, QPointF, QEventLoop
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -38,6 +38,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QCheckBox,
     QProgressDialog,
+    QProgressBar,
     QApplication,
     QDialog,
     QVBoxLayout,
@@ -45,6 +46,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QToolButton,
+    QWidgetAction,
 )
 
 
@@ -91,6 +93,7 @@ class UserInterface(QMainWindow):
             "Set Ouput Directory", self.open_ouput_dir_selection
         )
         self.menu_settings.addAction("Set SAM Model", self._open_sam_model_selection)
+        self.construct_settings_checkboxes()
         self.zoom_level = 0
         self.zoom_factor = 1.25
         self.current_viewport = None
@@ -101,6 +104,26 @@ class UserInterface(QMainWindow):
         self.construct_ui()
         self.construct_text_prompt_panel()
         self.showMaximized()
+
+    def construct_settings_checkboxes(self):
+        self.menu_settings.addSeparator()
+        self.settings_checkbox_actions = []
+        for name, label, checked in (
+            ("auto_save_box", "Auto Save", True),
+            ("auto_embed_box", "Auto Embed", self.experiment_mode != "polygon"),
+            ("mask_propagation_box", "Mask Propagation", True),
+        ):
+            checkbox = QCheckBox(label, self.menu_settings)
+            checkbox.setChecked(checked)
+            checkbox.setContentsMargins(12, 6, 12, 6)
+            action = QWidgetAction(self.menu_settings)
+            action.setText(label)
+            action.setDefaultWidget(checkbox)
+            action.setVisible(self.experiment_mode is None)
+            self.menu_settings.addAction(action)
+            self.settings_checkbox_actions.append(action)
+            setattr(self, name, checkbox)
+        self.mask_propagation_box.setToolTip("Carry accepted masks to the next image")
 
     def construct_text_prompt_panel(self):
         self.text_prompt_toggle = QToolButton(self)
@@ -328,22 +351,6 @@ class UserInterface(QMainWindow):
         )
         if self.experiment_mode is None:
 
-            self.auto_save_box = QCheckBox(text="Auto Save", parent=self)
-            self.auto_save_box.move(
-                11 * self.buttons_spacing + 10 * self.buttons_min_width,
-                int(self.height_offset / 2),
-            )
-            self.auto_save_box.setChecked(True)
-            self.auto_save_box.show()
-
-            self.auto_embed_box = QCheckBox(text="Auto Embed", parent=self)
-            self.auto_embed_box.move(
-                12 * self.buttons_spacing + 11 * self.buttons_min_width,
-                int(self.height_offset / 2),
-            )
-            self.auto_embed_box.setChecked(True)
-            self.auto_embed_box.show()
-
             self.next_img_button = QPushButton(text="next image", parent=self)
             self.next_img_button.move(
                 7 * self.buttons_spacing + 6 * self.buttons_min_width,
@@ -354,10 +361,15 @@ class UserInterface(QMainWindow):
                 self.next_img_button.x() + 10, self.next_img_button.y())
             self.previous_img_button = QPushButton("‹", self)
             self.previous_img_button.setToolTip("Previous image")
-            self.previous_img_button.setStyleSheet("min-width: 0px; padding-left: 0px; padding-right: 0px;")
-            self.previous_img_button.setFixedWidth(18)
+            self.previous_img_button.setStyleSheet(
+                "min-width: 0px; min-height: 0px; padding: 0px; margin: 0px;"
+                "border-radius: 9px; border: 1px solid #6c8299;"
+            )
+            self.previous_img_button.setFixedSize(18, 18)
             self.previous_img_button.move(
-                self.next_img_button.x() - self.previous_img_button.width() - 2, self.next_img_button.y())
+                self.next_img_button.x() - self.previous_img_button.width() - 1,
+                self.next_img_button.y() + (self.next_img_button.height() - self.previous_img_button.height()) // 2,
+            )
             self.previous_img_button.setEnabled(False)
 
             self.labelCoords = QLabel(self, text="Pixel Pos.")
@@ -368,12 +380,6 @@ class UserInterface(QMainWindow):
             self.labelCoords.show()
 
         if self.experiment_mode in ["structured", "polygon", "tutorial"]:
-            self.auto_save_box = QCheckBox(parent=self)
-            self.auto_save_box.setChecked(True)
-            self.auto_save_box.hide()
-            self.auto_embed_box = QCheckBox(parent=self)
-            self.auto_embed_box.setChecked(self.experiment_mode != "polygon")
-            self.auto_embed_box.hide()
             self.labelCoords = QLabel(parent=self)
             self.labelCoords.hide()
             self.next_method_button = QPushButton("Next", self)
@@ -822,11 +828,19 @@ class UserInterface(QMainWindow):
             self.info_box.setStandardButtons(QMessageBox.StandardButton.NoButton)
             self.info_box.show()
 
-    def create_basic_loading_window(self, text: str = "Loading, please wait..."):
+    def create_basic_loading_window(self, text: str = "Loading, please wait...",
+                                    paint_immediately: bool = False):
         if self.basic_loading_window is not None:
             self.basic_loading_window.close()
         self.basic_loading_window = BasicLoadingWindow(self, text=text)
         self.basic_loading_window.show()
+        if paint_immediately:
+            # Model initialization runs synchronously. Deliver the initial paint
+            # before it starts, without accepting another input action.
+            window = self.basic_loading_window
+            QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            if self.basic_loading_window is window:
+                window.repaint()
 
     def close_basic_loading_window(self):
         if self.basic_loading_window is not None:
@@ -975,7 +989,10 @@ class BasicLoadingWindow(QDialog):
         super().__init__(parent)
         self.text = text
         self.setWindowTitle("Loading...")
-        self.setFixedSize(700, 100)
+        # Keep the dialog on screen while allowing its height to follow wrapped
+        # messages and the user's font size instead of clipping at 100 pixels.
+        available_width = self.screen().availableGeometry().width()
+        self.setFixedWidth(min(560, max(100, available_width - 48)))
 
         # Remove the close button and disable window resizing
         self.setWindowFlags(
@@ -993,17 +1010,33 @@ class BasicLoadingWindow(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
-        label = QLabel(self.text)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
+        self.title_label = QLabel("Please wait", self)
+        title_font = self.title_label.font()
+        title_font.setBold(True)
+        title_font.setPointSizeF(title_font.pointSizeF() + 2)
+        self.title_label.setFont(title_font)
+        layout.addWidget(self.title_label)
 
-        # self.progress = QProgressBar()
-        # self.progress.setRange(0, 0)  # Indeterminate progress bar
-        # layout.addWidget(self.progress)
+        self.message_label = QLabel(self.text, self)
+        self.message_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.message_label.setWordWrap(True)
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(self.message_label)
 
-        self.setLayout(layout)
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setAccessibleName("Processing")
+        layout.addWidget(self.progress_bar)
+
+        # QVBoxLayout includes the label's height-for-width calculation, so long
+        # messages and explicit newlines receive enough vertical space.
+        self.resize(self.width(), layout.totalHeightForWidth(self.width()))
 
 
 class UserInfoWindow(QDialog):

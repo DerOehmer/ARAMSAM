@@ -182,7 +182,7 @@ class Annotator:
         self.mask_idx = 0
         self.sam.amg.set_visualization_img(self.annotation.img)
 
-        if bbox_tracker is not None:
+        if bbox_tracker is not None and self.configs.mask_propagation:
             self._propagate_bboxes(bbox_tracker)
 
         accepted_ids = {mask.mid for mask in self.annotation.good_masks}

@@ -20,6 +20,11 @@ To install SAM2 run the commands below. These steps are not necessary if you onl
 cd segment-anything-21
 pip install -e ./sam2
 ```
+To install SAM3 run the commands below
+```
+cd sam3
+pip install -e .
+```
 
 ### Installation using Docker
 Use VS Code Dev Containers Extension
@@ -48,6 +53,20 @@ A more user friendly way to modify the settings is coming in the future.
 ## UI Workflow
 
 For instructions on how you can use ARAMSAM UI see [Example Workflow](docs/example_workflow.md).
+
+Open **Settings** to toggle **Auto Save**, **Auto Embed**, or **Mask Propagation**.
+Mask propagation carries accepted objects into the next image. Set the top-level
+`mask_propagation: false` in `configs.yaml` to disable it at startup (default:
+`true`). The Settings checkbox changes it for the current session. Turning it
+off clears generated masks in the unvisited next image and stops further
+propagation, while keeping annotations on the current image and masks loaded
+from disk.
+
+Longer propagation, image preparation, and annotation-saving operations show a
+loading window after a short delay. Backend work runs in worker threads while
+the UI continues painting the dialog and its busy indicator. Output-directory
+selection stays on the UI thread; subsequent disk checks, image loading, tiling,
+and saving run in workers.
 
 ### SAM3
 
