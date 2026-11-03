@@ -10,7 +10,8 @@ class PresentationController:
         if context.annotator.annotation is None:
             return
         if context.experiment_mode is None:
-            context.ui.manual_annotation_button.setEnabled(context.ui.auto_embed_box.isChecked())
+            context.ui.manual_annotation_button.setEnabled(
+                context.configs.sam_configs.do_sam and context.ui.auto_embed_box.isChecked())
             # Restore the mode that was active on the previous image
             context.navigation.restore_annotation_mode()
         if context.sam_gen == 3 and not context.inference.text_prompt_running:

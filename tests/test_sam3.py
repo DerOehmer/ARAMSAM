@@ -294,7 +294,7 @@ class Sam3UiTests(unittest.TestCase):
         self.assertTrue(ui.text_prompt_panel.isHidden())
         self.assertFalse(ui.text_prompt_toggle.isEnabled())
 
-    def test_text_masks_review_accept_undo_and_native_round_trip(self):
+    def test_text_masks_auto_accept_undo_and_native_round_trip(self):
         self.app.start_text_prompt('cup', 0.5)
         self.assertFalse(self.app.ui.text_prompt_run.isEnabled())
         self.app.wait_for_workers()
@@ -302,9 +302,12 @@ class Sam3UiTests(unittest.TestCase):
         self.assertTrue(self.app.ui.text_prompt_run.isEnabled())
         self.assertEqual(len(annotator.annotation.masks), 1)
         self.assertEqual(annotator.annotation.masks[0].origin, 'Sam3_text')
-        self.assertEqual(annotator.annotation.mask_decisions, [False])
-        self.app.ui.good_mask_button.click()
+        self.assertEqual(annotator.annotation.mask_decisions, [True])
         self.assertEqual(len(annotator.annotation.good_masks), 1)
+        self.assertEqual(annotator.mask_idx, 1)
+        self.assertEqual(annotator.annotation.good_masks[0].class_id, self.app.ui.get_selected_class())
+        self.assertIsNotNone(annotator.annotation.good_masks[0].time_stamp)
+        self.assertEqual(self.app.ui.text_prompt_status.text(), '1 mask accepted.')
         self.app.ui.back_button.click()
         self.assertEqual(len(annotator.annotation.good_masks), 0)
         self.app.ui.good_mask_button.click()
@@ -315,7 +318,31 @@ class Sam3UiTests(unittest.TestCase):
             restored = AnnotationObject(self.image)
             AnnotationRepository(self.app.configs.save_data).load(restored, output, MaskIdHandler())
             self.assertEqual(restored.good_masks[0].origin, origin)
+            self.assertEqual(restored.good_masks[0].class_id, self.app.ui.get_selected_class())
             np.testing.assert_array_equal(restored.good_masks[0].mask, binary_mask())
+
+    def test_text_masks_auto_accept_selected_class_and_filter_overlaps_like_tracking(self):
+        other = np.zeros((12, 16), np.uint8)
+        other[8:11, 11:15] = 255
+        with patch.object(self.app.ui, 'get_selected_class', return_value=3):
+            self.app.inference.receive_text_masks([binary_mask(), other, binary_mask()])
+        annotation = self.app.annotator.annotation
+        self.assertEqual(annotation.mask_decisions, [True, True, False])
+        self.assertEqual(len(annotation.good_masks), 2)
+        self.assertEqual([mask.class_id for mask in annotation.good_masks], [3, 3])
+        self.assertEqual(self.app.annotator.mask_idx, 3)
+        self.assertEqual(self.app.ui.text_prompt_status.text(), '2 masks accepted (3 found).')
+        self.app.ui.back_button.click()  # Undo the overlapping result's rejection.
+        self.app.ui.back_button.click()  # Undo the second accepted text mask.
+        self.assertEqual(len(annotation.good_masks), 1)
+        np.testing.assert_array_equal(annotation.good_masks[0].mask, binary_mask())
+
+    def test_auto_accepted_text_masks_are_available_for_propagation(self):
+        self.app.annotator.next_annotation = Mock()
+        self.app.start_mask_batch_thread = Mock()
+        self.app.inference.receive_text_masks([binary_mask()])
+        self.app.start_mask_batch_thread.assert_called_once()
+        self.assertEqual(len(self.app.annotator.annotation.good_masks), 1)
 
     def test_interactive_acceptance_uses_sam3_origin(self):
         self.app.ui.manual_annotation_button.click()

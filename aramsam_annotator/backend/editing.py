@@ -232,6 +232,8 @@ class AnnotationEditor:
                     context.bad_mask()
                 elif "tracking" in obj.origin or obj.origin == "Yolo_prediction":
                     context.good_mask(time_stamp=1, class_id=obj.class_id)
+                elif obj.origin == "Sam3_text":
+                    context.good_mask(class_id=obj.class_id)
                 else:
                     return ""
             return None
@@ -329,4 +331,3 @@ class AnnotationEditor:
                 context.annotation.mask_decisions[mask_dec_idx[0]] = False
                 context.annotation.preview_mask = None
                 break
-

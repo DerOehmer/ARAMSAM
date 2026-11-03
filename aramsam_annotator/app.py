@@ -12,12 +12,14 @@ import qdarkstyle
 import shutil
 import tempfile
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog
 from PyQt6.QtCore import QThreadPool, QMutex, QEventLoop, QTimer
 
 from aramsam_annotator.gui import UserInterface
 from aramsam_annotator.annotator import Annotator
-from aramsam_annotator.configs import AramsamConfigs
+from aramsam_annotator.configs import AramsamConfigs, find_configs_path, save_configs_to_yaml
+from aramsam_annotator.welcome import WelcomeWindow
+from dataclasses import asdict
 from aramsam_annotator.backend.tasks import TaskDispatcher
 from aramsam_annotator.workers import BackendWorker, ModelLoadingWorker
 
@@ -35,8 +37,11 @@ class App:
         experiment_mode: str = None,
         experiment_progress: tuple = None,
         configs: AramsamConfigs = None,
+        config_path: str | Path | None = None,
     ) -> None:
         self.configs = configs if configs is not None else AramsamConfigs()
+        self.config_path = Path(config_path) if config_path is not None else find_configs_path()
+        self.welcome_window = None
         if ui_options is None:
             from aramsam_annotator.main import create_vis_options
             options, defaults, current = create_vis_options(self.configs)
@@ -124,7 +129,73 @@ class App:
 
     def run(self) -> None:
         self.ui.run()
+        if self.experiment_mode is None:
+            QTimer.singleShot(0, self.show_welcome)
         sys.exit(self.application.exec())
+
+    def show_welcome(self):
+        self.welcome_window = WelcomeWindow(self.configs, self.config_path, self.ui)
+        self._connect_ui(self.welcome_window.load_requested, self._load_from_welcome)
+        self.welcome_window.finished.connect(self._welcome_finished)
+        self.welcome_window.show()
+
+    def _welcome_finished(self, result):
+        if result == QDialog.DialogCode.Rejected:
+            self.shutdown()
+            self.ui.hide()
+            self.application.quit()
+
+    def _load_from_welcome(self, mode):
+        dialog = self.welcome_window
+        try:
+            configs = dialog.read_configs()
+            if asdict(configs) != dialog.initial_values:
+                self.run_backend_task(lambda: save_configs_to_yaml(configs, self.config_path),
+                                      "Saving configuration...")
+                dialog.initial_values = asdict(configs)
+        except (ValueError, OSError) as error:
+            dialog.show_error(str(error))
+            return
+        if mode == "image":
+            path, _ = QFileDialog.getOpenFileName(dialog, "Load Image", "", "Images (*.png *.jpg *.jpeg)")
+        else:
+            path = QFileDialog.getExistingDirectory(dialog, "Load Image Folder")
+        if not path:
+            return
+        self._apply_welcome_configs(configs)
+        dialog.accept()
+        if configs.save_data.do_save and configs.save_data.save_dir:
+            output = Path(configs.save_data.save_dir).expanduser()
+            self.run_backend_task(lambda: output.mkdir(parents=True, exist_ok=True), "Preparing output directory...")
+            self.output_dir = str(output)
+        if mode == "image":
+            self.navigation.load_image_path(path)
+        else:
+            self.navigation.load_folder_path(path)
+
+    def _apply_welcome_configs(self, configs):
+        self.wait_for_workers()
+        self.configs = configs
+        self.annotator = Annotator(configs)
+        self.sam_gen = None
+        self._model_settings = None
+        self.output_dir = None
+        for checkbox, checked in (
+            (self.ui.auto_save_box, configs.save_data.auto_save),
+            (self.ui.mask_propagation_box, configs.mask_propagation),
+            (self.ui.auto_embed_box, configs.sam_configs.do_sam),
+        ):
+            previous = checkbox.blockSignals(True)
+            checkbox.setChecked(checked)
+            checkbox.blockSignals(previous)
+        self.ui.auto_embed_box.setEnabled(configs.sam_configs.do_sam)
+        self.ui.set_text_prompt_available(configs.sam_configs.do_sam and configs.sam_configs.gen == 3)
+        self.ui.text_prompt_confidence.setValue(configs.sam_configs.confidence_threshold)
+        self.ui.set_class_dict(configs.class_dict)
+        from aramsam_annotator.main import create_vis_options
+        options, defaults, current = create_vis_options(configs)
+        self.ui.ui_options["layout_settings_options"] = {"options": options, "default": defaults, "current": current}
+        self.fields = defaults
 
     @cached_property
     def tasks(self):
@@ -174,7 +245,7 @@ class App:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def set_sam(self):
-        if self.experiment_mode == "polygon":
+        if self.experiment_mode == "polygon" or not self.configs.sam_configs.do_sam:
             return
         generation = self.sam_gen or self.configs.sam_configs.gen
         background = self.configs.sam_background_embedding if self.experiment_mode is None else False

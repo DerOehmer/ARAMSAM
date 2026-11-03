@@ -45,6 +45,10 @@ class NavigationController:
     def load_img(self, _):
         app = self.context
         path = app.ui.open_img_load_file_dialog()
+        return self.load_image_path(path)
+
+    def load_image_path(self, path):
+        app = self.context
         if not path:
             return
         app.wait_for_workers()
@@ -59,6 +63,10 @@ class NavigationController:
     def load_img_folder(self, _):
         app = self.context
         folder = app.ui.open_load_folder_dialog()
+        return self.load_folder_path(folder)
+
+    def load_folder_path(self, folder):
+        app = self.context
         if app.experiment_mode not in ('tutorial', 'structured', 'polygon'):
             if not folder:
                 return
@@ -235,6 +243,9 @@ class NavigationController:
 
     def _activate_image(self, image, following, embed_current, embed_next):
         app = self.context
+        if not app.configs.sam_configs.do_sam:
+            app.propose_masks()
+            return
         if app.sam_gen == 2:
             if getattr(app.annotator.annotation, "proposals_ready", False) is True:
                 app.embed_img_pair(do_amg=False)
@@ -283,6 +294,8 @@ class NavigationController:
 
     def check_annotations_done(self, img_name, next_img_name):
         app = self.context
+        if not app.configs.save_data.do_save and app.output_dir is None:
+            return False, False
         if app.output_dir is None:
             app.ui.open_ouput_dir_selection()
         return app.run_backend_task(

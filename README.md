@@ -42,13 +42,18 @@ wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth
 python -m aramsam_annotator.main
 ```
 
-Modify `aramsam_annotator/configs.py' to: 
-- Load different SAM encoders
-- Enable/disable the automatic mask generator
-- Define classes (currently only supported with saving bboxes in yolo format)
-- Load a YOLO network for bounding box proposals
+The startup welcome window provides optional controls for every `configs.yaml`
+setting, grouped into General, SAM, Image Tiling, Saving, and Classes tabs.
+Choose the red **Quit** button at the bottom left to exit without saving edits.
+The blue **Load Image** and **Load Folder** buttons save changed settings to the
+same `configs.yaml` file used at startup, then open the appropriate input chooser.
+Unchanged settings leave the file untouched. If input selection is canceled,
+the welcome window stays open; changes have already been saved. Invalid settings
+or write errors stay visible in the welcome window so they can be corrected.
 
-A more user friendly way to modify the settings is coming in the future.
+The selected output directory is created when loading begins. Leave it blank to
+choose an output directory later. Models load in a worker after input selection.
+Settings can also be edited directly in `configs.yaml` before starting ARAMSAM.
 
 ## UI Workflow
 
@@ -98,8 +103,9 @@ Adjust **Minimum confidence** to control which detections are returned. Prior
 prompts are available from the input dropdown. Use **Hide** or the top-right
 toggle to collapse the panel.
 
-Text results join the existing good-mask/bad-mask review workflow and retain
-class labels and SAM3 origins when saved. Positive/negative interactive points,
+Text results are automatically accepted using the selected class, with the same
+overlap filtering as propagated masks. Use Back to undo an acceptance or Delete
+to remove a mask. Saved results retain class labels and SAM3 origins. Positive/negative interactive points,
 undo, polygon/bounding-box drawing, deletion, image navigation, background
 embedding, and propagation to the next image work with SAM3. Enable `do_amg` for
 automatic proposals generated from a grid of interactive point prompts.

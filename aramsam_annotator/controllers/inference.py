@@ -13,7 +13,7 @@ class InferenceController:
 
     def propagate_good_masks(self):
         context = self.context
-        if not context.configs.mask_propagation:
+        if not context.configs.mask_propagation or not context.configs.sam_configs.do_sam:
             return
         if (context.annotator.annotation is None
                 or not context.annotator.annotation.good_masks
@@ -319,28 +319,38 @@ class InferenceController:
         context = self.context
         self.text_prompt_running = False
         context.ui.set_text_prompt_busy(False)
-        context.ui.text_prompt_status.setText(
-            f"{len(masks)} masks found. Review with good mask / bad mask."
-            if masks else "No objects found. Try another phrase or lower the confidence.")
         if not masks:
+            context.ui.text_prompt_status.setText("No objects found. Try another phrase or lower the confidence.")
             return
         annotator = context.annotator
         annotator.reset_toggles()
         context.ui.reset_buttons()
         context.ui.set_cursor(False)
-        objects = [MaskData(mid=annotator.mask_id_handler.get_id(), mask=mask, origin="Sam3_text")
-                   for mask in masks]
-        # Insert at the current review position, including when all previous
-        # proposals have already been reviewed or rejected.
-        index = annotator.mask_idx
-        annotator.annotation.masks[index:index] = objects
-        annotator.annotation.mask_decisions[index:index] = [False] * len(objects)
-        annotator.update_mask_idx(index)
-        annotator.update_collections(annotator.annotation)
-        annotator.preselect_mask()
+        class_id = context.ui.get_selected_class()
+
+        def accept_masks():
+            objects = [MaskData(mid=annotator.mask_id_handler.get_id(), mask=mask,
+                                origin="Sam3_text", class_id=class_id) for mask in masks]
+            # Text results use the same acceptance and overlap filtering as
+            # propagated masks, preserving the normal decision history for undo.
+            index = annotator.mask_idx
+            annotator.annotation.masks[index:index] = objects
+            annotator.annotation.mask_decisions[index:index] = [False] * len(objects)
+            annotator.update_mask_idx(index)
+            annotator.update_collections(annotator.annotation)
+            annotator.preselect_mask()
+            accepted_ids = {mask.mid for mask in annotator.annotation.good_masks}
+            return sum(obj.mid in accepted_ids for obj in objects)
+
+        accepted = context.run_backend_task(accept_masks, "Accepting text-prompted masks...")
+        noun = "mask" if accepted == 1 else "masks"
+        details = f" ({len(masks)} found)" if accepted != len(masks) else ""
+        context.ui.text_prompt_status.setText(f"{accepted} {noun} accepted{details}.")
         context.update_ui_imgs()
         if annotator.time_stamp is None:
             annotator.init_time_stamp()
+        if context.annotator.next_annotation is not None:
+            context.start_mask_batch_thread()
 
     def _submit(self, worker, result, finished, target=None, error=None):
         context = self.context

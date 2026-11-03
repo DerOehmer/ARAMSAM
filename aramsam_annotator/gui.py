@@ -436,6 +436,21 @@ class UserInterface(QMainWindow):
             button.setEnabled(True)
         
 
+    def set_class_dict(self, class_dict):
+        if self.class_select is not None:
+            self.menuBar().removeAction(self.class_select.menuAction())
+            self.class_select.deleteLater()
+        if self.class_action_group is not None:
+            self.class_action_group.deleteLater()
+        if getattr(self, "current_class_label", None) is not None:
+            self.current_class_label.hide()
+            self.current_class_label.deleteLater()
+            self.current_class_label = None
+        self.ui_options["class"] = class_dict
+        self.construct_class_selection()
+        if class_dict:
+            self.current_class_label.show()
+
     def construct_class_selection(self):
         class_dict = self.ui_options.get("class")
         if not class_dict:
@@ -473,7 +488,7 @@ class UserInterface(QMainWindow):
             self.class_action_group.addAction(action)
 
             # Store the action for later use if needed
-            self.class_actions[key] = action
+            self.class_actions[str(key)] = action
 
         self.class_action_group.triggered.connect(self.class_toggle)
 
@@ -485,10 +500,9 @@ class UserInterface(QMainWindow):
         if class_dict is None:
             selected_action = self.class_action_group.checkedAction()
             return selected_action.text()
-        elif not "0" in class_dict.keys():
-            return "Invalid class json"
         else:
-            return f'0: {class_dict["0"]}'
+            key = next(iter(class_dict))
+            return f'{key}: {class_dict[key]}'
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int(self.width() / 2)
@@ -596,9 +610,9 @@ class UserInterface(QMainWindow):
         if selected_action is None:
             return None
 
-        for i, action in enumerate(self.class_actions.values()):
+        for key, action in self.class_actions.items():
             if action == selected_action:
-                return i
+                return int(key)
         return None
 
     def handleCoords(self, point: QPoint):

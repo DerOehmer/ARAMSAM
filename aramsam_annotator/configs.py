@@ -1,8 +1,9 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 import os
 import yaml
+import tempfile
 
 
 
@@ -130,23 +131,44 @@ def load_configs_from_yaml(yaml_path: str | Path) -> "AramsamConfigs":
     return configs
 
 
+def find_configs_path(yaml_filename: str = "configs.yaml") -> Path:
+    """Resolve the configuration file used for both startup and welcome edits."""
+    cwd_path = Path.cwd() / yaml_filename
+    if cwd_path.exists():
+        return cwd_path
+    repo_path = Path(__file__).resolve().parents[1] / yaml_filename
+    return repo_path if repo_path.exists() else cwd_path
+
+
+def save_configs_to_yaml(configs: AramsamConfigs, yaml_path: str | Path):
+    """Atomically save settings, retaining unrecognized top-level YAML keys."""
+    path = Path(yaml_path)
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except yaml.YAMLError as error:
+        raise ValueError(f"Cannot update invalid configuration YAML: {error}") from error
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError("Configuration file must contain a YAML mapping")
+    data.update(asdict(configs))
+    contents = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(contents)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def find_and_load_configs(yaml_filename: str = "configs.yaml") -> "AramsamConfigs":
     """
     Helper that looks for a `configs.yaml` file in the current working directory
     and the repository root (two levels up from this module), and loads it if
     found. If not found, returns the default AramsamConfigs instance.
     """
-    # check cwd first
-    cwd_path = Path(os.getcwd()) / yaml_filename
-    if cwd_path.exists():
-        return load_configs_from_yaml(cwd_path)
-
-    # check repo root (two levels up from this file)
-    repo_root = Path(__file__).resolve().parents[1]
-    repo_path = repo_root / yaml_filename
-    if repo_path.exists():
-        return load_configs_from_yaml(repo_path)
-
-    # fallback to defaults
-    return AramsamConfigs()
+    path = find_configs_path(yaml_filename)
+    return load_configs_from_yaml(path) if path.exists() else AramsamConfigs()
         
