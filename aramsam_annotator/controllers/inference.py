@@ -3,12 +3,13 @@ import time
 from pathlib import Path
 from aramsam_annotator.tracker import PanoImageAligner
 from aramsam_annotator.mask_visualizations import MaskData
-from aramsam_annotator.workers import (AMGWorker, Sam2ImgPairEmbeddingWorker, Sam1EmbeddingWorker, Sam2PropagationWorker, YoloPredicitonWorker)
+from aramsam_annotator.workers import (AMGWorker, Sam2ImgPairEmbeddingWorker, Sam1EmbeddingWorker, Sam2PropagationWorker, YoloPredicitonWorker, TextPromptWorker)
 
 
 class InferenceController:
     def __init__(self, context):
         self.context = context
+        self.text_prompt_running = False
 
     def propagate_good_masks(self):
         context = self.context
@@ -16,7 +17,7 @@ class InferenceController:
                 or not context.annotator.annotation.good_masks
                 or context.annotator.next_annotation is None):
             return
-        if context.sam_gen == 2:
+        if context.sam_gen in (2, 3):
 
             context.start_mask_batch_thread(track_remaining=True)
 
@@ -25,7 +26,7 @@ class InferenceController:
                 context.bbox_tracker = PanoImageAligner()
             context.bbox_tracker.add_annotation(context.annotator.annotation)
 
-        if context.sam_gen == 2:
+        if context.sam_gen in (2, 3):
             context.annotator.convey_color_to_next_annot(
                 context.annotator.next_annotation.masks
             )
@@ -97,6 +98,12 @@ class InferenceController:
     def start_mask_batch_thread(self, track_remaining: bool = False):
 
         context = self.context
+        if context.sam_gen == 3:
+            if context.annotator.sam.device == "cpu":
+                context.ui.performing_embedding_label.setText("SAM3 tracking requires CUDA")
+                return
+            context.annotator.sam.set_tracking_pair(
+                context.annotator.annotation, context.annotator.next_annotation)
         if context.mask_track_batch_size is None:
             print("Propagating masks in main thread")
             context.annotator.sam.set_masks(context.annotator.annotation.good_masks)
@@ -277,11 +284,72 @@ class InferenceController:
         context.update_ui_imgs(center=first_mask_center)
         duration = time.time() - now
         print(f"update ui {duration}")
-        if context.sam_gen == 2 and context.annotator.next_annotation is not None:
+        if context.sam_gen in (2, 3) and context.annotator.next_annotation is not None:
             context.start_mask_batch_thread()
         context.start_user_annotation()
 
-    def _submit(self, worker, result, finished, target=None):
+    def start_text_prompt(self, prompt, confidence):
+        context = self.context
+        prompt = prompt.strip()
+        if self.text_prompt_running:
+            return
+        if context.sam_gen != 3 or context.annotator.annotation is None:
+            context.ui.text_prompt_status.setText("Load an image with SAM3 first.")
+            return
+        if (not context.annotator.sam.is_image_set
+                or context.annotator.annotation.features is None
+                or context.annotator.annotation.features is not context.annotator.sam.state):
+            context.ui.text_prompt_status.setText("Enable Auto Embed and wait for the image embedding.")
+            return
+        if not prompt:
+            context.ui.text_prompt_status.setText("Enter an object or a short phrase.")
+            return
+        self.text_prompt_running = True
+        context.ui.set_text_prompt_busy(True)
+        context.ui.text_prompt_status.setText(f'Searching for “{prompt}”…')
+        worker = TextPromptWorker(context.annotator.sam, prompt, confidence, context.mutex)
+
+        def failed(error):
+            self.text_prompt_running = False
+            context.ui.set_text_prompt_busy(False)
+            context.ui.text_prompt_status.setText("Prediction failed. You can try again.")
+            context.print_thread_error(error)
+
+        try:
+            self._submit(worker, self.receive_text_masks, None, error=failed)
+        except Exception:
+            self.text_prompt_running = False
+            context.ui.set_text_prompt_busy(False)
+            raise
+
+    def receive_text_masks(self, masks):
+        context = self.context
+        self.text_prompt_running = False
+        context.ui.set_text_prompt_busy(False)
+        context.ui.text_prompt_status.setText(
+            f"{len(masks)} masks found. Review with good mask / bad mask."
+            if masks else "No objects found. Try another phrase or lower the confidence.")
+        if not masks:
+            return
+        annotator = context.annotator
+        annotator.reset_toggles()
+        context.ui.reset_buttons()
+        context.ui.set_cursor(False)
+        objects = [MaskData(mid=annotator.mask_id_handler.get_id(), mask=mask, origin="Sam3_text")
+                   for mask in masks]
+        # Insert at the current review position, including when all previous
+        # proposals have already been reviewed or rejected.
+        index = annotator.mask_idx
+        annotator.annotation.masks[index:index] = objects
+        annotator.annotation.mask_decisions[index:index] = [False] * len(objects)
+        annotator.update_mask_idx(index)
+        annotator.update_collections(annotator.annotation)
+        annotator.preselect_mask()
+        context.update_ui_imgs()
+        if annotator.time_stamp is None:
+            annotator.init_time_stamp()
+
+    def _submit(self, worker, result, finished, target=None, error=None):
         context = self.context
         annotator = context.annotator
         model = annotator.sam
@@ -295,4 +363,4 @@ class InferenceController:
             return current is annotator.annotation and following is annotator.next_annotation
 
         return context.tasks.submit(worker, valid=valid, result=result,
-                                    finished=finished, error=context.print_thread_error)
+                                    finished=finished, error=error or context.print_thread_error)

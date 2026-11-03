@@ -144,4 +144,14 @@ class YoloPredicitonWorker(InferenceWorker):
             return self.yolo.infer_image()
 
 
+class TextPromptWorker(InferenceWorker):
+    def __init__(self, sam, prompt, confidence, mutex):
+        super().__init__(YoloSignals(), 'done')
+        self.sam, self.prompt, self.confidence, self.mutex = sam, prompt, confidence, mutex
+
+    def execute(self):
+        with locked(self.mutex):
+            return self.sam.predict_text(self.prompt, self.confidence)
+
+
 YoloPredictionWorker = YoloPredicitonWorker

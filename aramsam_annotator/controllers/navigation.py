@@ -222,7 +222,7 @@ class NavigationController:
                 app.embed_img_pair(do_amg=False)
             else:
                 app.embed_img_pair()
-        elif app.sam_gen == 1:
+        elif app.sam_gen in (1, 3):
             if app.experiment_mode == 'tutorial':
                 app.ui.close_basic_loading_window()
                 app.start_user_annotation()
@@ -279,3 +279,5 @@ class NavigationController:
         app.annotator.mask_idx = len(app.annotator.annotation.masks)
         if app.sam_gen == 2:
             app.embed_img_pair(do_amg=False)
+        elif app.sam_gen == 3:
+            app.embed_img(str(img_name))

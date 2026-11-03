@@ -3,9 +3,11 @@
 
 sam_configs:
   do_sam: true
-  gen: 1
-  model_ckpt_p: "sam_vit_b_01ec64.pth" #"sam2.1_hiera_tiny.pt"  #"sam_vit_b_01ec64.pth" #"sam2.1_hiera_tiny.pt" 
-  model_type: "vit_b" #"configs/sam2.1/sam2.1_hiera_t.yaml"  # "vit_b" #
+  gen: 3  # 1, 2, or 3
+  model_ckpt_p: "sam3.pt"
+  model_type: null  # SAM3 does not need a model type/config.
+  # bpe_path: "sam3/sam3/assets/bpe_simple_vocab_16e6.txt.gz"  # autodetected
+  confidence_threshold: 0.5  # SAM3 text prompting; also adjustable in the UI
 
 # Use CUDA when available; set false to force CPU for SAM and YOLO.
 use_gpu: false
@@ -33,4 +35,3 @@ save_data:
 
 class_dict:
   "0": "Seed"
-

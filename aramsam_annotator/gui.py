@@ -43,6 +43,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QSpinBox,
     QComboBox,
+    QDoubleSpinBox,
+    QToolButton,
 )
 
 
@@ -56,6 +58,7 @@ class UserInterface(QMainWindow):
     sam_path_signal: pyqtSignal = pyqtSignal(str)
     save_signal: pyqtSignal = pyqtSignal(int)
     shutdown_signal: pyqtSignal = pyqtSignal(int)
+    text_prompt_signal: pyqtSignal = pyqtSignal(str, float)
 
     def __init__(self, ui_options: dict = None, experiment_mode: str = None) -> None:
         super().__init__(parent=None)
@@ -96,7 +99,89 @@ class UserInterface(QMainWindow):
         self.loading_window = None
         self.basic_loading_window = None
         self.construct_ui()
+        self.construct_text_prompt_panel()
         self.showMaximized()
+
+    def construct_text_prompt_panel(self):
+        self.text_prompt_toggle = QToolButton(self)
+        self.text_prompt_toggle.setText("SAM3 text prompt")
+        self.text_prompt_toggle.setCheckable(True)
+        self.text_prompt_toggle.setArrowType(Qt.ArrowType.DownArrow)
+        self.text_prompt_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.menuBar().setCornerWidget(self.text_prompt_toggle, Qt.Corner.TopRightCorner)
+
+        self.text_prompt_panel = QFrame(self)
+        self.text_prompt_panel.setFrameShape(QFrame.Shape.StyledPanel)
+        self.text_prompt_panel.setAutoFillBackground(True)
+        self.text_prompt_panel.setFixedWidth(360)
+        layout = QVBoxLayout(self.text_prompt_panel)
+        description = QLabel("Find all objects matching a word or short phrase.")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+        self.text_prompt_input = QComboBox()
+        self.text_prompt_input.setEditable(True)
+        self.text_prompt_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.text_prompt_input.lineEdit().setPlaceholderText("e.g. cup, seed, red car")
+        self.text_prompt_input.setAccessibleName("SAM3 text prompt")
+        layout.addWidget(self.text_prompt_input)
+        layout.addWidget(QLabel("Minimum confidence"))
+        self.text_prompt_confidence = QDoubleSpinBox()
+        self.text_prompt_confidence.setRange(0.0, 1.0)
+        self.text_prompt_confidence.setSingleStep(0.05)
+        self.text_prompt_confidence.setValue(0.5)
+        layout.addWidget(self.text_prompt_confidence)
+        self.text_prompt_run = QPushButton("Find objects")
+        layout.addWidget(self.text_prompt_run)
+        self.text_prompt_status = QLabel("Load an image with SAM3 to start.")
+        self.text_prompt_status.setWordWrap(True)
+        layout.addWidget(self.text_prompt_status)
+        hide_button = QPushButton("Hide")
+        hide_button.clicked.connect(lambda: self.text_prompt_toggle.setChecked(False))
+        layout.addWidget(hide_button)
+        self.text_prompt_run.clicked.connect(self.submit_text_prompt)
+        self.text_prompt_input.lineEdit().returnPressed.connect(self.submit_text_prompt)
+        self.text_prompt_toggle.toggled.connect(self.toggle_text_prompt_panel)
+        self.text_prompt_panel.hide()
+        self.set_text_prompt_available(False)
+
+    def toggle_text_prompt_panel(self, visible):
+        self.text_prompt_panel.setVisible(visible)
+        self.text_prompt_toggle.setArrowType(
+            Qt.ArrowType.UpArrow if visible else Qt.ArrowType.DownArrow)
+        if visible:
+            self.position_text_prompt_panel()
+            self.text_prompt_panel.raise_()
+            self.text_prompt_input.setFocus()
+
+    def position_text_prompt_panel(self):
+        self.text_prompt_panel.adjustSize()
+        self.text_prompt_panel.move(max(0, self.width() - self.text_prompt_panel.width() - 8),
+                                    self.menuBar().height())
+
+    def set_text_prompt_available(self, available):
+        self.text_prompt_toggle.setEnabled(available)
+        self.text_prompt_run.setEnabled(available)
+        self.text_prompt_toggle.setToolTip(
+            "Show or hide text prompts" if available else "Select SAM3 to use text prompts")
+        if not available:
+            self.text_prompt_toggle.setChecked(False)
+
+    def set_text_prompt_busy(self, busy):
+        self.text_prompt_run.setEnabled(not busy)
+        self.text_prompt_input.setEnabled(not busy)
+        self.text_prompt_confidence.setEnabled(not busy)
+
+    def submit_text_prompt(self):
+        if not self.text_prompt_run.isEnabled():
+            return
+        prompt = self.text_prompt_input.currentText().strip()
+        if not prompt:
+            self.text_prompt_status.setText("Enter an object or a short phrase.")
+            return
+        if self.text_prompt_input.findText(prompt) < 0:
+            self.text_prompt_input.insertItem(0, prompt)
+        self.text_prompt_input.setCurrentText(prompt)
+        self.text_prompt_signal.emit(prompt, self.text_prompt_confidence.value())
 
     def construct_ui(self):
         self.construct_class_selection()
@@ -269,9 +354,10 @@ class UserInterface(QMainWindow):
                 self.next_img_button.x() + 10, self.next_img_button.y())
             self.previous_img_button = QPushButton("‹", self)
             self.previous_img_button.setToolTip("Previous image")
+            self.previous_img_button.setStyleSheet("min-width: 0px; padding-left: 0px; padding-right: 0px;")
             self.previous_img_button.setFixedWidth(18)
             self.previous_img_button.move(
-                self.next_img_button.x() - 10, self.next_img_button.y())
+                self.next_img_button.x() - self.previous_img_button.width() - 2, self.next_img_button.y())
             self.previous_img_button.setEnabled(False)
 
             self.labelCoords = QLabel(self, text="Pixel Pos.")
@@ -467,7 +553,7 @@ class UserInterface(QMainWindow):
                 parent=self,
                 caption="Select SAM Model",
                 directory="${HOME}",
-                filter="*.pth",
+                filter="SAM checkpoints (*.pth *.pt)",
             )
             if sam_path is not None:
                 self.sam_path_signal.emit(sam_path[0])
@@ -528,6 +614,12 @@ class UserInterface(QMainWindow):
         self.good_mask_button.click()
 
     def keyPressEvent(self, event: QKeyEvent):
+        # Annotation shortcuts must not fire while typing a text prompt.
+        focus = QApplication.focusWidget()
+        if (hasattr(self, "text_prompt_panel") and focus is not None
+                and self.text_prompt_panel.isAncestorOf(focus)):
+            super().keyPressEvent(event)
+            return
         if isinstance(event, QKeyEvent):
             key_text = event.text()
             print(f"Last Key Pressed: {key_text}")
@@ -802,6 +894,8 @@ class UserInterface(QMainWindow):
             self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
+        if hasattr(self, "text_prompt_panel"):
+            self.position_text_prompt_panel()
         vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         idx = 0

@@ -90,6 +90,9 @@ class App:
         self._connect_ui(self.ui.preview_annotation_point_signal, self.manage_mouse_action)
         self._connect_ui(self.ui.layout_options_signal, self._ui_config_changed)
         self._connect_ui(self.ui.shutdown_signal, self.shutdown)
+        self._connect_ui(self.ui.text_prompt_signal, self.start_text_prompt)
+        self.ui.set_text_prompt_available(self.configs.sam_configs.gen == 3)
+        self.ui.text_prompt_confidence.setValue(self.configs.sam_configs.confidence_threshold)
 
         self.fields = ui_options["layout_settings_options"]["default"]
 
@@ -143,7 +146,8 @@ class App:
         generation = self.sam_gen or self.configs.sam_configs.gen
         background = self.configs.sam_background_embedding if self.experiment_mode is None else False
         settings = (generation, background, self.configs.sam_configs.model_ckpt_p,
-                    self.configs.sam_configs.model_type, self.annotator.device)
+                    self.configs.sam_configs.model_type, self.annotator.device,
+                    self.configs.sam_configs.bpe_path, self.configs.sam_configs.confidence_threshold)
         if self.annotator.sam is not None and settings == getattr(self, "_model_settings", None):
             return
         self.wait_for_workers()
@@ -151,6 +155,7 @@ class App:
         self.annotator.sam_model_type = self.configs.sam_configs.model_type
         self.annotator.set_sam_version(generation, background)
         self.sam_gen = generation
+        self.ui.set_text_prompt_available(generation == 3)
         self._model_settings = settings
         for annotation in (self.annotator.annotation, self.annotator.next_annotation):
             if annotation is not None:
@@ -187,14 +192,17 @@ class App:
         return self.navigation.change_output_dir(out_dir)
 
     def changed_sam_model(self, model_path: str):
+        if not model_path:
+            return
         model_type = next((kind for kind in ("vit_b", "vit_h", "vit_l") if kind in model_path), None)
-        if model_type is None:
-            self.ui.create_message_box(True, "SAM model path must include vit_b, vit_h, or vit_l")
+        generation = 3 if "sam3" in Path(model_path).name.lower() else 1
+        if model_type is None and generation != 3:
+            self.ui.create_message_box(True, "Choose a SAM1 vit_b/vit_h/vit_l checkpoint or sam3.pt. Configure SAM2 in configs.yaml.")
             return
         self.wait_for_workers()
         old_settings = (self.configs.sam_configs.gen, self.configs.sam_configs.model_ckpt_p,
                         self.configs.sam_configs.model_type, self.sam_gen)
-        self.configs.sam_configs.gen = self.sam_gen = 1
+        self.configs.sam_configs.gen = self.sam_gen = generation
         self.configs.sam_configs.model_ckpt_p = model_path
         self.configs.sam_configs.model_type = model_type
         try:
@@ -205,6 +213,9 @@ class App:
             raise
         if self.annotator.annotation is not None:
             self.embed_img(self.annotator.annotation.img_name)
+
+    def start_text_prompt(self, prompt: str, confidence: float):
+        return self.inference.start_text_prompt(prompt, confidence)
 
     def load_img(self, _) -> None:
         return self.navigation.load_img(_)

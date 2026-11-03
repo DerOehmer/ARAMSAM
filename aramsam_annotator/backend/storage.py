@@ -19,6 +19,8 @@ ORIGIN_CODES = {
     "Sam1_interactive": "s1i", "Sam2_interactive": "s2i",
     "Polygon_drawing": "plg", "Sam2_tracking": "s2t",
     "Panorama_tracking": "pat", "Yolo_prediction": "yol",
+    "Sam3_proposed": "s3p", "Sam3_interactive": "s3i",
+    "Sam3_tracking": "s3t", "Sam3_text": "s3x",
 }
 
 

@@ -27,7 +27,7 @@ class DeviceConfigTests(unittest.TestCase):
                         patch('aramsam_annotator.annotator.torch.cuda.is_available', return_value=available):
                     annotator = Annotator(AramsamConfigs(use_gpu=use_gpu))
                     self.assertEqual(annotator.device, expected)
-                    for generation, cls in [(1, 'SamInference'), (2, 'Sam2Inference')]:
+                    for generation, cls in [(1, 'SamInference'), (2, 'Sam2Inference'), (3, 'Sam3Inference')]:
                         with patch('aramsam_annotator.annotator.' + cls) as model:
                             annotator.set_sam_version(generation)
                             self.assertEqual(model.call_args.kwargs['device'], expected)

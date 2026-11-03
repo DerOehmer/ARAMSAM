@@ -122,6 +122,7 @@ class AnnotationEditor:
                 if isinstance(context.sam, SamInference)
                 else "Sam2_interactive"
             )
+            origin = getattr(context.sam, "interactive_origin", origin)
             if annot.preview_mask is None:
                 return "Mask not ready"
 

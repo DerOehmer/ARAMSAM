@@ -1,6 +1,6 @@
 # ARAMSAM: Agricultural Rapid Annotation Module based on Segment Anything Models 
 
-ARAMSAM is an interactive annotation UI designed to accelerate image labeling for datasets in agriculture and beyond ✨. Built on top of Meta AI's Segment Anything Models (SAM 1 🧠 and SAM 2 🧠), it combines zero-shot segmentation, interactive prompt segmentation and mask propagation on image sequences with traditional annotation tools.
+ARAMSAM is an interactive annotation UI designed to accelerate image labeling for datasets in agriculture and beyond ✨. Built on top of Meta AI's Segment Anything Models (SAM 1, SAM 2, and SAM 3), it combines zero-shot segmentation, interactive prompt segmentation and mask propagation on image sequences with traditional annotation tools.
 
 ![Interactive Prompting](assets/ARAMSAM_interactive.gif)
 
@@ -49,6 +49,42 @@ A more user friendly way to modify the settings is coming in the future.
 
 For instructions on how you can use ARAMSAM UI see [Example Workflow](docs/example_workflow.md).
 
+### SAM3
+
+Use the environment with SAM3 installed and a local `sam3.pt` checkpoint. The
+installed SAM3 implementation requires a working CUDA GPU (including during
+model construction); SAM1 and SAM2 remain available through `gen: 1` or `gen: 2`.
+See the [upstream SAM3 requirements](https://github.com/facebookresearch/sam3#installation).
+
+Select SAM3 in the root `configs.yaml`:
+
+```yaml
+sam_configs:
+  gen: 3
+  model_ckpt_p: "sam3.pt"
+  model_type: null
+  confidence_threshold: 0.5
+use_gpu: true
+sam_background_embedding: true
+```
+
+The tokenizer vocabulary is found in the local SAM3 checkout or installed
+package. Set `sam_configs.bpe_path` to override its location. Model loading uses
+the local checkpoint and does not download weights. Settings → Set SAM Model
+also accepts a checkpoint named `sam3.pt`.
+
+Load an image, leave Auto Embed enabled, and open **SAM3 text prompt** in the
+top-right corner. Enter a word or phrase and press Enter or **Find objects**.
+Adjust **Minimum confidence** to control which detections are returned. Prior
+prompts are available from the input dropdown. Use **Hide** or the top-right
+toggle to collapse the panel.
+
+Text results join the existing good-mask/bad-mask review workflow and retain
+class labels and SAM3 origins when saved. Positive/negative interactive points,
+undo, polygon/bounding-box drawing, deletion, image navigation, background
+embedding, and propagation to the next image work with SAM3. Enable `do_amg` for
+automatic proposals generated from a grid of interactive point prompts.
+
 ## Supporting Companies
 
 This project is supported by:
@@ -60,4 +96,3 @@ This project is licensed under the [GNU Affero General Public License v3.0](LICE
 
 ## Citation
 See the citation metadata: [`CITATION.cff`](./CITATION.cff)
-

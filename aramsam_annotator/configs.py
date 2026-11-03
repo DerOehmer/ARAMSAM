@@ -13,6 +13,8 @@ class SamConfigs:
     gen: int = 1 #2 #
     model_ckpt_p: str = "sam_vit_b_01ec64.pth"#"sam_vit_l_0b3195.pth"  #'sam2.1_hiera_small.pt'#
     model_type: str = "vit_b" #"vit_l"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
+    bpe_path: str | None = None  # SAM3 tokenizer; autodetected when omitted.
+    confidence_threshold: float = 0.5  # SAM3 text detection confidence.
 
 
 @dataclass

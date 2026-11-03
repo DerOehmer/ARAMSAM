@@ -13,6 +13,13 @@ class PresentationController:
             context.ui.manual_annotation_button.setEnabled(context.ui.auto_embed_box.isChecked())
             # Restore the mode that was active on the previous image
             context.navigation.restore_annotation_mode()
+        if context.sam_gen == 3 and not context.inference.text_prompt_running:
+            ready = (context.annotator.annotation.features is not None
+                     and context.annotator.annotation.features is context.annotator.sam.state)
+            context.ui.text_prompt_run.setEnabled(ready)
+            context.ui.text_prompt_status.setText(
+                "Ready. Enter a word or short phrase." if ready
+                else "Enable Auto Embed to use text prompts.")
         context.annotator.init_time_stamp()
         context.annotator.update_collections(context.annotator.annotation)
         context.update_ui_imgs()
@@ -35,4 +42,3 @@ class PresentationController:
 
         if type(center) == tuple:
             context.ui.center_all_annotation_visualizers(center)
-

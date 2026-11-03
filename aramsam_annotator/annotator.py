@@ -12,6 +12,7 @@ import time
 import glob
 
 from aramsam_annotator.run_sam import SamInference, Sam2Inference
+from aramsam_annotator.run_sam3 import Sam3Inference
 from aramsam_annotator.run_yolo import YoloInference
 from aramsam_annotator.tracker import PanoImageAligner
 from aramsam_annotator.mask_visualizations import (
@@ -55,7 +56,16 @@ class Annotator:
 
     def set_sam_version(self, sam_gen: int = 1, background_embedding: bool = True):
 
-        if sam_gen == 2:
+        if sam_gen == 3:
+            self.sam = Sam3Inference(
+                self.mask_id_handler,
+                sam3_checkpoint=self.sam_ckpt or "sam3.pt",
+                device=self.device,
+                background_embedding=background_embedding,
+                bpe_path=self.configs.sam_configs.bpe_path,
+                confidence_threshold=self.configs.sam_configs.confidence_threshold,
+            )
+        elif sam_gen == 2:
             if self.sam_ckpt is None:
                 sam2_ckpt = "sam2.1_hiera_small.pt"
             else:

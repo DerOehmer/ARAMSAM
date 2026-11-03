@@ -467,6 +467,7 @@ class CustomAMG:
                     if isinstance(self.sam_cls, SamInference)
                     else "Sam2_proposed"
                 )
+                origin = getattr(self.sam_cls, "proposed_origin", origin)
                 mask_objs.append(
                     MaskData(
                         mid=self.sam_cls.mask_id_handler.get_id(),
@@ -593,6 +594,7 @@ class DefaultAMG:
                     if isinstance(self.sam_cls, SamInference)
                     else "Sam2_proposed"
                 )
+                origin = getattr(self.sam_cls, "proposed_origin", origin)
                 mask_objs.append(
                     MaskData(
                         mid=self.sam_cls.mask_id_handler.get_id(),
