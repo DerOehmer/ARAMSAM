@@ -23,6 +23,7 @@ class MaskVisualization:
         self.preview_mask = None
 
         self.mask_ids = []
+        self._mask_versions = {}
         self.mask_ids_to_remove = []
         self.mask_ids_to_add = []
 
@@ -98,18 +99,30 @@ class MaskVisualization:
             self.mask_ids = mask_ids
         else:
             self.mask_ids = [m.mid for m in self.mask_objs]
+        self._mask_versions = {m.mid: (id(m), id(m.mask)) for m in self.mask_objs}
 
     def _compare_mask_ids(self):
         new_mask_ids = [m.mid for m in self.mask_objs]
 
         old_set = set(self.mask_ids)
         new_set = set(new_mask_ids)
+        replaced = any(self._mask_versions.get(m.mid) != (id(m), id(m.mask))
+                       for m in self.mask_objs if m.mid in old_set)
+        reordered = old_set == new_set and new_mask_ids != self.mask_ids
 
         mids_to_remove = old_set - new_set
         mids_to_add = new_set - old_set
+        if replaced or reordered:
+            # Propagation can refresh an object without changing its ID. Clear
+            # cached pixels before redrawing, including the overlap accumulator.
+            self.masked_img = None
+            self.bbox_img = None
+            self.mask_collection = None
+            self._mask_coll_bin = None
+            mids_to_add = new_set
         self.mask_ids_to_remove = list(mids_to_remove)
         self.mask_ids_to_add = list(mids_to_add)
-        if new_mask_ids == self.mask_ids:
+        if new_mask_ids == self.mask_ids and not replaced:
             self.no_collection_to_update = True
         else:
             self.no_collection_to_update = False

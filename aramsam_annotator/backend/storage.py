@@ -21,6 +21,8 @@ ORIGIN_CODES = {
     "Panorama_tracking": "pat", "Yolo_prediction": "yol",
     "Sam3_proposed": "s3p", "Sam3_interactive": "s3i",
     "Sam3_tracking": "s3t", "Sam3_text": "s3x",
+    "Sam1_box_propagation": "s1b", "Sam2_box_propagation": "s2b",
+    "Sam3_box_propagation": "s3b",
 }
 
 

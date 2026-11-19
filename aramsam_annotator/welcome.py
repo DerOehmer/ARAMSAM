@@ -18,6 +18,7 @@ LABELS = {
     "confidence_threshold": "Text-prompt confidence", "use_gpu": "Use GPU",
     "sam_background_embedding": "Background image embedding", "do_amg": "Automatic mask proposals",
     "mask_propagation": "Mask propagation", "yolo_model_ckpt_p": "YOLO checkpoint (optional)",
+    "mask_propagation_method": "Mask propagation method",
     "do_tiling": "Split images into tiles", "tile_size": "Tile size (pixels)",
     "tile_overlap": "Tile overlap", "do_save": "Save annotations", "auto_save": "Auto Save",
     "save_dir": "Output directory", "save_masks": "Save masks", "mask_style": "Mask format",
@@ -123,6 +124,11 @@ class WelcomeWindow(QDialog):
                 control = QComboBox()
                 for generation in (1, 2, 3):
                     control.addItem(f"SAM {generation}", generation)
+                control.setCurrentIndex(control.findData(value))
+            elif key == "mask_propagation_method":
+                control = QComboBox()
+                control.addItem("Model tracking / panorama alignment", "tracking")
+                control.addItem("Bounding-box prompts (SAM1, SAM2, SAM3)", "bounding_box")
                 control.setCurrentIndex(control.findData(value))
             elif field.type is int:
                 control = QSpinBox()

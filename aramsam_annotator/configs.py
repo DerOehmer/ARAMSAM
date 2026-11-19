@@ -72,8 +72,11 @@ class AramsamConfigs:
     # Prefer CUDA when available; disable to force CPU for all models.
     use_gpu: bool = True
     mask_propagation: bool = True
+    mask_propagation_method: str = "tracking"
 
     def __post_init__(self):
+        if self.mask_propagation_method not in ("tracking", "bounding_box"):
+            raise ValueError("Mask propagation method must be 'tracking' or 'bounding_box'.")
         if self.do_amg and self.yolo_model_ckpt_p is not None:
             self.yolo_model_ckpt_p = None
             print(
@@ -127,6 +130,7 @@ def load_configs_from_yaml(yaml_path: str | Path) -> "AramsamConfigs":
         class_dict=class_dict,
         use_gpu=data.get("use_gpu", AramsamConfigs.__dataclass_fields__["use_gpu"].default),
         mask_propagation=data.get("mask_propagation", True),
+        mask_propagation_method=data.get("mask_propagation_method", "tracking"),
     )
 
     return configs

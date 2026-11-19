@@ -10,7 +10,9 @@ class InteractionController:
         context = self.context
         if context.annotator.annotation is None:
             return
-        if context.sam_gen in (2, 3) and context.annotator.next_annotation is not None:
+        if (context.annotator.next_annotation is not None
+                and (context.sam_gen in (2, 3)
+                     or context.configs.mask_propagation_method == "bounding_box")):
             context.start_mask_batch_thread()
         new_center = context.annotator.good_mask(class_id=context.ui.get_selected_class())
         if new_center is None:

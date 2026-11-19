@@ -10,6 +10,7 @@ import traceback
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
 
 from aramsam_annotator.run_sam import BackgroundThreadSamPredictor
+from aramsam_annotator.backend.propagation import propagate_boxes, merge_propagated_masks
 
 
 @contextmanager
@@ -126,7 +127,7 @@ class Sam2ImgPairEmbeddingWorker(InferenceWorker):
 
 class Sam2PropagationWorker(InferenceWorker):
     def __init__(self, sam2_predictor, next_annotation, unpropagated_masks,
-                 batch_size, track_remaining, mutex, current_annotation=None):
+                 batch_size, track_remaining, mutex, current_annotation=None, active_source_ids=None):
         if batch_size <= 0:
             raise ValueError('Propagation batch size must be positive')
         super().__init__(Sam2PropagationWorkerSignals(), len(unpropagated_masks))
@@ -135,6 +136,8 @@ class Sam2PropagationWorker(InferenceWorker):
         self.unpropagated_masks = list(unpropagated_masks)
         self.batch_size, self.track_remaining, self.mutex = batch_size, track_remaining, mutex
         self.current_annotation = current_annotation
+        self.active_source_ids = (set(active_source_ids) if active_source_ids is not None
+                                  else {mask.mid for mask in self.unpropagated_masks})
 
     def execute(self):
         for start in range(0, len(self.unpropagated_masks), self.batch_size):
@@ -146,7 +149,22 @@ class Sam2PropagationWorker(InferenceWorker):
                     self.sam2_predictor.set_tracking_pair(self.current_annotation, self.next_annotation)
                 masks = self.sam2_predictor.prop_thread_func(batch)
                 # Retain the captured destination; never look up the current image here.
-                self.next_annotation.add_masks(masks, decision=True)
+                merge_propagated_masks(self.next_annotation, masks, {mask.mid for mask in batch},
+                                       self.active_source_ids)
+
+
+class BoxPropagationWorker(InferenceWorker):
+    def __init__(self, sam, current_annotation, next_annotation, masks, generation, mutex):
+        super().__init__(Sam2PropagationWorkerSignals(), len(masks))
+        self.sam, self.current_annotation, self.next_annotation = sam, current_annotation, next_annotation
+        self.masks, self.generation, self.mutex = list(masks), generation, mutex
+
+    def execute(self):
+        with locked(self.mutex):
+            masks = propagate_boxes(self.sam, self.current_annotation, self.next_annotation,
+                                    self.masks, self.generation)
+            active_ids = {mask.mid for mask in self.current_annotation.good_masks}
+            merge_propagated_masks(self.next_annotation, masks, {mask.mid for mask in self.masks}, active_ids)
 
 
 class AMGWorker(InferenceWorker):

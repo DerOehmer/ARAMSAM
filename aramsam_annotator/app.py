@@ -313,7 +313,9 @@ class App:
         if target is not None:
             def generated(mask):
                 return (mask.mid in self.propagated_mids
-                        and mask.origin in ("Sam2_tracking", "Sam3_tracking"))
+                        and mask.origin in ("Sam2_tracking", "Sam3_tracking",
+                                            "Sam1_box_propagation", "Sam2_box_propagation",
+                                            "Sam3_box_propagation"))
 
             retained = [(mask, decision) for mask, decision in zip(target.masks, target.mask_decisions)
                         if not generated(mask)]

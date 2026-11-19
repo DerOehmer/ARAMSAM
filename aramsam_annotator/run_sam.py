@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 import torch
 import cv2
 import numpy as np
@@ -60,6 +62,12 @@ class SamInference:
         else:
             self.amg = DefaultAMG(self, SamAutomaticMaskGenerator(self.sam))
         self.img = None
+
+    @torch.inference_mode()
+    def predict_boxes(self, image, boxes):
+        from aramsam_annotator.backend.propagation import predict_image_boxes
+
+        return predict_image_boxes(SamPredictor(self.sam), image, boxes)
 
     def predict_batch(
         self,
@@ -347,6 +355,16 @@ class Sam2Inference:
             multimask_output=False,
         )
         return self._logits_to_npmask(mask)
+
+    @torch.inference_mode()
+    def predict_boxes(self, image, boxes):
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+        from aramsam_annotator.backend.propagation import predict_image_boxes
+
+        precision = (torch.autocast("cuda", dtype=torch.bfloat16)
+                     if torch.device(self.device).type == "cuda" else nullcontext())
+        with precision:
+            return predict_image_boxes(SAM2ImagePredictor(self.predictor), image, boxes)
 
     def predict_batch(
         self,

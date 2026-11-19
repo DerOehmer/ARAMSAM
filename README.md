@@ -55,6 +55,16 @@ The selected output directory is created when loading begins. Leave it blank to
 choose an output directory later. Models load in a worker after input selection.
 Settings can also be edited directly in `configs.yaml` before starting ARAMSAM.
 
+Choose **General → Mask propagation method → Bounding-box prompts** in the
+welcome window to use the same propagation method with SAM1, SAM2, or SAM3.
+Alternatively, set `mask_propagation_method: bounding_box` and
+`mask_propagation: true` in `configs.yaml`. Accepted masks supply tight bounding
+boxes as prompts for fresh segmentation of the next image; object IDs, classes,
+and colors are retained. Boxes keep their relative positions if image sizes
+differ. This method assumes objects remain near the same locations between
+images. The default, `tracking`, retains the existing model tracking / panorama
+alignment behavior.
+
 ## UI Workflow
 
 For instructions on how you can use ARAMSAM UI see [Example Workflow](docs/example_workflow.md).

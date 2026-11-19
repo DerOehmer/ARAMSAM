@@ -3,7 +3,10 @@ import time
 from pathlib import Path
 from aramsam_annotator.tracker import PanoImageAligner
 from aramsam_annotator.mask_visualizations import MaskData
-from aramsam_annotator.workers import (AMGWorker, Sam2ImgPairEmbeddingWorker, Sam1EmbeddingWorker, Sam2PropagationWorker, YoloPredicitonWorker, TextPromptWorker)
+from aramsam_annotator.workers import (
+    AMGWorker, Sam2ImgPairEmbeddingWorker, Sam1EmbeddingWorker, Sam2PropagationWorker,
+    BoxPropagationWorker, YoloPredicitonWorker, TextPromptWorker,
+)
 
 
 class InferenceController:
@@ -19,7 +22,7 @@ class InferenceController:
                 or not context.annotator.annotation.good_masks
                 or context.annotator.next_annotation is None):
             return
-        if context.sam_gen in (2, 3):
+        if context.configs.mask_propagation_method == "bounding_box" or context.sam_gen in (2, 3):
 
             context.start_mask_batch_thread(track_remaining=True)
 
@@ -106,25 +109,35 @@ class InferenceController:
             return
         if context.annotator.next_annotation is None:
             return
-        if context.sam_gen == 3 and context.annotator.sam.device == "cpu":
+        box_prompts = context.configs.mask_propagation_method == "bounding_box"
+        if not context.configs.sam_configs.do_sam:
+            return
+        if not box_prompts and context.sam_gen == 3 and context.annotator.sam.device == "cpu":
             context.ui.performing_embedding_label.setText("SAM3 tracking requires CUDA")
             return
         masks = [mask for mask in context.annotator.annotation.good_masks
-                 if mask.mid not in context.propagated_mids]
+                 if track_remaining or mask.mid not in context.propagated_mids]
         batch_size = context.mask_track_batch_size
         ready = bool(masks) and (batch_size is None or track_remaining or len(masks) >= batch_size)
         if ready:
             ids = {int(mask.mid) for mask in masks}
             context.propagated_mids.update(ids)
-            worker = Sam2PropagationWorker(
-                sam2_predictor=context.annotator.sam,
-                next_annotation=context.annotator.next_annotation,
-                unpropagated_masks=masks,
-                batch_size=batch_size or len(masks),
-                track_remaining=track_remaining,
-                mutex=context.mutex,
-                current_annotation=context.annotator.annotation if context.sam_gen == 3 else None,
-            )
+            if box_prompts:
+                worker = BoxPropagationWorker(
+                    context.annotator.sam, context.annotator.annotation,
+                    context.annotator.next_annotation, masks, context.sam_gen, context.mutex,
+                )
+            else:
+                worker = Sam2PropagationWorker(
+                    sam2_predictor=context.annotator.sam,
+                    next_annotation=context.annotator.next_annotation,
+                    unpropagated_masks=masks,
+                    batch_size=batch_size or len(masks),
+                    track_remaining=track_remaining,
+                    mutex=context.mutex,
+                    current_annotation=context.annotator.annotation if context.sam_gen == 3 else None,
+                    active_source_ids={mask.mid for mask in context.annotator.annotation.good_masks},
+                )
 
             def failed(error):
                 context.propagated_mids.difference_update(ids)
@@ -153,11 +166,12 @@ class InferenceController:
         if target is None:
             return
         good_ids = {mask.mid for mask in context.annotator.annotation.good_masks}
+        removed_ids = context.propagated_mids - good_ids
         retained = [(mask, decision) for mask, decision in zip(target.masks, target.mask_decisions)
-                    if mask.mid in good_ids]
+                    if mask.mid not in removed_ids]
         target.masks = [mask for mask, _ in retained]
         target.mask_decisions = [decision for _, decision in retained]
-        target.good_masks = [mask for mask in target.good_masks if mask.mid in good_ids]
+        target.good_masks = [mask for mask in target.good_masks if mask.mid not in removed_ids]
 
     def embedding_done(self, img_name: str | int):
         context = self.context

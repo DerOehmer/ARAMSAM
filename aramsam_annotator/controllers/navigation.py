@@ -132,6 +132,14 @@ class NavigationController:
         if app.experiment_mode is None:
             app.ui.previous_img_button.setEnabled(len(self.image_history) > 1)
 
+    def _advancing_to_next_annotation(self, image):
+        app = self.context
+        following = app.annotator.next_annotation
+        path = (getattr(following, 'filepath', None)
+                or getattr(following, 'img_name', None))
+        return (app.annotator.annotation is not None and path is not None
+                and image_key(path) == image_key(image))
+
     def select_next_img(self):
         if self.changing_image:
             return
@@ -200,7 +208,10 @@ class NavigationController:
             try:
                 image, following = app._pop_img_fnames()
                 revisiting = image_key(image) in self.revisit_images
-                current_done, next_done = ((False, False) if revisiting
+                propagating = (self._advancing_to_next_annotation(image)
+                               and app.configs.mask_propagation and app.configs.sam_configs.do_sam)
+                checked_annotations = not (revisiting or propagating)
+                current_done, next_done = ((False, False) if not checked_annotations
                                            else app.check_annotations_done(image, following))
                 if current_done and app.experiment_mode == 'structured':
                     raise ValueError('This directory is already occupied with annotations')
@@ -211,22 +222,33 @@ class NavigationController:
                     app.load_previous_annotations(image, following)
                     app.wait_for_workers()
                     image, following = app._pop_img_fnames()
-                previous_next = app.annotator.next_annotation
-                previous_path = (getattr(previous_next, 'filepath', None)
-                                 or getattr(previous_next, 'img_name', None))
-                if not revisiting and previous_path is not None and image_key(previous_path) == image_key(image):
+                    checked_annotations = False
+                advancing = self._advancing_to_next_annotation(image)
+                if advancing:
                     app.propagate_good_masks()
                 else:
                     app.bbox_tracker = None
                 embed_current, embed_next = app.run_backend_task(
                     lambda: app.annotator.create_new_annotation(image, following), "Loading images...")
-                if revisiting:
+                if revisiting and not advancing:
                     def restore_saved():
                         if self.repository.exists(app.output_dir, image):
                             self.repository.load(app.annotator.annotation, app.output_dir, app.annotator.mask_id_handler)
                             app.annotator.mask_idx = len(app.annotator.annotation.masks)
 
                     app.run_backend_task(restore_saved, "Loading saved annotations...")
+                if (following is not None and getattr(app, 'output_dir', None) is not None
+                        and (not checked_annotations or next_done)
+                        and (image_key(following) in self.revisit_images
+                             or app.configs.mask_propagation and app.configs.sam_configs.do_sam)):
+                    # Load the future destination before any propagation batch
+                    # writes to it, so revisiting cannot overwrite new results.
+                    def restore_following():
+                        if self.repository.exists(app.output_dir, following):
+                            self.repository.load(app.annotator.next_annotation, app.output_dir,
+                                                 app.annotator.mask_id_handler)
+
+                    app.run_backend_task(restore_following, "Loading saved annotations...")
             except Exception:
                 app.img_fnames[:] = queue_before
                 raise

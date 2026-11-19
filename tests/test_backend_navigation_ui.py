@@ -130,6 +130,7 @@ class NavigationTests(unittest.TestCase):
         app.annotator.annotation = Mock(good_masks=[MaskData(mid=2, origin='Sam2_tracking')])
         masks = [MaskData(mid=i, origin='Sam2_tracking') for i in (1, 2, 3)]
         app.annotator.next_annotation = Mock(masks=masks, good_masks=masks[:], mask_decisions=[True, False, True])
+        app.propagated_mids = {1, 2, 3}
         app._purge_falsely_propagated_masks()
         self.assertEqual([m.mid for m in app.annotator.next_annotation.masks], [2])
         self.assertEqual(app.annotator.next_annotation.mask_decisions, [False])

@@ -5,7 +5,7 @@ sam_configs:
   model_type: configs/sam2.1/sam2.1_hiera_t.yaml
   bpe_path: null
   confidence_threshold: 0.5
-use_gpu: true
+use_gpu: false
 sam_background_embedding: true
 mask_propagation: true
 do_amg: false
@@ -25,3 +25,4 @@ save_data:
   bbox_style: ''
 class_dict:
   '0': seed
+mask_propagation_method: bounding_box

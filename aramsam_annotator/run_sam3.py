@@ -156,6 +156,17 @@ class Sam3Inference:
             masks.append((self._mask(result[0]) > 0)[None])
         return masks
 
+    @torch.inference_mode()
+    def predict_boxes(self, image, boxes):
+        state, _, _ = self.embed_img(image, image_format="BGR")
+        result = []
+        with self._precision():
+            for box in boxes:
+                masks, _, _ = self.model.predict_inst(state, box=box, multimask_output=False)
+                mask = self._mask(masks[0])
+                result.append(mask if np.any(mask) else None)
+        return result
+
     def _prep_batch_pts_and_lbls(self, pts, lbls, shp):
         return self._numpy(pts).astype(np.float32), self._numpy(lbls).astype(np.int32)
 
