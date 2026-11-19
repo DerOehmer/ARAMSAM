@@ -76,6 +76,7 @@ class DeviceConfigTests(unittest.TestCase):
                 sam = Sam2Inference.__new__(Sam2Inference)
                 sam.device = device
                 sam.inference_state = {'num_frames': 2}
+                sam.imgs = None
                 sam.predictor = Mock()
                 mask = np.zeros((8, 8), np.uint8)
                 mask[2:6, 2:6] = 255

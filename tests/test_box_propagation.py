@@ -167,6 +167,8 @@ class BoxPropagationTests(unittest.TestCase):
                 sam.sam = Mock()
                 sam.predictor = Mock()
                 sam.img_predictor = Mock()
+                sam._image_entry = Mock(return_value={'features': (None, object())})
+                sam._set_img_predictor_features = Mock()
                 active = sam.predictor
                 predictor = Mock()
                 predictor.predict.side_effect = [(prediction, None, None),
@@ -177,8 +179,13 @@ class BoxPropagationTests(unittest.TestCase):
                         patch.dict(sys.modules, modules):
                     result = sam.predict_boxes(image, boxes)
                 factory.assert_called_once_with(sam.sam if generation == 1 else active)
-                predictor.set_image.assert_called_once()
-                np.testing.assert_array_equal(predictor.set_image.call_args.args[0], image[..., ::-1])
+                if generation == 1:
+                    predictor.set_image.assert_called_once()
+                    np.testing.assert_array_equal(predictor.set_image.call_args.args[0], image[..., ::-1])
+                else:
+                    predictor.set_image.assert_not_called()
+                    sam._image_entry.assert_called_once_with(image, image_format='BGR')
+                    self.assertIs(sam._set_img_predictor_features.call_args.kwargs['predictor'], predictor)
                 np.testing.assert_array_equal(predictor.predict.call_args_list[0].kwargs['box'], boxes[0])
                 np.testing.assert_array_equal(result[0], prediction[0].astype(np.uint8) * 255)
                 self.assertIsNone(result[1])

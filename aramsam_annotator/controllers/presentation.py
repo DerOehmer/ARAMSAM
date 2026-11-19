@@ -25,6 +25,8 @@ class PresentationController:
         context.run_backend_task(lambda: context.annotator.update_collections(context.annotator.annotation),
                                  "Preparing annotation views...")
         context.update_ui_imgs()
+        if context.sam_gen == 2:
+            context.inference.prefetch_sam2_next_image()
 
     def _ui_config_changed(self, fields: list[str]):
         context = self.context

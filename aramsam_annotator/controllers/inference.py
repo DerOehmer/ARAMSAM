@@ -5,7 +5,7 @@ from aramsam_annotator.tracker import PanoImageAligner
 from aramsam_annotator.mask_visualizations import MaskData
 from aramsam_annotator.workers import (
     AMGWorker, Sam2ImgPairEmbeddingWorker, Sam1EmbeddingWorker, Sam2PropagationWorker,
-    BoxPropagationWorker, YoloPredicitonWorker, TextPromptWorker,
+    BoxPropagationWorker, YoloPredicitonWorker, TextPromptWorker, Sam2PrefetchWorker,
 )
 
 
@@ -13,6 +13,7 @@ class InferenceController:
     def __init__(self, context):
         self.context = context
         self.text_prompt_running = False
+        self.sam2_prefetch_target = None
 
     def propagate_good_masks(self):
         context = self.context
@@ -61,9 +62,38 @@ class InferenceController:
         )
         if context.experiment_mode is None:
             context.ui.performing_embedding_label.setText(
-                f"Embedding {len(img_pair)} images"
+                "Embedding current image"
             )
         self._submit(img_embed_worker, context.receive_sam2_embedding, context.embedding_done)
+
+    def prefetch_sam2_next_image(self):
+        context = self.context
+        target = context.annotator.next_annotation
+        if (context.experiment_mode is not None or not context.configs.sam_background_embedding
+                or not context.ui.auto_embed_box.isChecked() or target is None):
+            return
+        model = context.annotator.sam
+        if model.has_cached_image(target.img):
+            return
+        key = (model, target)
+        if self.sam2_prefetch_target == key:
+            return
+        self.sam2_prefetch_target = key
+        context.ui.performing_embedding_label.setText("Embedding next image in background")
+
+        def ready(_):
+            if self.sam2_prefetch_target == key:
+                self.sam2_prefetch_target = None
+            context.ui.performing_embedding_label.setText("Current and next image ready")
+
+        def failed(error):
+            if self.sam2_prefetch_target == key:
+                self.sam2_prefetch_target = None
+            context.print_thread_error(error)
+
+        identity = getattr(target, 'filepath', target.img_name)
+        self._submit(Sam2PrefetchWorker(model, target.img, identity), ready, None,
+                     target=target, error=failed)
 
     def embed_img(self, img_name: str):
         context = self.context
@@ -178,9 +208,12 @@ class InferenceController:
         if context.experiment_mode in ["structured", "tutorial"]:
             return
         if isinstance(img_name, int):
-            context.ui.performing_embedding_label.setText(
-                f"{img_name} images successfully embedded"
-            )
+            if context.sam_gen == 2 and self.sam2_prefetch_target is not None:
+                context.ui.performing_embedding_label.setText("Embedding next image in background")
+            else:
+                context.ui.performing_embedding_label.setText(
+                    f"{img_name} images successfully embedded"
+                )
         else:
             print(f"Embedding of {img_name} done")
             embedding_threads = context.threadpool.activeThreadCount()

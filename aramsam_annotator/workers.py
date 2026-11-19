@@ -116,13 +116,23 @@ class Sam1EmbeddingWorker(InferenceWorker):
 
 class Sam2ImgPairEmbeddingWorker(InferenceWorker):
     def __init__(self, sam2, img_pair, do_amg, mutex):
-        super().__init__(Sam2EmbeddingWorkerSignals(), len(img_pair))
+        super().__init__(Sam2EmbeddingWorkerSignals(), 1)
         self.sam2, self.img_pair, self.do_amg, self.mutex = sam2, img_pair, do_amg, mutex
 
     def execute(self):
         with locked(self.mutex):
-            self.sam2.set_features(self.img_pair)
+            self.sam2.set_features(self.img_pair, image_format='BGR')
         return self.do_amg
+
+
+class Sam2PrefetchWorker(InferenceWorker):
+    def __init__(self, sam, image, identity):
+        super().__init__(WorkerSignals(), str(identity))
+        self.sam, self.image = sam, image
+
+    def execute(self):
+        self.sam.prefetch_image(self.image)
+        return ()
 
 
 class Sam2PropagationWorker(InferenceWorker):

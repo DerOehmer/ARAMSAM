@@ -45,9 +45,10 @@ def merge_propagated_masks(annotation, masks, source_ids, active_source_ids=None
     annotation.add_masks(masks, decision=True)
 
 
-def predict_image_boxes(predictor, image, boxes):
+def predict_image_boxes(predictor, image, boxes, image_is_set=False):
     """Use an independent SAM1/SAM2 image predictor; retain empty output slots."""
-    predictor.set_image(np.ascontiguousarray(image[..., ::-1]))
+    if not image_is_set:
+        predictor.set_image(np.ascontiguousarray(image[..., ::-1]))
     result = []
     for box in boxes:
         masks, _, _ = predictor.predict(box=box, multimask_output=False)
