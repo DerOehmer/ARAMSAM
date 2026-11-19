@@ -10,6 +10,9 @@ from PyQt6.QtWidgets import (
 )
 
 from aramsam_annotator.configs import AramsamConfigs, ImgTiles, SamConfigs, SaveData
+from aramsam_annotator.visualization_options import (
+    CONTROL_IMAGE_OPTIONS, VISUALIZATION_LABELS, default_layout,
+)
 
 
 LABELS = {
@@ -23,7 +26,41 @@ LABELS = {
     "tile_overlap": "Tile overlap", "do_save": "Save annotations", "auto_save": "Auto Save",
     "save_dir": "Output directory", "save_masks": "Save masks", "mask_style": "Mask format",
     "save_bboxes": "Save bounding boxes", "bbox_style": "Bounding-box format",
+    "layout": "Annotation layout", "control_image_visualization": "Control image visualization",
 }
+
+
+class LayoutSelector(QWidget):
+    def __init__(self, value, defaults):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.use_default = QCheckBox("Use default layout")
+        self.use_default.setChecked(value is None)
+        layout.addWidget(self.use_default)
+        form = QFormLayout()
+        self.comboboxes = []
+        for position, selected in zip(('Top left', 'Bottom left', 'Top right', 'Bottom right'),
+                                      defaults if value is None else value):
+            control = QComboBox()
+            for key, label in VISUALIZATION_LABELS.items():
+                control.addItem(label, key)
+            control.setCurrentIndex(control.findData(selected))
+            control.setAccessibleName(position + ' visualization')
+            control.setEnabled(value is not None)
+            self.comboboxes.append(control)
+            form.addRow(position, control)
+        layout.addLayout(form)
+        self.use_default.toggled.connect(
+            lambda checked: [control.setEnabled(not checked) for control in self.comboboxes])
+
+    def value(self):
+        return None if self.use_default.isChecked() else [control.currentData() for control in self.comboboxes]
+
+    def set_defaults(self, defaults):
+        if self.use_default.isChecked():
+            for control, selected in zip(self.comboboxes, defaults):
+                control.setCurrentIndex(control.findData(selected))
 
 
 class SettingsDoubleSpinBox(QDoubleSpinBox):
@@ -117,7 +154,15 @@ class WelcomeWindow(QDialog):
             if is_dataclass(value) or field.name == "class_dict":
                 continue
             key = f"{prefix}.{field.name}" if prefix else field.name
-            if field.type is bool:
+            if key == "layout":
+                bbox_mode = settings.save_data.save_bboxes and not settings.save_data.save_masks
+                control = LayoutSelector(value, default_layout(bbox_mode))
+            elif key == "save_data.control_image_visualization":
+                control = QComboBox()
+                for name, label in CONTROL_IMAGE_OPTIONS.items():
+                    control.addItem(label, name)
+                control.setCurrentIndex(control.findData(value))
+            elif field.type is bool:
                 control = QCheckBox()
                 control.setChecked(value)
             elif key == "sam_configs.gen":
@@ -132,7 +177,7 @@ class WelcomeWindow(QDialog):
                 control.setCurrentIndex(control.findData(value))
             elif field.type is int:
                 control = QSpinBox()
-                control.setRange(1, 1024 if field.name == "tile_size" else 1000000)
+                control.setRange(1, 1000000)
                 control.setValue(value)
             elif field.type is float:
                 control = SettingsDoubleSpinBox()
@@ -171,11 +216,18 @@ class WelcomeWindow(QDialog):
     def _masks_changed(self, checked):
         if checked:
             self.controls["save_data.save_bboxes"].setChecked(False)
+        self._update_default_layout()
 
     def _boxes_changed(self, checked):
         if checked:
             self.controls["save_data.save_masks"].setChecked(False)
             self.controls["save_data.bbox_style"].setText("yolo")
+        self._update_default_layout()
+
+    def _update_default_layout(self):
+        bbox_mode = (self.controls["save_data.save_bboxes"].isChecked()
+                     and not self.controls["save_data.save_masks"].isChecked())
+        self.controls["layout"].set_defaults(default_layout(bbox_mode))
 
     def _auto_save_changed(self, checked):
         if checked:
@@ -190,7 +242,9 @@ class WelcomeWindow(QDialog):
         for key, control in self.controls.items():
             if key == "class_dict":
                 continue
-            if isinstance(control, QCheckBox):
+            if isinstance(control, LayoutSelector):
+                value = control.value()
+            elif isinstance(control, QCheckBox):
                 value = control.isChecked()
             elif isinstance(control, QComboBox):
                 value = control.currentData()

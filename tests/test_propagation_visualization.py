@@ -71,7 +71,7 @@ class PropagationVisualizationTests(unittest.TestCase):
         reference.add_masks([refreshed], decision=True)
         reference.good_masks = [refreshed]
         self.annotator.update_collections(reference)
-        for name in ('masked_img', 'bbox_img', 'mask_collection'):
+        for name in ('masked_img', 'bbox_img', 'mask_collection', 'instance_contours'):
             with self.subTest(view=name):
                 np.testing.assert_array_equal(getattr(target.mask_visualizations, name),
                                               getattr(reference.mask_visualizations, name))

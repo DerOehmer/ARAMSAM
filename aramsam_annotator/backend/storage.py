@@ -4,6 +4,7 @@ Existing image/mask/log and YOLO layouts are preserved. A metadata sidecar in
 native exports retains class IDs and origins when an annotation is reloaded.
 """
 import json
+import hashlib
 import os
 import shutil
 import tempfile
@@ -12,7 +13,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from aramsam_annotator.backend.annotations import MaskData
+from aramsam_annotator.backend.annotations import MaskData, legacy_track_id
+from aramsam_annotator.backend.propagation import prune_excluded_masks
 
 ORIGIN_CODES = {
     "Sam1_proposed": "s1p", "Sam2_proposed": "s2p",
@@ -101,6 +103,42 @@ class AnnotationRepository:
         counts['Total_masks'] = len(masks)
         return counts, latest if directory is not None else None
 
+    def control_image(self, annotation, segmentation=True):
+        """Render accepted annotations freshly, independently of UI previews or layout."""
+        from aramsam_annotator.mask_visualizations import MaskVisualization
+
+        selection = self.settings.control_image_visualization
+        if selection == 'auto':
+            selection = 'masked_img' if segmentation else 'bbox_img'
+        if selection == 'img':
+            return annotation.img
+        visualizer = MaskVisualization()
+        # Empty predictions are omitted from segmentation labels and have no
+        # centroid to draw in a control image.
+        drawable = [obj for obj in annotation.good_masks
+                    if (obj.mask is not None and np.any(obj.mask))
+                    or (obj.mask is None and obj.bbox is not None)]
+        visualizer.set_annotation(img=annotation.img, mask_objs=drawable)
+        renderers = {
+            'masked_img': visualizer.get_masked_img,
+            'bbox_img': visualizer.get_bbox_img,
+            'mask_collection': visualizer.get_mask_collection,
+            'instance_contours': visualizer.get_instance_contours,
+        }
+        return renderers[selection]()
+
+    @staticmethod
+    def _propagation_state(annotation):
+        return {'deleted_track_ids': sorted(annotation.deleted_track_ids),
+                'suppressed_track_ids': sorted(annotation.suppressed_track_ids)}
+
+    @staticmethod
+    def _restore_propagation_state(annotation, state):
+        for name in ('deleted_track_ids', 'suppressed_track_ids'):
+            values = state.get(name, []) if isinstance(state, dict) else []
+            setattr(annotation, name, {value for value in values if isinstance(value, str)}
+                    if isinstance(values, list) else set())
+
     def save_native(self, annotation, directory, suffix=None):
         if annotation is None:
             return False
@@ -118,8 +156,7 @@ class AnnotationRepository:
             masks_dir = staged / 'masks'
             masks_dir.mkdir()
             write_image(staged / 'img.jpg', annotation.img)
-            if annotation.mask_visualizations.masked_img is not None:
-                write_image(staged / 'annotations.jpg', annotation.mask_visualizations.masked_img)
+            write_image(staged / 'annotations.jpg', self.control_image(annotation))
             selected, total_time = self.log_masks(annotation.good_masks, masks_dir)
             all_masks, _ = self.log_masks(annotation.masks)
             (staged / 'log.json').write_text(json.dumps({
@@ -133,9 +170,12 @@ class AnnotationRepository:
                              if mask.mask is not None else None),
                     'origin': origin, 'time_stamp': mask.time_stamp,
                     'class_id': mask.class_id, 'color_idx': mask.color_idx,
+                    'track_id': mask.track_id,
                     'bbox': list(mask.bbox) if mask.bbox is not None else None,
                 })
             (staged / 'annotations.json').write_text(json.dumps(metadata, indent=2, default=json_value), encoding='utf-8')
+            (staged / 'propagation.json').write_text(json.dumps(self._propagation_state(annotation)),
+                                                   encoding='utf-8')
             backup = Path(work) / 'old'
             if existed:
                 os.replace(destination, backup)
@@ -149,10 +189,11 @@ class AnnotationRepository:
 
     def save_yolo(self, annotation, directory, segmentation):
         directory = Path(directory)
-        for folder in ('images', 'labels', 'control_images'):
+        for folder in ('images', 'labels', 'control_images', 'metadata'):
             (directory / folder).mkdir(parents=True, exist_ok=True)
         height, width = annotation.img.shape[:2]
         lines = []
+        instances = []
         for obj in annotation.good_masks:
             class_id = obj.class_id if obj.class_id is not None else 0
             if segmentation:
@@ -173,35 +214,49 @@ class AnnotationRepository:
                 values = ((x0 + x1) / (2 * width), (y0 + y1) / (2 * height),
                           (x1 - x0) / width, (y1 - y0) / height)
             lines.append(f'{class_id} ' + ' '.join(f'{v:.6f}' for v in values))
+            instances.append({'track_id': obj.track_id, 'origin': obj.origin,
+                              'color_idx': obj.color_idx, 'time_stamp': obj.time_stamp})
         stem = Path(annotation.img_name).stem
+        label_text = '\n'.join(lines)
+        metadata = {'version': 1, 'labels_sha256': hashlib.sha256(label_text.encode('utf-8')).hexdigest(),
+                    'instances': instances, **self._propagation_state(annotation)}
         # Encode before replacing any output, and commit the label file last.
         with tempfile.TemporaryDirectory(dir=directory, prefix='.yolo.') as work:
             image_path = Path(work) / annotation.img_name
-            write_image(image_path, annotation.img)
-            control = (annotation.mask_visualizations.masked_img if segmentation
-                       else annotation.mask_visualizations.bbox_img)
+            # Annotation/model images are downsampled. The dataset must retain
+            # the original file (or the generated tile), including its size.
+            shutil.copyfile(annotation.filepath, image_path)
+            control = self.control_image(annotation, segmentation)
             control_path = Path(work) / 'control.jpg'
             write_image(control_path, annotation.img if control is None else control)
             os.replace(image_path, directory / 'images' / annotation.img_name)
             os.replace(control_path, directory / 'control_images' / f'{stem}_control.jpg')
-            atomic_text(directory / 'labels' / f'{stem}.txt', '\n'.join(lines))
+            atomic_text(directory / 'metadata' / f'{stem}.json', json.dumps(metadata, default=json_value))
+            atomic_text(directory / 'labels' / f'{stem}.txt', label_text)
         return False
 
     def load(self, annotation, directory, id_handler):
         """Load accepted objects; allocate fresh IDs to avoid collisions in a session."""
         directory = Path(directory)
+        self._restore_propagation_state(annotation, {})
         if self.yolo:
             masks = self._load_yolo(annotation, directory, id_handler)
         else:
             native = directory / f'{Path(annotation.img_name).stem}_annots'
+            state_path = native / 'propagation.json'
+            if state_path.is_file():
+                self._restore_propagation_state(annotation, json.loads(state_path.read_text(encoding='utf-8')))
             metadata = native / 'annotations.json'
             if not metadata.exists():
                 annotation.load_masks_from_dir(native / 'masks', id_handler)
                 annotation.proposals_ready = True
+                prune_excluded_masks(annotation)
                 return
             masks = []
-            for record in json.loads(metadata.read_text(encoding='utf-8')):
+            for index, record in enumerate(json.loads(metadata.read_text(encoding='utf-8'))):
                 filename = record.pop('file')
+                if not record.get('track_id'):
+                    record['track_id'] = legacy_track_id(annotation.filepath, filename or index)
                 mask = None
                 if filename is not None:
                     if Path(filename).name != filename:
@@ -214,19 +269,43 @@ class AnnotationRepository:
         annotation.good_masks = masks
         annotation.masks = list(masks)
         annotation.mask_decisions = [True] * len(masks)
+        prune_excluded_masks(annotation)
 
     def _load_yolo(self, annotation, directory, id_handler):
         path = directory / 'labels' / f'{Path(annotation.img_name).stem}.txt'
+        label_text = path.read_text(encoding='utf-8')
+        lines = [line for line in label_text.splitlines() if line.strip()]
+        records = []
+        metadata_path = directory / 'metadata' / f'{Path(annotation.img_name).stem}.json'
+        if metadata_path.is_file():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+                if (metadata.get('version') == 1 and metadata.get('labels_sha256')
+                        == hashlib.sha256(label_text.encode('utf-8')).hexdigest()
+                        and isinstance(metadata.get('instances'), list)
+                        and len(metadata['instances']) == len(lines)):
+                    records = metadata['instances']
+                    self._restore_propagation_state(annotation, metadata)
+            except (OSError, ValueError, TypeError, AttributeError):
+                # A missing/stale sidecar must not prevent importing ordinary YOLO labels.
+                pass
         height, width = annotation.img.shape[:2]
         masks = []
-        for line in path.read_text(encoding='utf-8').splitlines():
-            if not line.strip():
-                continue
+        for index, line in enumerate(lines):
             parts = line.split()
             class_id, coords = int(parts[0]), np.asarray(parts[1:], dtype=float)
             if not np.all(np.isfinite(coords)) or np.any(coords < 0) or np.any(coords > 1):
                 raise ValueError(f'Invalid normalized coordinates in {path}')
-            obj = MaskData(mid=id_handler.get_id(), origin='Yolo_prediction', class_id=class_id)
+            record = records[index] if records and isinstance(records[index], dict) else {}
+            track_id = record.get('track_id')
+            if not isinstance(track_id, str) or not track_id:
+                track_id = legacy_track_id(annotation.filepath, index)
+            origin = record.get('origin', 'Yolo_prediction')
+            if not isinstance(origin, str) or origin not in self.origin_codes:
+                origin = 'Yolo_prediction'
+            obj = MaskData(mid=id_handler.get_id(), origin=origin, class_id=class_id,
+                           track_id=track_id, color_idx=record.get('color_idx'),
+                           time_stamp=record.get('time_stamp'))
             if self.settings.save_masks:
                 if len(coords) < 6 or len(coords) % 2:
                     raise ValueError(f'Invalid YOLO polygon in {path}')

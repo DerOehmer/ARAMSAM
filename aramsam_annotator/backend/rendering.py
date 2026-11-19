@@ -31,6 +31,7 @@ class AnnotationRenderer:
         masked_img = mask_vis.get_masked_img()  # masks get contours
         mask_collection = mask_vis.get_mask_collection()
         bbox_img = mask_vis.get_bbox_img()
+        instance_contours = mask_vis.get_instance_contours()
 
         if (
             len(annot.masks) > context.mask_idx
@@ -62,6 +63,7 @@ class AnnotationRenderer:
         mvis_data.mask_collection_cnt = mask_collection_cnt
         mvis_data.bbox_img = bbox_img
         mvis_data.bbox_img_cnt = bbox_img_cnt
+        mvis_data.instance_contours = instance_contours
 
         annot.good_masks = mask_vis.mask_objs
 

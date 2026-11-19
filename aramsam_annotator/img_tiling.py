@@ -18,7 +18,7 @@ def split_image_into_tiles(img_path: str, temp_dir: str, config: ImgTiles) -> li
     img_name = os.path.splitext(os.path.basename(img_path))[0]
     height, width = img.shape[:2]
 
-    tile_size = min(config.tile_size, 1024)
+    tile_size = config.tile_size
     stride = max(1, int(tile_size * (1 - config.tile_overlap)))
 
     def get_positions(length: int) -> list[int]:

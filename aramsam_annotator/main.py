@@ -7,21 +7,10 @@ from aramsam_annotator.configs import AramsamConfigs, find_and_load_configs, fin
 
 def create_vis_options(confs:AramsamConfigs ) -> tuple[list[str]]:
     bbox_mode = confs.save_data.save_bboxes and not confs.save_data.save_masks
-    vis_options = [field.name for field in dataclasses.fields(MaskVisualizationData)]
-    if bbox_mode:
-        default_vis_options = [
-            "img",
-            "img_sam_preview",
-            "bbox_img_cnt",
-            "mask_collection_cnt",
-        ]
-    else:
-        default_vis_options = [
-            "img",
-            "img_sam_preview",
-            "masked_img_cnt",
-            "mask_collection_cnt",
-        ]
+    from aramsam_annotator.visualization_options import VISUALIZATION_LABELS, default_layout
+    vis_options = [field.name for field in dataclasses.fields(MaskVisualizationData)
+                   if field.name in VISUALIZATION_LABELS]
+    default_vis_options = list(confs.layout) if confs.layout is not None else default_layout(bbox_mode)
 
     for default_vis_option in default_vis_options:
         if default_vis_option not in vis_options:
@@ -30,7 +19,7 @@ def create_vis_options(confs:AramsamConfigs ) -> tuple[list[str]]:
             else:
                 default_vis_options = [vis_options[0] for _ in range(4)]
 
-    current_options = default_vis_options
+    current_options = default_vis_options.copy()
 
     return vis_options, default_vis_options, current_options
 

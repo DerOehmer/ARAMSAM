@@ -198,6 +198,10 @@ class Sam3Inference:
             self.inference_state = None
         self._next_annotation = next_annotation
 
+    def reset_tracking(self):
+        self.inference_state = None
+        self._tracking_objects = {}
+
     @torch.inference_mode()
     def set_masks(self, mask_objs):
         self._require_image()
@@ -244,7 +248,7 @@ class Sam3Inference:
                         source = self._tracking_objects[mid]
                         result.append(MaskData(mid=mid, mask=mask, origin="Sam3_tracking",
                                                class_id=source.class_id, color_idx=source.color_idx,
-                                               time_stamp=1))
+                                               time_stamp=1, track_id=source.track_id))
         return result
 
     def prop_thread_func(self, mask_objs):

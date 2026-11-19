@@ -187,6 +187,7 @@ class Sam3AdapterTests(unittest.TestCase):
         self.assertEqual(result[0].origin, 'Sam3_tracking')
         self.assertEqual(result[0].class_id, 3)
         self.assertEqual(result[0].color_idx, 2)
+        self.assertEqual(result[0].track_id, obj.track_id)
         self.assertEqual(result[0].mask.shape, (24, 32))
         sam.tracker.propagate_in_video.assert_called_once_with(
             sam.inference_state, start_frame_idx=0, max_frame_num_to_track=1,

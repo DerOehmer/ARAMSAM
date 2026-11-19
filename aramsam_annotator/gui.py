@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from aramsam_annotator.visualization_options import VISUALIZATION_LABELS
 
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
@@ -1485,8 +1486,9 @@ class OptionsWindow(QMainWindow):
                 combobox.setGeometry(
                     i * box_width, j * box_height, box_width, box_height
                 )
-                [combobox.addItem(option) for option in layout_options["options"]]
-                combobox.setCurrentText(layout_options["current"][i * 2 + j])
+                for option in layout_options["options"]:
+                    combobox.addItem(VISUALIZATION_LABELS.get(option, option), option)
+                combobox.setCurrentIndex(combobox.findData(layout_options["current"][i * 2 + j]))
                 self.comboboxes.append(combobox)
         self.ok_button = QPushButton(parent=self, text="OK")
         self.ok_button.setGeometry(
@@ -1499,6 +1501,6 @@ class OptionsWindow(QMainWindow):
         combobox = QtWidgets.QComboBox(self)
         options = []
         for combobox in self.comboboxes:
-            options.append(combobox.currentText())
+            options.append(combobox.currentData())
 
         self.layout_settings_options_signal.emit(options)

@@ -84,7 +84,7 @@ class DeviceConfigTests(unittest.TestCase):
                 sam.predictor.propagate_in_video.return_value = iter([
                     (0, [7], logits), (1, [7], logits),
                 ])
-                source = MaskData(mid=7, origin='Polygon_drawing', mask=mask)
+                source = MaskData(mid=7, origin='Polygon_drawing', mask=mask, class_id=4, color_idx=2)
 
                 with patch.object(sam, '_init_mixed_precision') as precision:
                     if device == 'cpu':
@@ -101,6 +101,9 @@ class DeviceConfigTests(unittest.TestCase):
                 self.assertEqual(len(result), 1)
                 self.assertEqual(result[0].mid, 7)
                 self.assertEqual(result[0].origin, 'Sam2_tracking')
+                self.assertEqual(result[0].class_id, source.class_id)
+                self.assertEqual(result[0].color_idx, source.color_idx)
+                self.assertEqual(result[0].track_id, source.track_id)
                 np.testing.assert_array_equal(result[0].mask, mask)
 
 

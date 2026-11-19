@@ -34,6 +34,7 @@ class PresentationController:
             len(fields) == 4
         ), f"Too many fields selected for visualization ({len(fields)}) expected 4"
         context.fields = fields
+        context.configs.layout = list(fields)
         context.update_ui_imgs()
 
     def update_ui_imgs(self, center: tuple | None | str = None):

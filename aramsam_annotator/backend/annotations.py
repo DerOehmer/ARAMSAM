@@ -1,9 +1,16 @@
 """Annotation records shared by editing, inference, storage, and rendering."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from os.path import basename
 from pathlib import Path
 import cv2
 import numpy as np
+from uuid import NAMESPACE_URL, uuid4, uuid5
+from threading import RLock
+
+
+def legacy_track_id(image_path, item_key):
+    """Give repeated imports of an older annotation the same local identity."""
+    return 'legacy:' + uuid5(NAMESPACE_URL, f'{Path(image_path).resolve()}::{item_key}').hex
 
 
 class MaskIdHandler:
@@ -29,6 +36,7 @@ class MaskData:
     color_idx: int = None
     contour: np.ndarray = None
     class_id: int = None
+    track_id: str = field(default_factory=lambda: uuid4().hex, compare=False)
 
 
 @dataclass
@@ -44,6 +52,7 @@ class MaskVisualizationData:
     bbox: tuple = None  # xyxy of current object of interest
     bbox_img: np.ndarray = None
     bbox_img_cnt: np.ndarray = None
+    instance_contours: np.ndarray = None
 
 
 class AnnotationObject:
@@ -54,6 +63,9 @@ class AnnotationObject:
         self.masks: list[MaskData] = []
         self.good_masks: list[MaskData] = []
         self.mask_decisions: list[bool] = []
+        self.deleted_track_ids: set[str] = set()
+        self.suppressed_track_ids: set[str] = set()
+        self._propagation_lock = RLock()
 
         self.features = None
         self.original_size = None
@@ -126,7 +138,8 @@ class AnnotationObject:
             origin = origins.get(parts[1], 'Polygon_drawing') if len(parts) > 1 else 'Polygon_drawing'
             timestamp = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
             loaded.append(MaskData(mid=mid_handler.get_id(), mask=mask,
-                                   origin=origin, time_stamp=timestamp))
+                                   origin=origin, time_stamp=timestamp,
+                                   track_id=legacy_track_id(self.filepath, mask_file.name)))
         self.good_masks = loaded
         self.masks = list(loaded)
         self.mask_decisions = [True] * len(loaded)

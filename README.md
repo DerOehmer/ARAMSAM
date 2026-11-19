@@ -67,6 +67,44 @@ alignment behavior.
 
 ## UI Workflow
 
+YOLO exports copy the original input file into `output/images` without resizing
+or recompressing it. With tiling enabled, that file is the generated tile at its
+actual dimensions: full tiles use `img_tiles.tile_size`, including sizes above
+1024, and border tiles may be smaller when `allow_smaller_border_tiles: true`.
+Annotation/model images remain limited to 1024 pixels on their longest side;
+control images can use that downsampled size. YOLO coordinates are normalized
+against the annotation image, retaining their relative positions on the original
+image or tile.
+
+Choose **Instance contours with ID circles** in **Settings → Change Layout** to
+show mask contours with translucent circles and white instance IDs. The circle
+is placed inside the mask, including for masks with a hole at their centroid.
+
+The welcome window's **General → Annotation layout** provides four panel
+selectors. Uncheck **Use default layout** to customize them. In the **Saving**
+tab, **Control image visualization** independently selects the image saved under
+`control_images` for YOLO exports (or `annotations.jpg` for native exports).
+Control images contain accepted objects and exclude interactive previews.
+
+The equivalent `configs.yaml` settings are:
+
+```yaml
+# Panel order: top left, bottom left, top right, bottom right.
+layout:
+  - img
+  - img_sam_preview
+  - instance_contours
+  - mask_collection_cnt
+save_data:
+  control_image_visualization: instance_contours
+```
+
+Use `layout: null` to keep the default layout. Control-image choices are `auto`,
+`img`, `masked_img`, `bbox_img`, `mask_collection`, and `instance_contours`.
+The default `auto` uses filled masks for segmentation exports and bounding boxes
+for box exports. Welcome changes are saved when choosing Load Image or Load Folder;
+layout changes made through Settings apply to the current session.
+
 For instructions on how you can use ARAMSAM UI see [Example Workflow](docs/example_workflow.md).
 
 Open **Settings** to toggle **Auto Save**, **Auto Embed**, or **Mask Propagation**.
@@ -76,6 +114,24 @@ Mask propagation carries accepted objects into the next image. Set the top-level
 off clears generated masks in the unvisited next image and stops further
 propagation, while keeping annotations on the current image and masks loaded
 from disk.
+
+Propagated objects retain a stable identity across images and saved reloads, so
+Back → edit → Next replaces the previous prediction even if its outline changes.
+Native exports store this identity in `annotations.json`. YOLO exports keep the
+standard label text unchanged and also write `metadata/<image-stem>.json`; retain
+that folder when continuing annotation. Sidecars are checked against the label
+contents so externally edited labels are imported without stale identities.
+Older files remain readable, with local import identities and geometric matching
+as a compatibility fallback when their cross-image identities are unavailable.
+
+Deleting an accepted mask excludes its identity from subsequent propagation and
+removes matching copies already prepared for the next image. Exclusions carry
+forward through saved images, including when no accepted masks remain, and late
+worker results cannot re-add a deleted object. SAM2's tracking state is reset
+before using the remaining masks and cleared when the prompt set is empty;
+image embeddings remain cached. Native folders store exclusions in
+`propagation.json`; YOLO sidecars include them in `metadata/<image-stem>.json`.
+Explicitly accepting a deleted mask again allows it to propagate again.
 
 Longer propagation, image preparation, and annotation-saving operations show a
 loading window after a short delay. Backend work runs in worker threads while

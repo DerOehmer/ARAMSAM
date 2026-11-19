@@ -138,9 +138,21 @@ class BackendStorageSessionTests(unittest.TestCase):
     def test_tiles_cover_edges_and_validate_settings(self):
         tile_dir = self.root / 'tiles'
         tile_dir.mkdir()
-        tiles = split_image_into_tiles(str(self.image), str(tile_dir), ImgTiles(tile_size=20))
-        self.assertEqual(len(tiles), 6)
-        self.assertTrue(all(cv2.imread(path).shape[:2] == (20, 20) for path in tiles))
+        for smaller_edges in (True, False):
+            with self.subTest(smaller_edges=smaller_edges):
+                tiles = split_image_into_tiles(str(self.image), str(tile_dir),
+                                              ImgTiles(tile_size=20, allow_smaller_border_tiles=smaller_edges))
+                self.assertEqual(len(tiles), 6)
+                coverage = np.zeros((32, 48), bool)
+                for path in tiles:
+                    top, left = map(int, Path(path).stem.rsplit('_', 2)[1:])
+                    height, width = cv2.imread(path).shape[:2]
+                    if smaller_edges:
+                        self.assertEqual((height, width), (min(20, 32 - top), min(20, 48 - left)))
+                    else:
+                        self.assertEqual((height, width), (20, 20))
+                    coverage[top:top + height, left:left + width] = True
+                self.assertTrue(np.all(coverage))
         for config in (ImgTiles(tile_size=0), ImgTiles(tile_overlap=1)):
             with self.assertRaises(ValueError):
                 split_image_into_tiles(str(self.image), str(tile_dir), config)

@@ -125,6 +125,14 @@ class WelcomeTests(unittest.TestCase):
         dialog.controls['sam_configs.gen'].setCurrentIndex(1)
         self.assertEqual(dialog.controls['sam_configs.model_ckpt_p'].text(), '/custom/my-model.pt')
 
+    def test_configured_tile_size_can_exceed_the_model_image_limit(self):
+        app = self.make_app()
+        dialog = self.show_welcome(app)
+        dialog.controls['img_tiles.tile_size'].setValue(2048)
+        self.assertEqual(dialog.read_configs().img_tiles.tile_size, 2048)
+        save_configs_to_yaml(dialog.read_configs(), app.config_path)
+        self.assertEqual(load_configs_from_yaml(app.config_path).img_tiles.tile_size, 2048)
+
     def test_both_load_buttons_save_edits_before_choosing_input_and_apply_settings(self):
         for mode in ('image', 'folder'):
             with self.subTest(mode=mode):

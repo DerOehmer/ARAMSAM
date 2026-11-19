@@ -10,7 +10,10 @@ import traceback
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
 
 from aramsam_annotator.run_sam import BackgroundThreadSamPredictor
-from aramsam_annotator.backend.propagation import propagate_boxes, merge_propagated_masks
+from aramsam_annotator.backend.propagation import (
+    propagate_boxes, merge_propagated_masks, inherit_tracking_identity,
+    excluded_track_ids, prune_excluded_masks,
+)
 
 
 @contextmanager
@@ -137,7 +140,8 @@ class Sam2PrefetchWorker(InferenceWorker):
 
 class Sam2PropagationWorker(InferenceWorker):
     def __init__(self, sam2_predictor, next_annotation, unpropagated_masks,
-                 batch_size, track_remaining, mutex, current_annotation=None, active_source_ids=None):
+                 batch_size, track_remaining, mutex, current_annotation=None, active_source_ids=None,
+                 active_track_ids=None):
         if batch_size <= 0:
             raise ValueError('Propagation batch size must be positive')
         super().__init__(Sam2PropagationWorkerSignals(), len(unpropagated_masks))
@@ -148,19 +152,26 @@ class Sam2PropagationWorker(InferenceWorker):
         self.current_annotation = current_annotation
         self.active_source_ids = (set(active_source_ids) if active_source_ids is not None
                                   else {mask.mid for mask in self.unpropagated_masks})
+        self.active_track_ids = (set(active_track_ids) if active_track_ids is not None
+                                 else {mask.track_id for mask in self.unpropagated_masks})
 
     def execute(self):
         for start in range(0, len(self.unpropagated_masks), self.batch_size):
             batch = self.unpropagated_masks[start:start + self.batch_size]
+            batch = [mask for mask in batch if mask.track_id not in excluded_track_ids(self.next_annotation)]
+            if not batch:
+                prune_excluded_masks(self.next_annotation)
+                continue
             if any(mask.mask is None for mask in batch):
                 raise ValueError('SAM2 propagation requires segmentation masks')
             with locked(self.mutex):
                 if self.current_annotation is not None:
                     self.sam2_predictor.set_tracking_pair(self.current_annotation, self.next_annotation)
-                masks = self.sam2_predictor.prop_thread_func(batch)
+                masks = inherit_tracking_identity(self.sam2_predictor.prop_thread_func(batch), batch)
                 # Retain the captured destination; never look up the current image here.
                 merge_propagated_masks(self.next_annotation, masks, {mask.mid for mask in batch},
-                                       self.active_source_ids)
+                                       self.active_source_ids, {mask.track_id for mask in batch},
+                                       self.active_track_ids)
 
 
 class BoxPropagationWorker(InferenceWorker):
@@ -174,7 +185,9 @@ class BoxPropagationWorker(InferenceWorker):
             masks = propagate_boxes(self.sam, self.current_annotation, self.next_annotation,
                                     self.masks, self.generation)
             active_ids = {mask.mid for mask in self.current_annotation.good_masks}
-            merge_propagated_masks(self.next_annotation, masks, {mask.mid for mask in self.masks}, active_ids)
+            merge_propagated_masks(self.next_annotation, masks, {mask.mid for mask in self.masks}, active_ids,
+                                   {mask.track_id for mask in self.masks},
+                                   {mask.track_id for mask in self.current_annotation.good_masks})
 
 
 class AMGWorker(InferenceWorker):

@@ -13,6 +13,38 @@ from aramsam_annotator.backend.annotations import (
 )
 
 
+def draw_mask_instance(image: np.ndarray, mask: np.ndarray, instance_id: int,
+                       color: tuple[int, int, int], contour_thickness: int = 2,
+                       circle_radius: int = 16, circle_alpha: float = 0.5) -> np.ndarray:
+    """Draw a contour and a translucent instance-ID circle on a BGR image in-place."""
+    mask_u8 = (mask > 0).astype(np.uint8)
+    contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return image
+    cv2.drawContours(image, contours, -1, color, contour_thickness)
+    moments = cv2.moments(mask_u8, binaryImage=True)
+    cx = int(moments['m10'] / moments['m00'])
+    cy = int(moments['m01'] / moments['m00'])
+    if not mask_u8[cy, cx]:
+        distance = cv2.distanceTransform(mask_u8, cv2.DIST_L2, 3)
+        _, _, _, (cx, cy) = cv2.minMaxLoc(distance)
+    height, width = image.shape[:2]
+    radius = circle_radius
+    x1, y1 = max(0, cx - radius), max(0, cy - radius)
+    x2, y2 = min(width, cx + radius + 1), min(height, cy + radius + 1)
+    roi = image[y1:y2, x1:x2]
+    overlay = roi.copy()
+    cv2.circle(overlay, (cx - x1, cy - y1), radius, color, -1, lineType=cv2.LINE_AA)
+    cv2.addWeighted(overlay, circle_alpha, roi, 1 - circle_alpha, 0, dst=roi)
+    text = str(instance_id)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.45 if len(text) == 3 else 0.55
+    (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, 1)
+    cv2.putText(image, text, (cx - text_width // 2, cy + text_height // 2), font,
+                font_scale, (255, 255, 255), 1, cv2.LINE_AA)
+    return image
+
+
 class MaskVisualization:
     def __init__(
         self,
@@ -30,6 +62,7 @@ class MaskVisualization:
         self.cnt_color = cnt_color
         self.masked_img: np.ndarray = None
         self.bbox_img: np.ndarray = None
+        self.instance_contours: np.ndarray = None
         self.maskinrgb: np.ndarray = None
         self.mask_collection: np.ndarray = None
         self._mask_coll_bin: np.ndarray = None
@@ -117,6 +150,7 @@ class MaskVisualization:
             # cached pixels before redrawing, including the overlap accumulator.
             self.masked_img = None
             self.bbox_img = None
+            self.instance_contours = None
             self.mask_collection = None
             self._mask_coll_bin = None
             mids_to_add = new_set
@@ -207,6 +241,25 @@ class MaskVisualization:
                 self.bbox_img, (x1, y1), (x2, y2), (int(b), int(g), int(r)), 1
             )
         return self.bbox_img
+
+    def get_instance_contours(self) -> np.ndarray:
+        if self.no_collection_to_update and self.instance_contours is not None:
+            return self.instance_contours
+        if self.instance_contours is None or self.mask_ids_to_remove:
+            self.instance_contours = self.img.copy()
+        for index, obj in enumerate(self.mask_objs):
+            if (self.mask_ids_to_add and not self.mask_ids_to_remove
+                    and obj.mid not in self.mask_ids_to_add):
+                continue
+            if obj.mask is None or not np.any(obj.mask):
+                continue
+            if obj.color_idx is None:
+                obj.color_idx = (obj.mid if obj.mid is not None else index) % len(self.colormap)
+            rgb = self.get_color(obj.color_idx)
+            color = tuple(int(channel) for channel in rgb[::-1])
+            draw_mask_instance(self.instance_contours, obj.mask,
+                               obj.mid if obj.mid is not None else index, color)
+        return self.instance_contours
 
     def get_bbox_img_cnt(self) -> np.ndarray:
         if self.bbox_img is None:

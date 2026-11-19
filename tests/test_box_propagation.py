@@ -43,6 +43,7 @@ class BoxPropagationTests(unittest.TestCase):
                        'Sam3_box_propagation', 'Sam2_tracking', 'Sam3_tracking'):
             with self.subTest(origin=origin):
                 saved = source_mask(99)
+                saved.track_id = 'legacy:saved-mask'
                 saved.origin = origin
                 target = self.merge_target([saved])
                 predicted = source_mask(7)
@@ -73,6 +74,7 @@ class BoxPropagationTests(unittest.TestCase):
 
     def test_merge_matches_saved_masks_once_and_deduplicates_repeated_source_ids(self):
         saved = source_mask(99)
+        saved.track_id = 'legacy:saved-mask'
         saved.origin = 'Yolo_prediction'
         saved.mask[2, 3] = 0
         target = self.merge_target([saved])
@@ -132,6 +134,7 @@ class BoxPropagationTests(unittest.TestCase):
                 self.assertIs(result[0].mask, predicted)
                 self.assertEqual((result[0].mid, result[0].class_id, result[0].color_idx), (7, 4, 2))
                 self.assertEqual(result[0].origin, f'Sam{generation}_box_propagation')
+                self.assertEqual(result[0].track_id, source.track_id)
 
     def test_empty_masks_and_predictions_do_not_shift_object_ids(self):
         current = SimpleNamespace(img=np.zeros((10, 20, 3), np.uint8))

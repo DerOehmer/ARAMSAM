@@ -10,6 +10,7 @@ class PanoImageAligner:
         self.images: list[np.ndarray] = []
         self.matching_masks: list[list[MaskData]] = []
         self.h_matrix: np.ndarray = None
+        self.tracked_sources: list[MaskData] = []
 
     def add_annotation(self, annot: AnnotationObject):
         img = annot.img
@@ -17,6 +18,7 @@ class PanoImageAligner:
         self.add_image(img, masks)
 
     def track(self, annot: AnnotationObject):
+        self.tracked_sources = []
         img = annot.img
         self.add_image(img)
         return self.match_and_align()
@@ -119,6 +121,8 @@ class PanoImageAligner:
             ]
 
         elif len(self.matching_masks) == 1:
+            self.tracked_sources = [source for source, mask in zip(self.matching_masks[0], tracked_masks)
+                                    if np.any(mask)]
             bboxes_np = self._masks_to_bboxes_np(tracked_masks)
             return bboxes_np
 

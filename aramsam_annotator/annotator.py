@@ -3,6 +3,7 @@ from aramsam_annotator.backend.storage import AnnotationRepository, ORIGIN_CODES
 from functools import cached_property
 from aramsam_annotator.backend.editing import AnnotationEditor
 from aramsam_annotator.backend.rendering import AnnotationRenderer
+from aramsam_annotator.backend.propagation import merge_propagated_masks, excluded_track_ids, prune_excluded_masks
 import numpy as np
 import torch
 import cv2
@@ -196,27 +197,42 @@ class Annotator:
             self.mask_idx += 1
 
     def _propagate_bboxes(self, bbox_tracker: PanoImageAligner):
+        prune_excluded_masks(self.annotation)
         tracked_bboxes = bbox_tracker.track(self.annotation)
-        if len(tracked_bboxes) == 0:
+        excluded = excluded_track_ids(self.annotation)
+        pairs = [(box, source) for box, source in zip(tracked_bboxes, bbox_tracker.tracked_sources)
+                 if source.track_id not in excluded]
+        if not pairs:
             print("No bboxes to propagate")
             return
+        tracked_bboxes, tracked_sources = zip(*pairs)
         input_bboxes = self.sam.transform_bboxes(
             tracked_bboxes, self.annotation.img.shape[:2]
         )
-        # TODO: fix box propagation with activated background embedding
         prop_mask_out_torch = self.sam.predict_batch(bboxes=input_bboxes)
-        prop_mask_out = self.sam._torch_to_npmasks(prop_mask_out_torch)
-        prop_mask_objs = [
-            MaskData(
-                mid=self.mask_id_handler.get_id(),
-                mask=mask,
-                origin="Panorama_tracking",
-                time_stamp=1,
-            )
-            for mask in prop_mask_out
-        ]
-        prop_mask_objs = self.convey_color_to_next_annot(prop_mask_objs)
-        self.annotation.add_masks(prop_mask_objs, decision=True)
+        if len(prop_mask_out_torch) != len(tracked_sources):
+            raise ValueError('Panorama predictions must return one result per source box')
+        prop_mask_objs = []
+        for source, prediction in zip(tracked_sources, prop_mask_out_torch):
+            # Convert each slot separately: an empty result must not shift the
+            # identity of all later objects in the batch.
+            masks = self.sam._torch_to_npmasks([prediction])
+            if masks:
+                prop_mask_objs.append(MaskData(mid=source.mid, mask=masks[0], origin='Panorama_tracking',
+                                               class_id=source.class_id, color_idx=source.color_idx,
+                                               time_stamp=1, track_id=source.track_id))
+        sources = bbox_tracker.matching_masks[0]
+        with self.annotation._propagation_lock:
+            prop_mask_objs = [mask for mask in prop_mask_objs
+                             if mask.track_id not in excluded_track_ids(self.annotation)]
+            merge_propagated_masks(self.annotation, prop_mask_objs, {mask.mid for mask in sources},
+                                   source_track_ids={mask.track_id for mask in sources},
+                                   active_track_ids={mask.track_id for mask in sources})
+            accepted_ids = {mask.mid for mask in self.annotation.good_masks}
+            self.annotation.good_masks.extend(mask for mask in prop_mask_objs if mask.mid not in accepted_ids)
+        while (self.mask_idx < len(self.annotation.mask_decisions)
+               and self.annotation.mask_decisions[self.mask_idx]):
+            self.mask_idx += 1
 
     def automatic_mask_generation(self):
         start_custom_amg = time.time()

@@ -23,6 +23,12 @@ save_data:
   mask_style: yolo
   save_bboxes: false
   bbox_style: ''
+  control_image_visualization: instance_contours
 class_dict:
   '0': seed
-mask_propagation_method: bounding_box
+mask_propagation_method: tracking
+layout:
+- img
+- img_sam_preview
+- instance_contours
+- mask_collection_cnt

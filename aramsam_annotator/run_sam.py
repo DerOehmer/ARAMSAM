@@ -452,10 +452,18 @@ class Sam2Inference:
             output_masks.append(mask > 0.0)
         return output_masks
 
+    def reset_tracking(self):
+        if self.inference_state is not None:
+            self.predictor.reset_state(self.inference_state)
+        self._tracking_objects = {}
+
     def set_masks(self, mask_objs: list[MaskData]):
-        self.predictor.reset_state(self.inference_state)
+        self.reset_tracking()
+        if not mask_objs:
+            return
         if self.imgs is not None:
             self._prepare_tracking_pair()
+        self._tracking_objects = {mask.mid: mask for mask in mask_objs}
         for m in mask_objs:
             assert (
                 m.mask.dtype == np.uint8 and m.mask.ndim == 2
@@ -475,15 +483,19 @@ class Sam2Inference:
                     np_mask = self._logits_to_npmask(out_mask_logits[i])
                     if np_mask is not None:
                         prop_masks.append(
-                            MaskData(mid=out_mid, mask=np_mask, origin="Sam2_tracking")
+                            MaskData(mid=out_mid, mask=np_mask, origin="Sam2_tracking",
+                                     class_id=self._tracking_objects[out_mid].class_id,
+                                     color_idx=self._tracking_objects[out_mid].color_idx,
+                                     time_stamp=1, track_id=self._tracking_objects[out_mid].track_id)
                         )
         return prop_masks
 
     def prop_thread_func(self, mask_objs: list[MaskData]):
         if torch.device(self.device).type == "cuda":
             self._init_mixed_precision()
-        self.predictor.reset_state(self.inference_state)
         self.set_masks(mask_objs)
+        if not mask_objs:
+            return []
         return self.propagate_to_next_img()
 
     def _logits_to_npmask(self, out_mask_logit: torch.Tensor | np.ndarray):

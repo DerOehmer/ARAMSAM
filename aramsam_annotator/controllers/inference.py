@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 from aramsam_annotator.tracker import PanoImageAligner
 from aramsam_annotator.mask_visualizations import MaskData
+from aramsam_annotator.backend.propagation import sync_propagation_exclusions, excluded_track_ids
 from aramsam_annotator.workers import (
     AMGWorker, Sam2ImgPairEmbeddingWorker, Sam1EmbeddingWorker, Sam2PropagationWorker,
     BoxPropagationWorker, YoloPredicitonWorker, TextPromptWorker, Sam2PrefetchWorker,
@@ -20,14 +21,17 @@ class InferenceController:
         if not context.configs.mask_propagation or not context.configs.sam_configs.do_sam:
             return
         if (context.annotator.annotation is None
-                or not context.annotator.annotation.good_masks
                 or context.annotator.next_annotation is None):
             return
+        sync_propagation_exclusions(context.annotator.annotation, context.annotator.next_annotation)
         if context.configs.mask_propagation_method == "bounding_box" or context.sam_gen in (2, 3):
 
             context.start_mask_batch_thread(track_remaining=True)
 
         elif context.sam_gen == 1:
+            if not context.annotator.annotation.good_masks:
+                context.bbox_tracker = None
+                return
             if context.bbox_tracker is None:
                 context.bbox_tracker = PanoImageAligner()
             context.run_backend_task(
@@ -139,14 +143,16 @@ class InferenceController:
             return
         if context.annotator.next_annotation is None:
             return
+        sync_propagation_exclusions(context.annotator.annotation, context.annotator.next_annotation)
         box_prompts = context.configs.mask_propagation_method == "bounding_box"
         if not context.configs.sam_configs.do_sam:
             return
         if not box_prompts and context.sam_gen == 3 and context.annotator.sam.device == "cpu":
             context.ui.performing_embedding_label.setText("SAM3 tracking requires CUDA")
             return
+        excluded = excluded_track_ids(context.annotator.next_annotation)
         masks = [mask for mask in context.annotator.annotation.good_masks
-                 if track_remaining or mask.mid not in context.propagated_mids]
+                 if mask.track_id not in excluded and (track_remaining or mask.mid not in context.propagated_mids)]
         batch_size = context.mask_track_batch_size
         ready = bool(masks) and (batch_size is None or track_remaining or len(masks) >= batch_size)
         if ready:
@@ -167,6 +173,7 @@ class InferenceController:
                     mutex=context.mutex,
                     current_annotation=context.annotator.annotation if context.sam_gen == 3 else None,
                     active_source_ids={mask.mid for mask in context.annotator.annotation.good_masks},
+                    active_track_ids={mask.track_id for mask in context.annotator.annotation.good_masks},
                 )
 
             def failed(error):
@@ -179,6 +186,8 @@ class InferenceController:
         if ready or track_remaining:
             context.wait_for_workers(message="Propagating masks to the next image...")
         if track_remaining:
+            if not masks and context.sam_gen in (2, 3):
+                context.run_backend_task(context.annotator.sam.reset_tracking, 'Clearing mask tracking...')
             context._purge_falsely_propagated_masks()
             context.propagated_mids = set()
 
@@ -195,6 +204,7 @@ class InferenceController:
         target = context.annotator.next_annotation
         if target is None:
             return
+        sync_propagation_exclusions(context.annotator.annotation, target)
         good_ids = {mask.mid for mask in context.annotator.annotation.good_masks}
         removed_ids = context.propagated_mids - good_ids
         retained = [(mask, decision) for mask, decision in zip(target.masks, target.mask_decisions)
@@ -272,6 +282,13 @@ class InferenceController:
 
     def propose_masks(self):
         context = self.context
+        if (context.sam_gen == 1 and context.configs.mask_propagation
+                and context.bbox_tracker is not None):
+            context.run_backend_task(
+                lambda: context.annotator._propagate_bboxes(context.bbox_tracker),
+                'Propagating masks to the next image...',
+            )
+            context.bbox_tracker = None
         if getattr(context.annotator.annotation, "proposals_ready", False) is True:
             context.start_user_annotation()
         elif context.configs.do_amg:

@@ -4,6 +4,7 @@ from typing import Any
 import os
 import yaml
 import tempfile
+from aramsam_annotator.visualization_options import CONTROL_IMAGE_OPTIONS, VISUALIZATION_LABELS
 
 
 
@@ -25,9 +26,6 @@ class ImgTiles:
     tile_overlap: float = 0.2
     allow_smaller_border_tiles: bool = True
 
-    def __post_init__(self):
-        self.tile_size = min(self.tile_size, 1024)
-
 
 @dataclass
 class SaveData:
@@ -38,8 +36,12 @@ class SaveData:
     mask_style: str = "yolo" # default, yolo, 
     save_bboxes: bool = False
     bbox_style: str = "yolo" # default, yolo, ""
+    control_image_visualization: str = "auto"
 
     def __post_init__(self):
+        if (not isinstance(self.control_image_visualization, str)
+                or self.control_image_visualization not in CONTROL_IMAGE_OPTIONS):
+            raise ValueError("Unknown control image visualization")
         if self.save_masks and self.save_bboxes:
             self.save_bboxes = False  # Fixed variable name
             print("Not implemented yet. Only saving masks")
@@ -73,8 +75,13 @@ class AramsamConfigs:
     use_gpu: bool = True
     mask_propagation: bool = True
     mask_propagation_method: str = "tracking"
+    layout: list[str] | None = None
 
     def __post_init__(self):
+        if self.layout is not None and (
+                not isinstance(self.layout, list) or len(self.layout) != 4
+                or any(not isinstance(view, str) or view not in VISUALIZATION_LABELS for view in self.layout)):
+            raise ValueError("Layout must contain four valid visualization names")
         if self.mask_propagation_method not in ("tracking", "bounding_box"):
             raise ValueError("Mask propagation method must be 'tracking' or 'bounding_box'.")
         if self.do_amg and self.yolo_model_ckpt_p is not None:
@@ -131,6 +138,7 @@ def load_configs_from_yaml(yaml_path: str | Path) -> "AramsamConfigs":
         use_gpu=data.get("use_gpu", AramsamConfigs.__dataclass_fields__["use_gpu"].default),
         mask_propagation=data.get("mask_propagation", True),
         mask_propagation_method=data.get("mask_propagation_method", "tracking"),
+        layout=data.get("layout"),
     )
 
     return configs

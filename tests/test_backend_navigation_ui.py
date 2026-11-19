@@ -3,6 +3,7 @@ import unittest
 from threading import Event
 from pathlib import Path
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -127,9 +128,9 @@ class NavigationTests(unittest.TestCase):
 
     def test_propagation_purge_keeps_decisions_aligned(self):
         app = self.make_app()
-        app.annotator.annotation = Mock(good_masks=[MaskData(mid=2, origin='Sam2_tracking')])
+        app.annotator.annotation = SimpleNamespace(good_masks=[MaskData(mid=2, origin='Sam2_tracking')])
         masks = [MaskData(mid=i, origin='Sam2_tracking') for i in (1, 2, 3)]
-        app.annotator.next_annotation = Mock(masks=masks, good_masks=masks[:], mask_decisions=[True, False, True])
+        app.annotator.next_annotation = SimpleNamespace(masks=masks, good_masks=masks[:], mask_decisions=[True, False, True])
         app.propagated_mids = {1, 2, 3}
         app._purge_falsely_propagated_masks()
         self.assertEqual([m.mid for m in app.annotator.next_annotation.masks], [2])

@@ -105,6 +105,24 @@ class Sam2CacheTests(unittest.TestCase):
         self.assertEqual(sam.predictor.init_state.call_count, 2)
         self.assertEqual(sam.inference_state['num_frames'], 2)
 
+    def test_deleted_objects_are_removed_from_tracking_memory_and_empty_tracking_is_safe(self):
+        sam = self.sam
+        sam.set_features(self.images[:2], image_format='BGR')
+        sam.inference_state['obj_ids'] = [7, 8]
+        sam.predictor.reset_state.side_effect = lambda state: state['obj_ids'].clear()
+        sam.predictor.add_new_mask.side_effect = lambda state, frame, mid, mask: state['obj_ids'].append(mid)
+        features = sam.img_predictor._features
+        remaining = MaskData(mid=8, origin='Polygon_drawing', mask=np.ones((8, 8), np.uint8))
+        sam.set_masks([remaining])
+        self.assertEqual(sam.inference_state['obj_ids'], [8])
+        encoded = sam.predictor.init_state.call_count
+        self.assertEqual(sam.prop_thread_func([]), [])
+        self.assertEqual(sam.inference_state['obj_ids'], [])
+        self.assertEqual(sam._tracking_objects, {})
+        self.assertIs(sam.img_predictor._features, features)
+        self.assertEqual(sam.predictor.init_state.call_count, encoded)
+        sam.predictor.propagate_in_video.assert_not_called()
+
     def test_bgr_is_converted_once_and_public_rgb_input_is_preserved(self):
         image = self.images[0]
         image[:, :, 0] = 17

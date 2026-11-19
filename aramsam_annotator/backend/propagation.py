@@ -1,17 +1,61 @@
 """Bounding-box prompts shared by all SAM generations."""
 import numpy as np
+from contextlib import nullcontext
 
 from aramsam_annotator.backend.annotations import MaskData
 
 
-def merge_propagated_masks(annotation, masks, source_ids, active_source_ids=None):
+def excluded_track_ids(annotation):
+    return (set(getattr(annotation, 'deleted_track_ids', ()))
+            | set(getattr(annotation, 'suppressed_track_ids', ())))
+
+
+def prune_excluded_masks(annotation):
+    with getattr(annotation, '_propagation_lock', nullcontext()):
+        excluded = excluded_track_ids(annotation)
+        if not excluded:
+            return
+        retained = [(mask, decision) for mask, decision in zip(annotation.masks, annotation.mask_decisions)
+                    if mask.track_id not in excluded]
+        annotation.masks = [mask for mask, _ in retained]
+        annotation.mask_decisions = [decision for _, decision in retained]
+        annotation.good_masks = [mask for mask in annotation.good_masks if mask.track_id not in excluded]
+
+
+def sync_propagation_exclusions(source, destination):
+    """Replace inherited exclusions so an explicit reacceptance can propagate again."""
+    with getattr(destination, '_propagation_lock', nullcontext()):
+        destination.suppressed_track_ids = excluded_track_ids(source)
+        prune_excluded_masks(destination)
+
+
+def merge_propagated_masks(annotation, masks, source_ids, active_source_ids=None,
+                           source_track_ids=(), active_track_ids=()):
     """Refresh source objects without duplicating earlier or reloaded results."""
+    with getattr(annotation, '_propagation_lock', nullcontext()):
+        excluded = excluded_track_ids(annotation)
+        masks = [mask for mask in masks if mask.track_id not in excluded]
+        _merge_propagated_masks(annotation, masks, source_ids, active_source_ids,
+                                source_track_ids, active_track_ids)
+        prune_excluded_masks(annotation)
+
+
+def _merge_propagated_masks(annotation, masks, source_ids, active_source_ids,
+                            source_track_ids, active_track_ids):
     masks = list({mask.mid: mask for mask in masks}.values())
+    masks = list({mask.track_id: mask for mask in masks}.values())
     removed_ids = set(source_ids)
+    refreshed_tracks = set(source_track_ids) | {mask.track_id for mask in masks}
+    removed_ids.update(existing.mid for existing in annotation.masks
+                       if existing.track_id in refreshed_tracks)
     active_source_ids = set(source_ids if active_source_ids is None else active_source_ids)
+    active_track_ids = set(active_track_ids) | refreshed_tracks
 
     def match_score(existing, prediction):
-        if (existing.class_id != prediction.class_id or existing.mask is None
+        # Known identities are authoritative even when masks overlap or change
+        # completely. Geometry is only a compatibility fallback for old files.
+        if (not existing.track_id.startswith('legacy:')
+                or existing.class_id != prediction.class_id or existing.mask is None
                 or prediction.mask is None or existing.mask.shape != prediction.mask.shape):
             return 0
         if np.array_equal(existing.mask, prediction.mask):
@@ -31,7 +75,8 @@ def merge_propagated_masks(annotation, masks, source_ids, active_source_ids=None
     for prediction in masks:
         candidates = [(match_score(existing, prediction), existing.mid)
                       for existing in annotation.masks
-                      if existing.mid not in removed_ids and existing.mid not in active_source_ids]
+                      if existing.mid not in removed_ids and existing.mid not in active_source_ids
+                      and existing.track_id not in active_track_ids]
         if candidates:
             score, mid = max(candidates, key=lambda candidate: candidate[0])
             if score >= 0.9:
@@ -43,6 +88,18 @@ def merge_propagated_masks(annotation, masks, source_ids, active_source_ids=None
     annotation.mask_decisions = [decision for _, decision in retained]
     annotation.good_masks = [mask for mask in annotation.good_masks if mask.mid not in removed_ids]
     annotation.add_masks(masks, decision=True)
+
+
+def inherit_tracking_identity(predictions, sources):
+    """Keep identity and annotation metadata independent of a model's output format."""
+    sources = {source.mid: source for source in sources}
+    for prediction in predictions:
+        source = sources[prediction.mid]
+        prediction.track_id = source.track_id
+        prediction.class_id = source.class_id
+        prediction.color_idx = source.color_idx
+        prediction.time_stamp = prediction.time_stamp or 1
+    return predictions
 
 
 def predict_image_boxes(predictor, image, boxes, image_is_set=False):
@@ -59,12 +116,14 @@ def predict_image_boxes(predictor, image, boxes, image_is_set=False):
 
 def propagate_boxes(sam, current_annotation, next_annotation, masks, generation):
     """Extract tight XYXY boxes, then segment their locations in the next image."""
+    sync_propagation_exclusions(current_annotation, next_annotation)
+    excluded = excluded_track_ids(next_annotation)
     source_height, source_width = current_annotation.img.shape[:2]
     height, width = next_annotation.img.shape[:2]
     scale = np.array([width / source_width, height / source_height] * 2, np.float32)
     sources, boxes = [], []
     for source in masks:
-        if source.mask is None:
+        if source.track_id in excluded or source.mask is None:
             continue
         ys, xs = np.nonzero(source.mask)
         if not len(xs):
@@ -82,5 +141,6 @@ def propagate_boxes(sam, current_annotation, next_annotation, masks, generation)
     if len(predictions) != len(sources):
         raise ValueError("Box predictions must return one result per prompt")
     return [MaskData(mid=source.mid, mask=mask, origin=f"Sam{generation}_box_propagation",
-                     class_id=source.class_id, color_idx=source.color_idx, time_stamp=1)
+                     class_id=source.class_id, color_idx=source.color_idx, time_stamp=1,
+                     track_id=source.track_id)
             for source, mask in zip(sources, predictions) if mask is not None and np.any(mask)]

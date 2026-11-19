@@ -19,7 +19,9 @@ class BackendTaskTests(unittest.TestCase):
             lambda model, mutex: AMGWorker(model, mutex),
             lambda model, mutex: Sam2ImgPairEmbeddingWorker(model, [np.zeros((2, 2, 3), np.uint8)], False, mutex),
             lambda model, mutex: YoloPredicitonWorker(model, mutex),
-            lambda model, mutex: Sam2PropagationWorker(model, Mock(), [Mock(mask=np.ones((2, 2)))], 1, False, mutex),
+            lambda model, mutex: Sam2PropagationWorker(
+                model, Mock(deleted_track_ids=set(), suppressed_track_ids=set()),
+                [Mock(mask=np.ones((2, 2)))], 1, False, mutex),
         ]
         for factory in factories:
             mutex, model = QMutex(), Mock()

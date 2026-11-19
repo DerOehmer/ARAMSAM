@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from aramsam_annotator.run_sam import SamInference
 from aramsam_annotator.mask_visualizations import MaskData
+from aramsam_annotator.backend.propagation import sync_propagation_exclusions
 
 
 class AnnotationEditor:
@@ -166,6 +167,7 @@ class AnnotationEditor:
                 center=mask_obj.center,
                 contour=mask_obj.contour,
                 time_stamp=time_stamp,
+                track_id=mask_obj.track_id,
             )
             annot.mask_decisions[context.mask_idx] = True
 
@@ -176,6 +178,8 @@ class AnnotationEditor:
             return (0, 0)
 
         mask_to_store.class_id = class_id
+        annot.deleted_track_ids.discard(mask_to_store.track_id)
+        annot.suppressed_track_ids.discard(mask_to_store.track_id)
         annot.good_masks.append(mask_to_store)
         context.mask_idx += 1
 
@@ -318,16 +322,17 @@ class AnnotationEditor:
     def delete_mask(self, midtopop: int):
         context = self.context
         annot = context.annotation
-        for i, mobj in enumerate(annot.good_masks):
-            if mobj.mid == midtopop:
-                popped_mobj = annot.good_masks.pop(i)
-                context._recycle_mask_meta_data(popped_mobj)
-                mask_dec_idx = [
-                    i for i, m in enumerate(annot.masks) if m.mid == midtopop
-                ]
-                assert len(mask_dec_idx) <= 1
-                if len(mask_dec_idx) == 0:
-                    return
-                context.annotation.mask_decisions[mask_dec_idx[0]] = False
-                context.annotation.preview_mask = None
-                break
+        with annot._propagation_lock:
+            deleted = next((mask for mask in annot.good_masks if mask.mid == midtopop), None)
+            if deleted is None:
+                return
+            annot.deleted_track_ids.add(deleted.track_id)
+            annot.good_masks = [mask for mask in annot.good_masks if mask.track_id != deleted.track_id]
+            context._recycle_mask_meta_data(deleted)
+            for index, mask in enumerate(annot.masks):
+                if mask.track_id == deleted.track_id:
+                    annot.mask_decisions[index] = False
+            annot.preview_mask = None
+            context.preview_obj_id = None
+            if context.next_annotation is not None and context.configs.mask_propagation:
+                sync_propagation_exclusions(annot, context.next_annotation)
