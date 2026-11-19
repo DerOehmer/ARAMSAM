@@ -1,16 +1,16 @@
 sam_configs:
   do_sam: true
-  gen: 3
-  model_ckpt_p: sam3.pt
-  model_type: null
+  gen: 2
+  model_ckpt_p: sam2.1_hiera_tiny.pt
+  model_type: configs/sam2.1/sam2.1_hiera_t.yaml
   bpe_path: null
   confidence_threshold: 0.5
 use_gpu: true
 sam_background_embedding: true
-mask_propagation: false
+mask_propagation: true
 do_amg: false
 img_tiles:
-  do_tiling: true
+  do_tiling: false
   tile_size: 1024
   tile_overlap: 0.2
   allow_smaller_border_tiles: true
@@ -24,5 +24,4 @@ save_data:
   save_bboxes: false
   bbox_style: ''
 class_dict:
-  '0': crop
-  '1': weed
+  '0': seed

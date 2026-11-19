@@ -401,7 +401,8 @@ class Sam2Inference:
         return prop_masks
 
     def prop_thread_func(self, mask_objs: list[MaskData]):
-        self._init_mixed_precision()
+        if torch.device(self.device).type == "cuda":
+            self._init_mixed_precision()
         self.predictor.reset_state(self.inference_state)
         self.set_masks(mask_objs)
         return self.propagate_to_next_img()
