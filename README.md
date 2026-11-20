@@ -183,7 +183,21 @@ This project is supported by:
 - [NPZ Innovation GmbH](https://www.npz-innovation.de/)
 
 ## License
-This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+ARAMSAM's original application code is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+The project integrates third-party components governed by their own licenses, including:
+
+- **SAM 1 and SAM 2/2.1:** Apache License 2.0
+- **SAM 3:** Meta SAM License
+- **Ultralytics:** AGPL-3.0 or commercial licensing
+- **PyQt6:** GPL-3.0 or commercial licensing
+
+Third-party components retain their respective copyright notices and license terms. ARAMSAM's AGPL-3.0 license does not replace or override these terms.
+
+See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for further information.
+
+Users intending to redistribute ARAMSAM, integrate it into proprietary software, or distribute Docker images containing third-party components should review the applicable licenses before deployment.
 
 ## Citation
 See the citation metadata: [`CITATION.cff`](./CITATION.cff)
