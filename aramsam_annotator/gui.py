@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from aramsam_annotator.visualization_options import VISUALIZATION_LABELS
 
 from PyQt6 import QtWidgets
 from PyQt6 import QtGui
@@ -8,7 +9,7 @@ import math
 import json
 import os
 
-from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QRect, QPointF
+from PyQt6.QtCore import Qt, QPoint, QRectF, pyqtSignal, QRect, QPointF, QEventLoop
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -38,11 +39,15 @@ from PyQt6.QtWidgets import (
     QFrame,
     QCheckBox,
     QProgressDialog,
+    QProgressBar,
     QApplication,
     QDialog,
     QVBoxLayout,
     QSpinBox,
     QComboBox,
+    QDoubleSpinBox,
+    QToolButton,
+    QWidgetAction,
 )
 
 
@@ -56,6 +61,7 @@ class UserInterface(QMainWindow):
     sam_path_signal: pyqtSignal = pyqtSignal(str)
     save_signal: pyqtSignal = pyqtSignal(int)
     shutdown_signal: pyqtSignal = pyqtSignal(int)
+    text_prompt_signal: pyqtSignal = pyqtSignal(str, float)
 
     def __init__(self, ui_options: dict = None, experiment_mode: str = None) -> None:
         super().__init__(parent=None)
@@ -88,6 +94,7 @@ class UserInterface(QMainWindow):
             "Set Ouput Directory", self.open_ouput_dir_selection
         )
         self.menu_settings.addAction("Set SAM Model", self._open_sam_model_selection)
+        self.construct_settings_checkboxes()
         self.zoom_level = 0
         self.zoom_factor = 1.25
         self.current_viewport = None
@@ -96,7 +103,109 @@ class UserInterface(QMainWindow):
         self.loading_window = None
         self.basic_loading_window = None
         self.construct_ui()
+        self.construct_text_prompt_panel()
         self.showMaximized()
+
+    def construct_settings_checkboxes(self):
+        self.menu_settings.addSeparator()
+        self.settings_checkbox_actions = []
+        for name, label, checked in (
+            ("auto_save_box", "Auto Save", True),
+            ("auto_embed_box", "Auto Embed", self.experiment_mode != "polygon"),
+            ("mask_propagation_box", "Mask Propagation", True),
+        ):
+            checkbox = QCheckBox(label, self.menu_settings)
+            checkbox.setChecked(checked)
+            checkbox.setContentsMargins(12, 6, 12, 6)
+            action = QWidgetAction(self.menu_settings)
+            action.setText(label)
+            action.setDefaultWidget(checkbox)
+            action.setVisible(self.experiment_mode is None)
+            self.menu_settings.addAction(action)
+            self.settings_checkbox_actions.append(action)
+            setattr(self, name, checkbox)
+        self.mask_propagation_box.setToolTip("Carry accepted masks to the next image")
+
+    def construct_text_prompt_panel(self):
+        self.text_prompt_toggle = QToolButton(self)
+        self.text_prompt_toggle.setText("SAM3 text prompt")
+        self.text_prompt_toggle.setCheckable(True)
+        self.text_prompt_toggle.setArrowType(Qt.ArrowType.DownArrow)
+        self.text_prompt_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.menuBar().setCornerWidget(self.text_prompt_toggle, Qt.Corner.TopRightCorner)
+
+        self.text_prompt_panel = QFrame(self)
+        self.text_prompt_panel.setFrameShape(QFrame.Shape.StyledPanel)
+        self.text_prompt_panel.setAutoFillBackground(True)
+        self.text_prompt_panel.setFixedWidth(360)
+        layout = QVBoxLayout(self.text_prompt_panel)
+        description = QLabel("Find all objects matching a word or short phrase.")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+        self.text_prompt_input = QComboBox()
+        self.text_prompt_input.setEditable(True)
+        self.text_prompt_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.text_prompt_input.lineEdit().setPlaceholderText("e.g. cup, seed, red car")
+        self.text_prompt_input.setAccessibleName("SAM3 text prompt")
+        layout.addWidget(self.text_prompt_input)
+        layout.addWidget(QLabel("Minimum confidence"))
+        self.text_prompt_confidence = QDoubleSpinBox()
+        self.text_prompt_confidence.setRange(0.0, 1.0)
+        self.text_prompt_confidence.setSingleStep(0.05)
+        self.text_prompt_confidence.setValue(0.5)
+        layout.addWidget(self.text_prompt_confidence)
+        self.text_prompt_run = QPushButton("Find objects")
+        layout.addWidget(self.text_prompt_run)
+        self.text_prompt_status = QLabel("Load an image with SAM3 to start.")
+        self.text_prompt_status.setWordWrap(True)
+        layout.addWidget(self.text_prompt_status)
+        hide_button = QPushButton("Hide")
+        hide_button.clicked.connect(lambda: self.text_prompt_toggle.setChecked(False))
+        layout.addWidget(hide_button)
+        self.text_prompt_run.clicked.connect(self.submit_text_prompt)
+        self.text_prompt_input.lineEdit().returnPressed.connect(self.submit_text_prompt)
+        self.text_prompt_toggle.toggled.connect(self.toggle_text_prompt_panel)
+        self.text_prompt_panel.hide()
+        self.set_text_prompt_available(False)
+
+    def toggle_text_prompt_panel(self, visible):
+        self.text_prompt_panel.setVisible(visible)
+        self.text_prompt_toggle.setArrowType(
+            Qt.ArrowType.UpArrow if visible else Qt.ArrowType.DownArrow)
+        if visible:
+            self.position_text_prompt_panel()
+            self.text_prompt_panel.raise_()
+            self.text_prompt_input.setFocus()
+
+    def position_text_prompt_panel(self):
+        self.text_prompt_panel.adjustSize()
+        self.text_prompt_panel.move(max(0, self.width() - self.text_prompt_panel.width() - 8),
+                                    self.menuBar().height())
+
+    def set_text_prompt_available(self, available):
+        self.text_prompt_toggle.setEnabled(available)
+        self.text_prompt_run.setEnabled(available)
+        self.text_prompt_toggle.setToolTip(
+            "Show or hide text prompts" if available else "Select SAM3 to use text prompts")
+        if not available:
+            self.text_prompt_toggle.setChecked(False)
+
+    def set_text_prompt_busy(self, busy):
+        self.text_prompt_run.setEnabled(not busy)
+        self.text_prompt_input.setEnabled(not busy)
+        self.text_prompt_confidence.setEnabled(not busy)
+
+    def submit_text_prompt(self):
+        if not self.text_prompt_run.isEnabled():
+            return
+        prompt = self.text_prompt_input.currentText().strip()
+        if not prompt:
+            self.text_prompt_status.setText("Enter an object or a short phrase.")
+            return
+        if self.text_prompt_input.findText(prompt) < 0:
+            self.text_prompt_input.insertItem(0, prompt)
+        self.text_prompt_input.setCurrentText(prompt)
+        self.text_prompt_signal.emit(prompt, self.text_prompt_confidence.value())
 
     def construct_ui(self):
         self.construct_class_selection()
@@ -243,28 +352,26 @@ class UserInterface(QMainWindow):
         )
         if self.experiment_mode is None:
 
-            self.auto_save_box = QCheckBox(text="Auto Save", parent=self)
-            self.auto_save_box.move(
-                11 * self.buttons_spacing + 10 * self.buttons_min_width,
-                int(self.height_offset / 2),
-            )
-            self.auto_save_box.setChecked(True)
-            self.auto_save_box.show()
-
-            self.auto_embed_box = QCheckBox(text="Auto Embed", parent=self)
-            self.auto_embed_box.move(
-                12 * self.buttons_spacing + 11 * self.buttons_min_width,
-                int(self.height_offset / 2),
-            )
-            self.auto_embed_box.setChecked(True)
-            self.auto_embed_box.show()
-
             self.next_img_button = QPushButton(text="next image", parent=self)
             self.next_img_button.move(
                 7 * self.buttons_spacing + 6 * self.buttons_min_width,
                 int(self.height_offset / 2),
             )
-            self.next_img_button.setMinimumWidth(self.buttons_min_width)
+            self.next_img_button.setFixedWidth(self.buttons_min_width - 10)
+            self.next_img_button.move(
+                self.next_img_button.x() + 10, self.next_img_button.y())
+            self.previous_img_button = QPushButton("‹", self)
+            self.previous_img_button.setToolTip("Previous image")
+            self.previous_img_button.setStyleSheet(
+                "min-width: 0px; min-height: 0px; padding: 0px; margin: 0px;"
+                "border-radius: 9px; border: 1px solid #6c8299;"
+            )
+            self.previous_img_button.setFixedSize(18, 18)
+            self.previous_img_button.move(
+                self.next_img_button.x() - self.previous_img_button.width() - 1,
+                self.next_img_button.y() + (self.next_img_button.height() - self.previous_img_button.height()) // 2,
+            )
+            self.previous_img_button.setEnabled(False)
 
             self.labelCoords = QLabel(self, text="Pixel Pos.")
             self.labelCoords.move(
@@ -274,6 +381,8 @@ class UserInterface(QMainWindow):
             self.labelCoords.show()
 
         if self.experiment_mode in ["structured", "polygon", "tutorial"]:
+            self.labelCoords = QLabel(parent=self)
+            self.labelCoords.hide()
             self.next_method_button = QPushButton("Next", self)
             self.next_method_button.setFont(QFont("Arial", 16, QFont.Weight.Bold))
             self.next_method_button.move(
@@ -313,7 +422,7 @@ class UserInterface(QMainWindow):
             self.manual_annotation_button,
             self.draw_button,
             self.delete_button,
-            self.next_img_button,
+            self.next_img_button if self.experiment_mode is None else self.next_method_button,
         ]
         self.disable_push_buttons()
 
@@ -327,6 +436,21 @@ class UserInterface(QMainWindow):
                 continue
             button.setEnabled(True)
         
+
+    def set_class_dict(self, class_dict):
+        if self.class_select is not None:
+            self.menuBar().removeAction(self.class_select.menuAction())
+            self.class_select.deleteLater()
+        if self.class_action_group is not None:
+            self.class_action_group.deleteLater()
+        if getattr(self, "current_class_label", None) is not None:
+            self.current_class_label.hide()
+            self.current_class_label.deleteLater()
+            self.current_class_label = None
+        self.ui_options["class"] = class_dict
+        self.construct_class_selection()
+        if class_dict:
+            self.current_class_label.show()
 
     def construct_class_selection(self):
         class_dict = self.ui_options.get("class")
@@ -365,7 +489,7 @@ class UserInterface(QMainWindow):
             self.class_action_group.addAction(action)
 
             # Store the action for later use if needed
-            self.class_actions[key] = action
+            self.class_actions[str(key)] = action
 
         self.class_action_group.triggered.connect(self.class_toggle)
 
@@ -377,10 +501,9 @@ class UserInterface(QMainWindow):
         if class_dict is None:
             selected_action = self.class_action_group.checkedAction()
             return selected_action.text()
-        elif not "0" in class_dict.keys():
-            return "Invalid class json"
         else:
-            return f'0: {class_dict["0"]}'
+            key = next(iter(class_dict))
+            return f'{key}: {class_dict[key]}'
 
     def calcluate_size_of_annotation_visualizers(self) -> tuple[int]:
         vis_width = int(self.width() / 2)
@@ -451,7 +574,7 @@ class UserInterface(QMainWindow):
                 parent=self,
                 caption="Select SAM Model",
                 directory="${HOME}",
-                filter="*.pth",
+                filter="SAM checkpoints (*.pth *.pt)",
             )
             if sam_path is not None:
                 self.sam_path_signal.emit(sam_path[0])
@@ -488,9 +611,9 @@ class UserInterface(QMainWindow):
         if selected_action is None:
             return None
 
-        for i, action in enumerate(self.class_actions.values()):
+        for key, action in self.class_actions.items():
             if action == selected_action:
-                return i
+                return int(key)
         return None
 
     def handleCoords(self, point: QPoint):
@@ -512,6 +635,12 @@ class UserInterface(QMainWindow):
         self.good_mask_button.click()
 
     def keyPressEvent(self, event: QKeyEvent):
+        # Annotation shortcuts must not fire while typing a text prompt.
+        focus = QApplication.focusWidget()
+        if (hasattr(self, "text_prompt_panel") and focus is not None
+                and self.text_prompt_panel.isAncestorOf(focus)):
+            super().keyPressEvent(event)
+            return
         if isinstance(event, QKeyEvent):
             key_text = event.text()
             print(f"Last Key Pressed: {key_text}")
@@ -714,11 +843,19 @@ class UserInterface(QMainWindow):
             self.info_box.setStandardButtons(QMessageBox.StandardButton.NoButton)
             self.info_box.show()
 
-    def create_basic_loading_window(self, text: str = "Loading, please wait..."):
+    def create_basic_loading_window(self, text: str = "Loading, please wait...",
+                                    paint_immediately: bool = False):
         if self.basic_loading_window is not None:
             self.basic_loading_window.close()
         self.basic_loading_window = BasicLoadingWindow(self, text=text)
         self.basic_loading_window.show()
+        if paint_immediately:
+            # Model initialization runs synchronously. Deliver the initial paint
+            # before it starts, without accepting another input action.
+            window = self.basic_loading_window
+            QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            if self.basic_loading_window is window:
+                window.repaint()
 
     def close_basic_loading_window(self):
         if self.basic_loading_window is not None:
@@ -786,6 +923,8 @@ class UserInterface(QMainWindow):
             self.annotation_visualizers[idx].set_pixmap(pixmap=pixmap)
 
     def resizeEvent(self, event):
+        if hasattr(self, "text_prompt_panel"):
+            self.position_text_prompt_panel()
         vis_width, vis_height = self.calcluate_size_of_annotation_visualizers()
 
         idx = 0
@@ -865,7 +1004,10 @@ class BasicLoadingWindow(QDialog):
         super().__init__(parent)
         self.text = text
         self.setWindowTitle("Loading...")
-        self.setFixedSize(700, 100)
+        # Keep the dialog on screen while allowing its height to follow wrapped
+        # messages and the user's font size instead of clipping at 100 pixels.
+        available_width = self.screen().availableGeometry().width()
+        self.setFixedWidth(min(560, max(100, available_width - 48)))
 
         # Remove the close button and disable window resizing
         self.setWindowFlags(
@@ -883,17 +1025,33 @@ class BasicLoadingWindow(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
-        label = QLabel(self.text)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
+        self.title_label = QLabel("Please wait", self)
+        title_font = self.title_label.font()
+        title_font.setBold(True)
+        title_font.setPointSizeF(title_font.pointSizeF() + 2)
+        self.title_label.setFont(title_font)
+        layout.addWidget(self.title_label)
 
-        # self.progress = QProgressBar()
-        # self.progress.setRange(0, 0)  # Indeterminate progress bar
-        # layout.addWidget(self.progress)
+        self.message_label = QLabel(self.text, self)
+        self.message_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.message_label.setWordWrap(True)
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(self.message_label)
 
-        self.setLayout(layout)
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setAccessibleName("Processing")
+        layout.addWidget(self.progress_bar)
+
+        # QVBoxLayout includes the label's height-for-width calculation, so long
+        # messages and explicit newlines receive enough vertical space.
+        self.resize(self.width(), layout.totalHeightForWidth(self.width()))
 
 
 class UserInfoWindow(QDialog):
@@ -1328,8 +1486,9 @@ class OptionsWindow(QMainWindow):
                 combobox.setGeometry(
                     i * box_width, j * box_height, box_width, box_height
                 )
-                [combobox.addItem(option) for option in layout_options["options"]]
-                combobox.setCurrentText(layout_options["current"][i * 2 + j])
+                for option in layout_options["options"]:
+                    combobox.addItem(VISUALIZATION_LABELS.get(option, option), option)
+                combobox.setCurrentIndex(combobox.findData(layout_options["current"][i * 2 + j]))
                 self.comboboxes.append(combobox)
         self.ok_button = QPushButton(parent=self, text="OK")
         self.ok_button.setGeometry(
@@ -1342,6 +1501,6 @@ class OptionsWindow(QMainWindow):
         combobox = QtWidgets.QComboBox(self)
         options = []
         for combobox in self.comboboxes:
-            options.append(combobox.currentText())
+            options.append(combobox.currentData())
 
         self.layout_settings_options_signal.emit(options)

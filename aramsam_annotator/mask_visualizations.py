@@ -7,108 +7,42 @@ from pathlib import Path
 from typing import Tuple
 
 
-class MaskIdHandler:
-    def __init__(self):
-        self._id = 0
-        self.ids: list[int] = []
-
-    def get_id(self):
-        current_id = self._id
-        self.ids.append(current_id)
-        self._id += 1
-        return current_id
+# Compatibility exports for existing consumers.
+from aramsam_annotator.backend.annotations import (
+    MaskIdHandler, MaskData, MaskVisualizationData, AnnotationObject,
+)
 
 
-@dataclass
-class MaskData:
-    mid: int
-    origin: str
-    mask: np.ndarray = None
-    bbox: tuple = None  # xyxy
-    time_stamp: int = None  # in deciseconds (1/10th of a second)
-    center: tuple = None
-    color_idx: int = None
-    contour: np.ndarray = None
-    class_id: int = None
-
-
-@dataclass
-class MaskVisualizationData:
-    img: np.ndarray = None
-    img_sam_preview: np.ndarray = None
-    mask: np.ndarray = None  # mask of current object of interest
-    maskinrgb: np.ndarray = None
-    masked_img: np.ndarray = None
-    mask_collection: np.ndarray = None
-    masked_img_cnt: np.ndarray = None
-    mask_collection_cnt: np.ndarray = None
-    bbox: tuple = None  # xyxy of current object of interest
-    bbox_img: np.ndarray = None
-    bbox_img_cnt: np.ndarray = None
-
-
-class AnnotationObject:
-    def __init__(self, filepath: Path) -> None:
-        self.filepath: str = str(filepath)
-        self.img: np.ndarray = self._load_img(self.filepath)
-        self.img_name = basename(filepath)
-        self.masks: list[MaskData] = []
-        self.good_masks: list[MaskData] = []
-        self.mask_decisions: list[bool] = []
-
-        self.features = None
-        self.original_size = None
-        self.input_size = None
-
-        self.mask_visualizer = MaskVisualization()
-        self.mask_visualizations: MaskVisualizationData = MaskVisualizationData(
-            img=self.img
-        )
-        self.preview_mask = None
-
-    def _load_img(self, filepath: Path | str) -> np.ndarray:
-        img = cv2.imread(str(filepath))
-        if len(img.shape) == 2:
-            print("Loaded image is grayscale - converting to BGR")
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        if img.shape[2] == 4:
-            print("Loaded image with 4 channels - ignoring last")
-            img = img[:, :, :3]
-        return img
-
-    def set_current_mask(self, mask_idx: int):
-        if self.masks[mask_idx].mask is not None:
-            self.mask_visualizations.mask = cv2.cvtColor(
-                self.masks[mask_idx].mask, cv2.COLOR_GRAY2BGR
-            )
-        elif self.masks[mask_idx].bbox is not None:
-            self.mask_visualizations.bbox = self.masks[mask_idx].bbox
-
-    def add_masks(self, masks, decision=False):
-        self.masks.extend(masks)
-        self.mask_decisions.extend([decision for _ in range(len(masks))])
-
-    def set_sam_parameters(self, features, original_size, input_size):
-        self.features = features
-        self.original_size = original_size
-        self.input_size = input_size
-
-    def get_sam_parameters(self):
-        return self.features, self.original_size, self.input_size
-
-    def load_masks_from_dir(self, masks_dir: Path, mid_handler: MaskIdHandler):
-        # TODO adapt for bounding boxes
-        mask_files = sorted(masks_dir.glob("*.png"))
-        for mask_file in mask_files:
-            if not mask_file.is_file():
-                raise FileNotFoundError(f"File {mask_file} not found")
-            mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
-            mask_data = MaskData(
-                mid=mid_handler.get_id(),
-                mask=mask,
-                origin="",
-            )
-            self.good_masks.append(mask_data)
+def draw_mask_instance(image: np.ndarray, mask: np.ndarray, instance_id: int,
+                       color: tuple[int, int, int], contour_thickness: int = 2,
+                       circle_radius: int = 16, circle_alpha: float = 0.5) -> np.ndarray:
+    """Draw a contour and a translucent instance-ID circle on a BGR image in-place."""
+    mask_u8 = (mask > 0).astype(np.uint8)
+    contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return image
+    cv2.drawContours(image, contours, -1, color, contour_thickness)
+    moments = cv2.moments(mask_u8, binaryImage=True)
+    cx = int(moments['m10'] / moments['m00'])
+    cy = int(moments['m01'] / moments['m00'])
+    if not mask_u8[cy, cx]:
+        distance = cv2.distanceTransform(mask_u8, cv2.DIST_L2, 3)
+        _, _, _, (cx, cy) = cv2.minMaxLoc(distance)
+    height, width = image.shape[:2]
+    radius = circle_radius
+    x1, y1 = max(0, cx - radius), max(0, cy - radius)
+    x2, y2 = min(width, cx + radius + 1), min(height, cy + radius + 1)
+    roi = image[y1:y2, x1:x2]
+    overlay = roi.copy()
+    cv2.circle(overlay, (cx - x1, cy - y1), radius, color, -1, lineType=cv2.LINE_AA)
+    cv2.addWeighted(overlay, circle_alpha, roi, 1 - circle_alpha, 0, dst=roi)
+    text = str(instance_id)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.45 if len(text) == 3 else 0.55
+    (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, 1)
+    cv2.putText(image, text, (cx - text_width // 2, cy + text_height // 2), font,
+                font_scale, (255, 255, 255), 1, cv2.LINE_AA)
+    return image
 
 
 class MaskVisualization:
@@ -121,12 +55,14 @@ class MaskVisualization:
         self.preview_mask = None
 
         self.mask_ids = []
+        self._mask_versions = {}
         self.mask_ids_to_remove = []
         self.mask_ids_to_add = []
 
         self.cnt_color = cnt_color
         self.masked_img: np.ndarray = None
         self.bbox_img: np.ndarray = None
+        self.instance_contours: np.ndarray = None
         self.maskinrgb: np.ndarray = None
         self.mask_collection: np.ndarray = None
         self._mask_coll_bin: np.ndarray = None
@@ -196,18 +132,31 @@ class MaskVisualization:
             self.mask_ids = mask_ids
         else:
             self.mask_ids = [m.mid for m in self.mask_objs]
+        self._mask_versions = {m.mid: (id(m), id(m.mask)) for m in self.mask_objs}
 
     def _compare_mask_ids(self):
         new_mask_ids = [m.mid for m in self.mask_objs]
 
         old_set = set(self.mask_ids)
         new_set = set(new_mask_ids)
+        replaced = any(self._mask_versions.get(m.mid) != (id(m), id(m.mask))
+                       for m in self.mask_objs if m.mid in old_set)
+        reordered = old_set == new_set and new_mask_ids != self.mask_ids
 
         mids_to_remove = old_set - new_set
         mids_to_add = new_set - old_set
+        if replaced or reordered:
+            # Propagation can refresh an object without changing its ID. Clear
+            # cached pixels before redrawing, including the overlap accumulator.
+            self.masked_img = None
+            self.bbox_img = None
+            self.instance_contours = None
+            self.mask_collection = None
+            self._mask_coll_bin = None
+            mids_to_add = new_set
         self.mask_ids_to_remove = list(mids_to_remove)
         self.mask_ids_to_add = list(mids_to_add)
-        if new_mask_ids == self.mask_ids:
+        if new_mask_ids == self.mask_ids and not replaced:
             self.no_collection_to_update = True
         else:
             self.no_collection_to_update = False
@@ -292,6 +241,25 @@ class MaskVisualization:
                 self.bbox_img, (x1, y1), (x2, y2), (int(b), int(g), int(r)), 1
             )
         return self.bbox_img
+
+    def get_instance_contours(self) -> np.ndarray:
+        if self.no_collection_to_update and self.instance_contours is not None:
+            return self.instance_contours
+        if self.instance_contours is None or self.mask_ids_to_remove:
+            self.instance_contours = self.img.copy()
+        for index, obj in enumerate(self.mask_objs):
+            if (self.mask_ids_to_add and not self.mask_ids_to_remove
+                    and obj.mid not in self.mask_ids_to_add):
+                continue
+            if obj.mask is None or not np.any(obj.mask):
+                continue
+            if obj.color_idx is None:
+                obj.color_idx = (obj.mid if obj.mid is not None else index) % len(self.colormap)
+            rgb = self.get_color(obj.color_idx)
+            color = tuple(int(channel) for channel in rgb[::-1])
+            draw_mask_instance(self.instance_contours, obj.mask,
+                               obj.mid if obj.mid is not None else index, color)
+        return self.instance_contours
 
     def get_bbox_img_cnt(self) -> np.ndarray:
         if self.bbox_img is None:

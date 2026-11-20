@@ -1,0 +1,433 @@
+"""SAM/YOLO inference and propagation orchestration."""
+import time
+from pathlib import Path
+from aramsam_annotator.tracker import PanoImageAligner
+from aramsam_annotator.mask_visualizations import MaskData
+from aramsam_annotator.backend.propagation import sync_propagation_exclusions, excluded_track_ids
+from aramsam_annotator.workers import (
+    AMGWorker, Sam2ImgPairEmbeddingWorker, Sam1EmbeddingWorker, Sam2PropagationWorker,
+    BoxPropagationWorker, YoloPredicitonWorker, TextPromptWorker, Sam2PrefetchWorker,
+)
+
+
+class InferenceController:
+    def __init__(self, context):
+        self.context = context
+        self.text_prompt_running = False
+        self.sam2_prefetch_target = None
+
+    def propagate_good_masks(self):
+        context = self.context
+        if not context.configs.mask_propagation or not context.configs.sam_configs.do_sam:
+            return
+        if (context.annotator.annotation is None
+                or context.annotator.next_annotation is None):
+            return
+        sync_propagation_exclusions(context.annotator.annotation, context.annotator.next_annotation)
+        if context.configs.mask_propagation_method == "bounding_box" or context.sam_gen in (2, 3):
+
+            context.start_mask_batch_thread(track_remaining=True)
+
+        elif context.sam_gen == 1:
+            if not context.annotator.annotation.good_masks:
+                context.bbox_tracker = None
+                return
+            if context.bbox_tracker is None:
+                context.bbox_tracker = PanoImageAligner()
+            context.run_backend_task(
+                lambda: context.bbox_tracker.add_annotation(context.annotator.annotation),
+                "Preparing mask propagation...",
+            )
+
+        if context.sam_gen in (2, 3):
+            context.annotator.convey_color_to_next_annot(
+                context.annotator.next_annotation.masks
+            )
+        if context.annotator.time_stamp is None:
+            context.annotator.init_time_stamp()
+
+    def embed_img_pair(self, do_amg=None):
+        context = self.context
+        if context.ui.auto_embed_box.isChecked() is False:
+            context.start_user_annotation()
+            return
+        context.ui.manual_annotation_button.setEnabled(False)
+        if context.annotator.next_annotation is not None:
+            img_pair = [
+                context.annotator.annotation.img,
+                context.annotator.next_annotation.img,
+            ]
+        else:
+            img_pair = [context.annotator.annotation.img]
+        img_embed_worker = Sam2ImgPairEmbeddingWorker(
+            context.annotator.sam, img_pair,
+            (context.configs.do_amg or context.configs.yolo_model_ckpt_p is not None)
+            if do_amg is None else do_amg, context.mutex
+        )
+        if context.experiment_mode is None:
+            context.ui.performing_embedding_label.setText(
+                "Embedding current image"
+            )
+        self._submit(img_embed_worker, context.receive_sam2_embedding, context.embedding_done)
+
+    def prefetch_sam2_next_image(self):
+        context = self.context
+        target = context.annotator.next_annotation
+        if (context.experiment_mode is not None or not context.configs.sam_background_embedding
+                or not context.ui.auto_embed_box.isChecked() or target is None):
+            return
+        model = context.annotator.sam
+        if model.has_cached_image(target.img):
+            return
+        key = (model, target)
+        if self.sam2_prefetch_target == key:
+            return
+        self.sam2_prefetch_target = key
+        context.ui.performing_embedding_label.setText("Embedding next image in background")
+
+        def ready(_):
+            if self.sam2_prefetch_target == key:
+                self.sam2_prefetch_target = None
+            context.ui.performing_embedding_label.setText("Current and next image ready")
+
+        def failed(error):
+            if self.sam2_prefetch_target == key:
+                self.sam2_prefetch_target = None
+            context.print_thread_error(error)
+
+        identity = getattr(target, 'filepath', target.img_name)
+        self._submit(Sam2PrefetchWorker(model, target.img, identity), ready, None,
+                     target=target, error=failed)
+
+    def embed_img(self, img_name: str):
+        context = self.context
+        if context.ui.auto_embed_box.isChecked() is False:
+            context.start_user_annotation()
+            return
+        candidates = (context.annotator.annotation, context.annotator.next_annotation)
+        target = next((annotation for annotation in candidates
+                       if annotation is not None and self._matches(annotation, img_name)), None)
+        if target is None:
+            raise ValueError(f"Embedding could not be matched to image: {img_name}")
+        if target is context.annotator.next_annotation and not context.configs.sam_background_embedding:
+            return
+        if target is context.annotator.annotation:
+            context.ui.manual_annotation_button.setEnabled(False)
+        img_to_embed = target.img
+        delay = 0.0
+        # Use full path identities for real annotations; retain name-only API callers.
+        identity = getattr(target, "filepath", target.img_name)
+        worker = Sam1EmbeddingWorker(
+            sam_predictor=context.annotator.sam.predictor,
+            img=img_to_embed,
+            img_name=identity,
+            mutex=context.mutex,
+            delay=delay,
+        )
+        self._submit(worker, context.receive_embedding_from_thread, context.embedding_done,
+                     target=target)
+
+        embedding_threads = context.threadpool.activeThreadCount()
+        if context.experiment_mode is None:
+            context.ui.performing_embedding_label.setText(
+                f"Embedding {embedding_threads} images"
+            )
+            if target is context.annotator.annotation:
+                context.ui.create_basic_loading_window(
+                    text="Please wait... Processing image with SAM"
+                )
+
+    def start_mask_batch_thread(self, track_remaining: bool = False):
+        context = self.context
+        if not context.configs.mask_propagation:
+            return
+        if context.annotator.next_annotation is None:
+            return
+        sync_propagation_exclusions(context.annotator.annotation, context.annotator.next_annotation)
+        box_prompts = context.configs.mask_propagation_method == "bounding_box"
+        if not context.configs.sam_configs.do_sam:
+            return
+        if not box_prompts and context.sam_gen == 3 and context.annotator.sam.device == "cpu":
+            context.ui.performing_embedding_label.setText("SAM3 tracking requires CUDA")
+            return
+        excluded = excluded_track_ids(context.annotator.next_annotation)
+        masks = [mask for mask in context.annotator.annotation.good_masks
+                 if mask.track_id not in excluded and (track_remaining or mask.mid not in context.propagated_mids)]
+        batch_size = context.mask_track_batch_size
+        ready = bool(masks) and (batch_size is None or track_remaining or len(masks) >= batch_size)
+        if ready:
+            ids = {int(mask.mid) for mask in masks}
+            context.propagated_mids.update(ids)
+            if box_prompts:
+                worker = BoxPropagationWorker(
+                    context.annotator.sam, context.annotator.annotation,
+                    context.annotator.next_annotation, masks, context.sam_gen, context.mutex,
+                )
+            else:
+                worker = Sam2PropagationWorker(
+                    sam2_predictor=context.annotator.sam,
+                    next_annotation=context.annotator.next_annotation,
+                    unpropagated_masks=masks,
+                    batch_size=batch_size or len(masks),
+                    track_remaining=track_remaining,
+                    mutex=context.mutex,
+                    current_annotation=context.annotator.annotation if context.sam_gen == 3 else None,
+                    active_source_ids={mask.mid for mask in context.annotator.annotation.good_masks},
+                    active_track_ids={mask.track_id for mask in context.annotator.annotation.good_masks},
+                )
+
+            def failed(error):
+                context.propagated_mids.difference_update(ids)
+                context.print_thread_error(error)
+
+            if context.experiment_mode is None:
+                context.ui.performing_embedding_label.setText(f"Propagating {len(masks)} masks")
+            self._submit(worker, None, context.propagation_done, error=failed)
+        if ready or track_remaining:
+            context.wait_for_workers(message="Propagating masks to the next image...")
+        if track_remaining:
+            if not masks and context.sam_gen in (2, 3):
+                context.run_backend_task(context.annotator.sam.reset_tracking, 'Clearing mask tracking...')
+            context._purge_falsely_propagated_masks()
+            context.propagated_mids = set()
+
+    def print_thread_error(self, error: tuple):
+        context = self.context
+        _, value, traceback_str = error
+        print(traceback_str)
+        context.ui.close_basic_loading_window()
+        context.ui.performing_embedding_label.setText("Processing failed")
+        context.ui.create_message_box(True, str(value))
+
+    def _purge_falsely_propagated_masks(self):
+        context = self.context
+        target = context.annotator.next_annotation
+        if target is None:
+            return
+        sync_propagation_exclusions(context.annotator.annotation, target)
+        good_ids = {mask.mid for mask in context.annotator.annotation.good_masks}
+        removed_ids = context.propagated_mids - good_ids
+        retained = [(mask, decision) for mask, decision in zip(target.masks, target.mask_decisions)
+                    if mask.mid not in removed_ids]
+        target.masks = [mask for mask, _ in retained]
+        target.mask_decisions = [decision for _, decision in retained]
+        target.good_masks = [mask for mask in target.good_masks if mask.mid not in removed_ids]
+
+    def embedding_done(self, img_name: str | int):
+        context = self.context
+        if context.experiment_mode in ["structured", "tutorial"]:
+            return
+        if isinstance(img_name, int):
+            if context.sam_gen == 2 and self.sam2_prefetch_target is not None:
+                context.ui.performing_embedding_label.setText("Embedding next image in background")
+            else:
+                context.ui.performing_embedding_label.setText(
+                    f"{img_name} images successfully embedded"
+                )
+        else:
+            print(f"Embedding of {img_name} done")
+            embedding_threads = context.threadpool.activeThreadCount()
+            if embedding_threads > 0:
+                context.ui.performing_embedding_label.setText(
+                    f"Embedding {embedding_threads} images"
+                )
+            else:
+                context.ui.performing_embedding_label.setText(f"Embeddings done!")
+                # Prefetch completion must not reset the current annotation timer.
+                context.update_ui_imgs()
+
+    def object_proposal_done(self, _):
+        context = self.context
+        context.ui.close_basic_loading_window()
+        print("Object proposal done")
+
+    def propagation_done(self, maskn):
+        context = self.context
+        if context.experiment_mode is None:
+            context.ui.performing_embedding_label.setText(f"Propagated {maskn} masks")
+
+
+    @staticmethod
+    def _matches(annotation, identity):
+        filepath = getattr(annotation, "filepath", None)
+        if filepath is not None and str(identity) != Path(str(identity)).name:
+            return Path(filepath).resolve() == Path(identity).resolve()
+        return annotation.img_name == identity
+
+    def receive_embedding_from_thread(self, result: tuple):
+        context = self.context
+        features, original_size, input_size, identity = result
+        current = context.annotator.annotation
+        following = context.annotator.next_annotation
+        if current is not None and self._matches(current, identity):
+            context.ui.close_basic_loading_window()
+            if features is not None:
+                current.set_sam_parameters(features=features, original_size=original_size, input_size=input_size)
+                context.annotator.update_sam_features_to_current_annotation()
+            context.propose_masks()
+            if (context.experiment_mode is None and context.configs.sam_background_embedding
+                    and following is not None and following.features is None):
+                context.embed_img(getattr(following, "filepath", following.img_name))
+        elif following is not None and self._matches(following, identity) and features is not None:
+            following.set_sam_parameters(features=features, original_size=original_size, input_size=input_size)
+
+    def receive_sam2_embedding(self, do_amg: bool):
+        context = self.context
+        context.ui.close_basic_loading_window()
+        print("Will now do SAM2 embedding", do_amg)
+        if do_amg:
+            context.propose_masks()
+        else:
+            context.start_user_annotation()
+
+    def propose_masks(self):
+        context = self.context
+        if (context.sam_gen == 1 and context.configs.mask_propagation
+                and context.bbox_tracker is not None):
+            context.run_backend_task(
+                lambda: context.annotator._propagate_bboxes(context.bbox_tracker),
+                'Propagating masks to the next image...',
+            )
+            context.bbox_tracker = None
+        if getattr(context.annotator.annotation, "proposals_ready", False) is True:
+            context.start_user_annotation()
+        elif context.configs.do_amg:
+            context.start_amg_worker()
+        elif context.configs.yolo_model_ckpt_p is not None:
+            context.start_yolo_worker()
+        else:
+            context.start_user_annotation()
+        return
+
+    def start_yolo_worker(self):
+        context = self.context
+        context.run_backend_task(context.annotator.prepare_yolo, "Preparing YOLO...")
+        worker = YoloPredicitonWorker(context.annotator.yolo, context.mutex)
+        self._submit(worker, context.receive_yolo_results, context.object_proposal_done)
+        context.ui.create_basic_loading_window(
+            text="Please wait... Running Prediction with YOLO model. If you see this\nyou propably don't have a GPU that is recognised by ARAMSAM"
+        )
+
+    def receive_yolo_results(self, result: list):
+        context = self.context
+        context.annotator.process_yolo_bboxes(result)
+        context.annotator.annotation.proposals_ready = True
+        context.update_ui_imgs()
+        if context.annotator.time_stamp is None:
+            context.annotator.init_time_stamp()
+
+    def start_amg_worker(self):
+        context = self.context
+        context.run_backend_task(lambda: context.annotator.prepare_amg(context.bbox_tracker),
+                                 "Preparing mask proposals and propagation...")
+        worker = AMGWorker(context.annotator.sam, context.mutex)
+        self._submit(worker, context.receive_amg_results, context.object_proposal_done)
+        context.ui.create_basic_loading_window(
+            text="Please wait... This step can take up to 30 seconds"
+        )
+
+    def receive_amg_results(self, result: tuple):
+        context = self.context
+        mask_objs, annotated_image = result
+        context.run_backend_task(lambda: context.annotator.process_amg_masks(mask_objs, annotated_image),
+                                 "Preparing proposed masks...")
+        context.annotator.annotation.proposals_ready = True
+
+        now = time.time()
+        if len(context.annotator.annotation.masks) > 0:
+            first_mask_center = context.annotator.annotation.masks[0].center
+        else:
+            first_mask_center = None
+        context.update_ui_imgs(center=first_mask_center)
+        duration = time.time() - now
+        print(f"update ui {duration}")
+        if context.sam_gen in (2, 3) and context.annotator.next_annotation is not None:
+            context.start_mask_batch_thread()
+        context.start_user_annotation()
+
+    def start_text_prompt(self, prompt, confidence):
+        context = self.context
+        prompt = prompt.strip()
+        if self.text_prompt_running:
+            return
+        if context.sam_gen != 3 or context.annotator.annotation is None:
+            context.ui.text_prompt_status.setText("Load an image with SAM3 first.")
+            return
+        if (not context.annotator.sam.is_image_set
+                or context.annotator.annotation.features is None
+                or context.annotator.annotation.features is not context.annotator.sam.state):
+            context.ui.text_prompt_status.setText("Enable Auto Embed and wait for the image embedding.")
+            return
+        if not prompt:
+            context.ui.text_prompt_status.setText("Enter an object or a short phrase.")
+            return
+        self.text_prompt_running = True
+        context.ui.set_text_prompt_busy(True)
+        context.ui.text_prompt_status.setText(f'Searching for “{prompt}”…')
+        worker = TextPromptWorker(context.annotator.sam, prompt, confidence, context.mutex)
+
+        def failed(error):
+            self.text_prompt_running = False
+            context.ui.set_text_prompt_busy(False)
+            context.ui.text_prompt_status.setText("Prediction failed. You can try again.")
+            context.print_thread_error(error)
+
+        try:
+            self._submit(worker, self.receive_text_masks, None, error=failed)
+        except Exception:
+            self.text_prompt_running = False
+            context.ui.set_text_prompt_busy(False)
+            raise
+
+    def receive_text_masks(self, masks):
+        context = self.context
+        self.text_prompt_running = False
+        context.ui.set_text_prompt_busy(False)
+        if not masks:
+            context.ui.text_prompt_status.setText("No objects found. Try another phrase or lower the confidence.")
+            return
+        annotator = context.annotator
+        annotator.reset_toggles()
+        context.ui.reset_buttons()
+        context.ui.set_cursor(False)
+        class_id = context.ui.get_selected_class()
+
+        def accept_masks():
+            objects = [MaskData(mid=annotator.mask_id_handler.get_id(), mask=mask,
+                                origin="Sam3_text", class_id=class_id) for mask in masks]
+            # Text results use the same acceptance and overlap filtering as
+            # propagated masks, preserving the normal decision history for undo.
+            index = annotator.mask_idx
+            annotator.annotation.masks[index:index] = objects
+            annotator.annotation.mask_decisions[index:index] = [False] * len(objects)
+            annotator.update_mask_idx(index)
+            annotator.update_collections(annotator.annotation)
+            annotator.preselect_mask()
+            accepted_ids = {mask.mid for mask in annotator.annotation.good_masks}
+            return sum(obj.mid in accepted_ids for obj in objects)
+
+        accepted = context.run_backend_task(accept_masks, "Accepting text-prompted masks...")
+        noun = "mask" if accepted == 1 else "masks"
+        details = f" ({len(masks)} found)" if accepted != len(masks) else ""
+        context.ui.text_prompt_status.setText(f"{accepted} {noun} accepted{details}.")
+        context.update_ui_imgs()
+        if annotator.time_stamp is None:
+            annotator.init_time_stamp()
+        if context.annotator.next_annotation is not None:
+            context.start_mask_batch_thread()
+
+    def _submit(self, worker, result, finished, target=None, error=None):
+        context = self.context
+        annotator = context.annotator
+        model = annotator.sam
+        current, following = annotator.annotation, annotator.next_annotation
+
+        def valid():
+            if context.annotator is not annotator or annotator.sam is not model:
+                return False
+            if target is not None:
+                return target is annotator.annotation or target is annotator.next_annotation
+            return current is annotator.annotation and following is annotator.next_annotation
+
+        return context.tasks.submit(worker, valid=valid, result=result,
+                                    finished=finished, error=error or context.print_thread_error)

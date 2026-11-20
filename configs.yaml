@@ -1,33 +1,34 @@
-# ARAMSAM example configuration file
-# Only include the keys you want to override. Missing keys keep the defaults.
-
 sam_configs:
   do_sam: true
-  gen: 1
-  model_ckpt_p: "sam_vit_b_01ec64.pth"
-  model_type: "vit_b"
-
+  gen: 2
+  model_ckpt_p: sam2.1_hiera_tiny.pt
+  model_type: configs/sam2.1/sam2.1_hiera_t.yaml
+  bpe_path: null
+  confidence_threshold: 0.5
+use_gpu: false
 sam_background_embedding: true
-
+mask_propagation: true
 do_amg: false
-
 img_tiles:
-  do_tiling: true
-  tile_size: 640
+  do_tiling: false
+  tile_size: 1024
   tile_overlap: 0.2
-
-# Set to a YOLO weights path to enable YOLO predictions for AMG
+  allow_smaller_border_tiles: true
 yolo_model_ckpt_p: null
-
 save_data:
   do_save: true
   auto_save: true
-  save_dir: "output"
+  save_dir: output
   save_masks: true
-  mask_style: "yolo"
+  mask_style: yolo
   save_bboxes: false
-  bbox_style: "yolo"
-
+  bbox_style: ''
+  control_image_visualization: instance_contours
 class_dict:
-  "0": "Faba"
-  "1": "Weed"
+  '0': seed
+mask_propagation_method: tracking
+layout:
+- img
+- img_sam_preview
+- instance_contours
+- mask_collection_cnt

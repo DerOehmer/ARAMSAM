@@ -1,3 +1,7 @@
+from contextlib import nullcontext
+from collections import OrderedDict
+from threading import Lock
+
 import torch
 import cv2
 import numpy as np
@@ -60,6 +64,12 @@ class SamInference:
         else:
             self.amg = DefaultAMG(self, SamAutomaticMaskGenerator(self.sam))
         self.img = None
+
+    @torch.inference_mode()
+    def predict_boxes(self, image, boxes):
+        from aramsam_annotator.backend.propagation import predict_image_boxes
+
+        return predict_image_boxes(SamPredictor(self.sam), image, boxes)
 
     def predict_batch(
         self,
@@ -210,6 +220,7 @@ class BackgroundThreadSamPredictor(SamPredictor):
         )
         return features, original_size, input_size
 
+    @torch.no_grad()
     def to_torch_img(
         self,
         transformed_image: torch.Tensor,
@@ -243,25 +254,23 @@ class Sam2Inference:
         sam2_checkpoint: str = "sam2_hiera_small.pt",
         cfg_path: str = "sam2_hiera_s.yaml",
         background_embedding: bool = True,
-        amg_config_path: str | None = None
+        amg_config_path: str | None = None,
+        device: str | None = None,
     ):
         from sam2.build_sam import build_sam2_video_predictor
         from sam2.sam2_video_predictor import SAM2VideoPredictor
         from sam2.sam2_image_predictor import SAM2ImagePredictor
         from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-        if not torch.cuda.is_available():
-            raise RuntimeError(
-                "CUDA is not available. SAM2 requires a CUDA enabled GPU."
-            )
-
-        self.device = "cuda"
-
-        self._init_mixed_precision()
+        self.device = device if device is not None else (
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        if torch.device(self.device).type == "cuda":
+            self._init_mixed_precision()
 
         self.mask_id_handler = mask_id_handler
         self.predictor: SAM2VideoPredictor = build_sam2_video_predictor(
-            cfg_path, sam2_checkpoint, device="cuda"
+            cfg_path, sam2_checkpoint, device=self.device
         )
         # self.custom_amg = CustomAMG(self)
         amg_kwargs = load_amg_config(amg_config_path)
@@ -277,6 +286,10 @@ class Sam2Inference:
         self.imgs: list[np.ndarray] = None
         self.inference_state: dict = None
         self.latest_obj_id = 0
+        self._image_cache = OrderedDict()
+        self._cache_lock = Lock()
+        self._current_entry = None
+        self._tracking_images = None
         self.predictor.is_image_set = False
 
     def _init_mixed_precision(self):
@@ -287,51 +300,103 @@ class Sam2Inference:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
 
-    def set_features(self, imgs: list[np.ndarray]):
-        if self.predictor.is_image_set:
-            print_gpu_usage()
-            self.predictor.reset_state(self.inference_state)
-            self.img_predictor.reset_predictor()
-        self.imgs = imgs
-        assert (
-            len(imgs) >= 1 and imgs[0].dtype == np.uint8 and imgs[0].shape[2] == 3
-        ), "Expecting one or more RGB Numpy arrays with shape (H, W, 3) and dtype uint8"
+    def _precision(self):
+        return (torch.autocast("cuda", dtype=torch.bfloat16)
+                if torch.device(self.device).type == "cuda" else nullcontext())
 
-        self.inference_state = self.predictor.init_state(
-            video_path=imgs,
-            offload_video_to_cpu=False,
-            offload_state_to_cpu=False,
-            async_loading_frames=True,
+    def has_cached_image(self, image, image_format="BGR"):
+        with self._cache_lock:
+            entry = self._image_cache.get((id(image), image_format))
+            return entry is not None and entry["image"] is image
+
+    @torch.inference_mode()
+    def _image_entry(self, image, image_format="RGB"):
+        if image_format not in ("RGB", "BGR"):
+            raise ValueError("image_format must be RGB or BGR")
+        key = (id(image), image_format)
+        with self._cache_lock:
+            entry = self._image_cache.get(key)
+            if entry is not None and entry["image"] is image:
+                self._image_cache.move_to_end(key)
+                return entry
+        rgb = np.ascontiguousarray(image[..., ::-1]) if image_format == "BGR" else image
+        with self._precision():
+            state = self.predictor.init_state(
+                video_path=[rgb], offload_video_to_cpu=False,
+                offload_state_to_cpu=False, async_loading_frames=False,
+            )
+        entry = {"image": image, "state": state, "pixels": state["images"],
+                 "features": state["cached_features"][0]}
+        with self._cache_lock:
+            self._image_cache[key] = entry
+            self._image_cache.move_to_end(key)
+            # Keep only the current image and its look-ahead. Entries retain
+            # their input array so an object ID cannot alias a different image.
+            while len(self._image_cache) > 2:
+                self._image_cache.popitem(last=False)
+        return entry
+
+    def prefetch_image(self, image):
+        # Build an independent state; never replace the active image predictor.
+        self._image_entry(image, image_format="BGR")
+
+    @torch.inference_mode()
+    def set_features(self, imgs: list[np.ndarray], image_format="RGB"):
+        assert (len(imgs) >= 1 and imgs[0].dtype == np.uint8 and imgs[0].shape[2] == 3), (
+            "Expecting one or more Numpy arrays with shape (H, W, 3) and dtype uint8"
         )
+        entry = self._image_entry(imgs[0], image_format)
+        self.imgs = list(imgs)
+        self._image_format = image_format
+        self._current_entry = entry
+        self._tracking_images = None
+        self.inference_state = entry["state"]
+        self.predictor.reset_state(self.inference_state)
+        self.inference_state["images"] = entry["pixels"]
+        self.inference_state["num_frames"] = 1
+        self.inference_state["cached_features"] = {0: entry["features"]}
         self.predictor.is_image_set = True
-        frame_idx = 0
-        self._set_img_predictor_features(
-            self.inference_state["cached_features"][frame_idx][1]
-        )
+        with self._precision():
+            self._set_img_predictor_features(entry["features"][1])
 
-    def _set_img_predictor_features(self, backbone_out):
-        h, w, c = self.imgs[0].shape
-        self.img_predictor._orig_hw = [(h, w)]
+    def _prepare_tracking_pair(self):
+        entries = [self._current_entry]
+        entries.extend(self._image_entry(image, self._image_format) for image in self.imgs[1:])
+        identity = tuple(id(image) for image in self.imgs)
+        if self._tracking_images != identity:
+            self.inference_state["images"] = torch.cat([entry["pixels"] for entry in entries])
+            self.inference_state["num_frames"] = len(entries)
+            self._tracking_images = identity
+        # SAM2's default cache retains only its most recent frame. Seed both
+        # frames before tracking so batches can reuse their backbone outputs.
+        self.inference_state["cached_features"] = {
+            index: entry["features"] for index, entry in enumerate(entries)
+        }
+
+    def _set_img_predictor_features(self, backbone_out, image=None, predictor=None):
+        predictor = self.img_predictor if predictor is None else predictor
+        h, w = (self.imgs[0] if image is None else image).shape[:2]
+        predictor._orig_hw = [(h, w)]
 
         ### copied from sam2_image_predictor.SAM2ImagePredictor.set_image:
-        _, vision_feats, _, _ = self.img_predictor.model._prepare_backbone_features(
+        _, vision_feats, _, _ = predictor.model._prepare_backbone_features(
             backbone_out
         )
         # Add no_mem_embed, which is added to the lowest rest feat. map during training on videos
-        if self.img_predictor.model.directly_add_no_mem_embed:
-            vision_feats[-1] = vision_feats[-1] + self.img_predictor.model.no_mem_embed
+        if predictor.model.directly_add_no_mem_embed:
+            vision_feats[-1] = vision_feats[-1] + predictor.model.no_mem_embed
 
         feats = [
             feat.permute(1, 2, 0).view(1, -1, *feat_size)
             for feat, feat_size in zip(
-                vision_feats[::-1], self.img_predictor._bb_feat_sizes[::-1]
+                vision_feats[::-1], predictor._bb_feat_sizes[::-1]
             )
         ][::-1]
-        self.img_predictor._features = {
+        predictor._features = {
             "image_embed": feats[-1],
             "high_res_feats": feats[:-1],
         }
-        self.img_predictor._is_image_set = True
+        predictor._is_image_set = True
 
     def predict(self, pts: np.ndarray, pts_labels: np.ndarray):
         # single object
@@ -348,6 +413,17 @@ class Sam2Inference:
             multimask_output=False,
         )
         return self._logits_to_npmask(mask)
+
+    @torch.inference_mode()
+    def predict_boxes(self, image, boxes):
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+        from aramsam_annotator.backend.propagation import predict_image_boxes
+
+        entry = self._image_entry(image, image_format="BGR")
+        predictor = SAM2ImagePredictor(self.predictor)
+        with self._precision():
+            self._set_img_predictor_features(entry["features"][1], image=image, predictor=predictor)
+            return predict_image_boxes(predictor, image, boxes, image_is_set=True)
 
     def predict_batch(
         self,
@@ -376,8 +452,18 @@ class Sam2Inference:
             output_masks.append(mask > 0.0)
         return output_masks
 
+    def reset_tracking(self):
+        if self.inference_state is not None:
+            self.predictor.reset_state(self.inference_state)
+        self._tracking_objects = {}
+
     def set_masks(self, mask_objs: list[MaskData]):
-        self.predictor.reset_state(self.inference_state)
+        self.reset_tracking()
+        if not mask_objs:
+            return
+        if self.imgs is not None:
+            self._prepare_tracking_pair()
+        self._tracking_objects = {mask.mid: mask for mask in mask_objs}
         for m in mask_objs:
             assert (
                 m.mask.dtype == np.uint8 and m.mask.ndim == 2
@@ -397,14 +483,19 @@ class Sam2Inference:
                     np_mask = self._logits_to_npmask(out_mask_logits[i])
                     if np_mask is not None:
                         prop_masks.append(
-                            MaskData(mid=out_mid, mask=np_mask, origin="Sam2_tracking")
+                            MaskData(mid=out_mid, mask=np_mask, origin="Sam2_tracking",
+                                     class_id=self._tracking_objects[out_mid].class_id,
+                                     color_idx=self._tracking_objects[out_mid].color_idx,
+                                     time_stamp=1, track_id=self._tracking_objects[out_mid].track_id)
                         )
         return prop_masks
 
     def prop_thread_func(self, mask_objs: list[MaskData]):
-        self._init_mixed_precision()
-        self.predictor.reset_state(self.inference_state)
+        if torch.device(self.device).type == "cuda":
+            self._init_mixed_precision()
         self.set_masks(mask_objs)
+        if not mask_objs:
+            return []
         return self.propagate_to_next_img()
 
     def _logits_to_npmask(self, out_mask_logit: torch.Tensor | np.ndarray):
@@ -468,6 +559,7 @@ class CustomAMG:
                     if isinstance(self.sam_cls, SamInference)
                     else "Sam2_proposed"
                 )
+                origin = getattr(self.sam_cls, "proposed_origin", origin)
                 mask_objs.append(
                     MaskData(
                         mid=self.sam_cls.mask_id_handler.get_id(),
@@ -594,6 +686,7 @@ class DefaultAMG:
                     if isinstance(self.sam_cls, SamInference)
                     else "Sam2_proposed"
                 )
+                origin = getattr(self.sam_cls, "proposed_origin", origin)
                 mask_objs.append(
                     MaskData(
                         mid=self.sam_cls.mask_id_handler.get_id(),

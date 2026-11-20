@@ -1,8 +1,10 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 import os
 import yaml
+import tempfile
+from aramsam_annotator.visualization_options import CONTROL_IMAGE_OPTIONS, VISUALIZATION_LABELS
 
 
 
@@ -13,6 +15,8 @@ class SamConfigs:
     gen: int = 1 #2 #
     model_ckpt_p: str = "sam_vit_b_01ec64.pth"#"sam_vit_l_0b3195.pth"  #'sam2.1_hiera_small.pt'#
     model_type: str = "vit_b" #"vit_l"#'configs/sam2.1/sam2.1_hiera_s.yaml' #
+    bpe_path: str | None = None  # SAM3 tokenizer; autodetected when omitted.
+    confidence_threshold: float = 0.5  # SAM3 text detection confidence.
 
 
 @dataclass
@@ -20,6 +24,7 @@ class ImgTiles:
     do_tiling: bool = True
     tile_size: int = 640
     tile_overlap: float = 0.2
+    allow_smaller_border_tiles: bool = True
 
 
 @dataclass
@@ -31,8 +36,12 @@ class SaveData:
     mask_style: str = "yolo" # default, yolo, 
     save_bboxes: bool = False
     bbox_style: str = "yolo" # default, yolo, ""
+    control_image_visualization: str = "auto"
 
     def __post_init__(self):
+        if (not isinstance(self.control_image_visualization, str)
+                or self.control_image_visualization not in CONTROL_IMAGE_OPTIONS):
+            raise ValueError("Unknown control image visualization")
         if self.save_masks and self.save_bboxes:
             self.save_bboxes = False  # Fixed variable name
             print("Not implemented yet. Only saving masks")
@@ -62,16 +71,23 @@ class AramsamConfigs:
         "0": "Larvae",
     })
 
+    # Prefer CUDA when available; disable to force CPU for all models.
+    use_gpu: bool = True
+    mask_propagation: bool = True
+    mask_propagation_method: str = "tracking"
+    layout: list[str] | None = None
+
     def __post_init__(self):
+        if self.layout is not None and (
+                not isinstance(self.layout, list) or len(self.layout) != 4
+                or any(not isinstance(view, str) or view not in VISUALIZATION_LABELS for view in self.layout)):
+            raise ValueError("Layout must contain four valid visualization names")
+        if self.mask_propagation_method not in ("tracking", "bounding_box"):
+            raise ValueError("Mask propagation method must be 'tracking' or 'bounding_box'.")
         if self.do_amg and self.yolo_model_ckpt_p is not None:
             self.yolo_model_ckpt_p = None
             print(
                 "AMG and YOLO model cannot be activated at the same time. Disabling YOLO model."
-            )
-        if self.sam_background_embedding and self.sam_configs.gen != 2:
-            self.sam_background_embedding = False
-            print(
-                "Background embedding is currently not supported for SAM generation 1. Disabling background embedding."
             )
 
 
@@ -119,9 +135,45 @@ def load_configs_from_yaml(yaml_path: str | Path) -> "AramsamConfigs":
         yolo_model_ckpt_p=yolo_model_ckpt_p,
         save_data=save_data,
         class_dict=class_dict,
+        use_gpu=data.get("use_gpu", AramsamConfigs.__dataclass_fields__["use_gpu"].default),
+        mask_propagation=data.get("mask_propagation", True),
+        mask_propagation_method=data.get("mask_propagation_method", "tracking"),
+        layout=data.get("layout"),
     )
 
     return configs
+
+
+def find_configs_path(yaml_filename: str = "configs.yaml") -> Path:
+    """Resolve the configuration file used for both startup and welcome edits."""
+    cwd_path = Path.cwd() / yaml_filename
+    if cwd_path.exists():
+        return cwd_path
+    repo_path = Path(__file__).resolve().parents[1] / yaml_filename
+    return repo_path if repo_path.exists() else cwd_path
+
+
+def save_configs_to_yaml(configs: AramsamConfigs, yaml_path: str | Path):
+    """Atomically save settings, retaining unrecognized top-level YAML keys."""
+    path = Path(yaml_path)
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except yaml.YAMLError as error:
+        raise ValueError(f"Cannot update invalid configuration YAML: {error}") from error
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError("Configuration file must contain a YAML mapping")
+    data.update(asdict(configs))
+    contents = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(contents)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def find_and_load_configs(yaml_filename: str = "configs.yaml") -> "AramsamConfigs":
@@ -130,17 +182,6 @@ def find_and_load_configs(yaml_filename: str = "configs.yaml") -> "AramsamConfig
     and the repository root (two levels up from this module), and loads it if
     found. If not found, returns the default AramsamConfigs instance.
     """
-    # check cwd first
-    cwd_path = Path(os.getcwd()) / yaml_filename
-    if cwd_path.exists():
-        return load_configs_from_yaml(cwd_path)
-
-    # check repo root (two levels up from this file)
-    repo_root = Path(__file__).resolve().parents[1]
-    repo_path = repo_root / yaml_filename
-    if repo_path.exists():
-        return load_configs_from_yaml(repo_path)
-
-    # fallback to defaults
-    return AramsamConfigs()
+    path = find_configs_path(yaml_filename)
+    return load_configs_from_yaml(path) if path.exists() else AramsamConfigs()
         
